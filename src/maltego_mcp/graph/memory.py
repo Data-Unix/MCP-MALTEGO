@@ -401,6 +401,18 @@ class MemoryGraphStore:
 
         return await self._write(mutate)
 
+    async def append_steps(self, steps: list[StepRecord]) -> int:
+        if not steps:
+            return 0
+
+        def mutate() -> int:
+            for step in steps:
+                current = self._steps.setdefault(step.case_id, [])
+                current.append(replace(step, seq=(current[-1].seq + 1) if current else 1))
+            return len(steps)
+
+        return await self._write(mutate)
+
     async def list_steps(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
         self._read()
         if case_id:

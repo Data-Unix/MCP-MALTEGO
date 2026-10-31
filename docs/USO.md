@@ -39,7 +39,8 @@ Matriz completa de funciones y verificación: `docs/COBERTURA.md`.
   WebsiteToDomain, DomainToWebsite.
 - **Con API key** (define la variable de entorno y se activan): `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`,
   `SECURITYTRAILS_API_KEY`, `CENSYS_API_ID` + `CENSYS_API_SECRET`, `HUNTER_API_KEY`, `HIBP_API_KEY`,
-  `GREYNOISE_API_KEY`, `TATUM_API_KEY`. Para los agentes de Orca, ponlas en las variables de entorno de usuario
+  `GREYNOISE_API_KEY`, `TATUM_API_KEY`. Censys usa la API Search v2 (credenciales API ID/Secret); si tu cuenta es
+  de la nueva Censys Platform, ese transform puede no funcionar todavía. Para los agentes de Orca, ponlas en las variables de entorno de usuario
   del sistema (Windows: "Editar las variables de entorno de tu cuenta") y reinicia Orca.
 
 ## Machines

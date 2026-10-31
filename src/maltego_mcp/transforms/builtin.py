@@ -11,6 +11,7 @@ guardan, puntúan y exportan igual que los transforms TRX/iTDS.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import os
 import re
@@ -125,6 +126,15 @@ async def doh(ctx: BuiltinContext, name: str, rtype: str) -> list[str]:
     raise last or TransformError("No se pudo resolver por DNS sobre HTTPS.")
 
 
+_TXT_CHUNK_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def _txt(data: str) -> str:
+    """Une las cadenas de un registro TXT ("a" "b" -> ab), como hacen SPF/DKIM largos."""
+    chunks = _TXT_CHUNK_RE.findall(data)
+    return "".join(chunks) if chunks else data.strip('"')
+
+
 def _host(value: str) -> str:
     return value.strip().rstrip(".").lower()
 
@@ -149,7 +159,7 @@ def _dns_records(rtype: str, out_type: str, label: str) -> Handler:
                 prio, _, host = data.partition(" ")
                 items.append(_ent(out_type, _host(host or prio), label, mx__priority=prio if host else ""))
             elif rtype == "TXT":
-                items.append(_ent(out_type, f"[TXT] {data.strip(chr(34))}", label))
+                items.append(_ent(out_type, f"[TXT] {_txt(data)}", label))
             else:
                 items.append(_ent(out_type, _host(data) if rtype in ("NS", "CNAME", "PTR") else data, label))
         return _limit(items, n)
@@ -388,10 +398,16 @@ async def _alias_profiles(
         return TransformResponse(messages=[("PartialError", "El alias tiene caracteres no válidos para usuarios web.")])
     items: list[ResultEntity] = []
     unknown: list[str] = []
-    for network, check, public in PROFILE_SITES:
+
+    async def probe(check: str) -> httpx.Response | None:
         try:
-            resp = await ctx.http.get(check.format(a=quote(alias)))
+            return await ctx.http.get(check.format(a=quote(alias)))
         except httpx.HTTPError:
+            return None
+
+    responses = await asyncio.gather(*(probe(check) for _, check, _ in PROFILE_SITES))  # en paralelo
+    for (network, _, public), resp in zip(PROFILE_SITES, responses, strict=True):
+        if resp is None:
             unknown.append(network)
             continue
         found = False

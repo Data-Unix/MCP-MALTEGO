@@ -338,7 +338,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         top: Annotated[int, Field(ge=0, le=50, description="Cuántas entidades prioritarias mostrar.")] = 10,
         response_format: Fmt = "markdown",
     ) -> str:
-        data = await svc.report_data(case_id)
+        data = await svc.report_data(case_id, include_actions=False)
         ranked = data.top(top)
         if response_format == "json":
             return to_json(

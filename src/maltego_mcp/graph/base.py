@@ -95,6 +95,10 @@ class GraphStore(Protocol):
         """Añade un paso a la memoria del caso; asigna seq creciente."""
         ...
 
+    async def append_steps(self, steps: list[StepRecord]) -> int:
+        """Añade varios pasos de una vez (importaciones y fusiones)."""
+        ...
+
     async def list_steps(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
         """Pasos del caso (case_id vacío = todos los casos) con seq > since_seq, en orden."""
         ...

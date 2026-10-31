@@ -386,3 +386,29 @@ def test_mtgx_sidecar_corrupto_no_rompe() -> None:
         zf.writestr(GRAPH_MEMBER, b'<graphml xmlns="http://graphml.graphdrawing.org/xmlns"><graph/></graphml>')
         zf.writestr(SIDECAR_MEMBER, b"{no json")
     assert read_mtgx(buf.getvalue()).sidecar == {}
+
+
+async def test_reimportar_no_duplica_memoria_y_presupuesto_minimo(svc: OsintService, tmp_path: Path) -> None:
+    await call(
+        svc,
+        "osint_run_transform",
+        {"case_id": "ri", "transform": "DNSToIP", "entity_type": "maltego.Domain", "value": "example.com"},
+    )
+    await call(svc, "osint_export_case", {"case_id": "ri", "format": "mtgx"})
+    (tmp_path / "imports").mkdir()
+    (tmp_path / "imports" / "ri.mtgx").write_bytes(next((tmp_path / "exports").glob("*.mtgx")).read_bytes())
+    first = await call(svc, "osint_import_graph", {"case_id": "dst", "file_name": "ri.mtgx"})
+    second = await call(svc, "osint_import_graph", {"case_id": "dst", "file_name": "ri.mtgx"})
+    assert "1 pasos de memoria" in first and "0 pasos de memoria" in second
+    r = await js(
+        svc,
+        "osint_run_machine",
+        {
+            "case_id": "b1x",
+            "entity_type": "maltego.Domain",
+            "value": "example.com",
+            "machine": "DomainRecon",
+            "max_total_entities": 1,
+        },
+    )
+    assert r["stopped_by_budget"] is True and r["new_entities"] == 0

@@ -49,7 +49,10 @@ def configure_logging(level: LogLevel = "INFO") -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         force=True,
     )
-    logging.getLogger("httpx").setLevel(max(logging.WARNING, logging.getLevelName(level)))
+    # httpx/httpcore registran URLs completas (algunos proveedores llevan la API key en la URL): nunca por debajo
+    # de WARNING, aunque el resto vaya en DEBUG.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def build_store(settings: Settings) -> GraphStore:

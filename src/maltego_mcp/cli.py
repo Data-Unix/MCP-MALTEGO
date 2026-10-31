@@ -31,12 +31,14 @@ from maltego_mcp.maltego.mtgx import (
     GRAPHML_NS,
     MAX_ARCHIVE_BYTES,
     MAX_ENTITIES,
+    MAX_GRAPHML_BYTES,
     MAX_LINKS,
     MTG_NS,
     read_mtgx,
 )
 
 MAX_ENTITY_FILES = 5000
+MAX_ENTITY_FILE_BYTES = 1024 * 1024
 
 
 # ------------------------------------------------------------------------------------------ inspect
@@ -44,20 +46,18 @@ def inspect_mtgx(payload: bytes) -> dict[str, Any]:
     """Informe de validez de un .mtgx (no modifica nada)."""
     report: dict[str, Any] = {"valid": False, "errors": [], "warnings": [], "size_bytes": len(payload)}
     try:
-        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-            names = zf.namelist()
-            report["members"] = len(names)
-            if GRAPH_MEMBER not in names:
-                report["warnings"].append(f"No existe {GRAPH_MEMBER}; se usará el primer Graphs/*.graphml.")
-            xml = zf.read(next((n for n in names if n.startswith("Graphs/") and n.endswith(".graphml")), GRAPH_MEMBER))
-    except (zipfile.BadZipFile, KeyError) as exc:
-        report["errors"].append(f"No es un .mtgx válido: {exc.__class__.__name__}.")
-        return report
-    try:
-        graph = read_mtgx(payload)
+        graph = read_mtgx(payload)  # aplica primero todos los límites (tamaño, nº de ficheros, descompresión)
     except InvalidInput as exc:
         report["errors"].append(str(exc))
         return report
+    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+        names = zf.namelist()
+        report["members"] = len(names)
+        if GRAPH_MEMBER not in names:
+            report["warnings"].append(f"No existe {GRAPH_MEMBER}; se usó el primer Graphs/*.graphml.")
+        member = next((n for n in names if n.startswith("Graphs/") and n.endswith(".graphml")), GRAPH_MEMBER)
+        with zf.open(member) as fh:
+            xml = fh.read(MAX_GRAPHML_BYTES + 1)
     try:
         root = SafeET.fromstring(xml)
     except (DefusedXmlException, SafeET.ParseError) as exc:
@@ -107,15 +107,18 @@ def parse_entity_definitions(mtz_bytes: bytes) -> list[dict[str, str]]:
         raise InvalidInput("El fichero no es un .mtz (ZIP) válido.") from exc
     out: list[dict[str, str]] = []
     with zf:
-        entity_files = [n for n in zf.namelist() if n.lower().endswith(".entity")][:MAX_ENTITY_FILES]
+        entity_files = [
+            i for i in zf.infolist() if i.filename.lower().endswith(".entity") and i.file_size <= MAX_ENTITY_FILE_BYTES
+        ][:MAX_ENTITY_FILES]
         if not entity_files:
             raise InvalidInput(
                 "El .mtz no contiene entidades (Entities/*.entity). Exporta la configuración con "
                 "las entidades seleccionadas."
             )
-        for name in entity_files:
+        for info in entity_files:
             try:
-                root = SafeET.fromstring(zf.read(name))
+                with zf.open(info) as fh:
+                    root = SafeET.fromstring(fh.read(MAX_ENTITY_FILE_BYTES + 1))
             except (DefusedXmlException, SafeET.ParseError):
                 continue
             ent = root if root.tag.endswith("MaltegoEntity") else root.find(".//MaltegoEntity")

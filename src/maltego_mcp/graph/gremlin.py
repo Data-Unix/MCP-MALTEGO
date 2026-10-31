@@ -488,6 +488,11 @@ class GremlinGraphStore:
         await self._run(Q_ADD_STEP, bindings)
         return stored
 
+    async def append_steps(self, steps: list[StepRecord]) -> int:
+        for step in steps:
+            await self.append_step(step)
+        return len(steps)
+
     async def list_steps(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
         if case_id:
             await self._require_case(case_id)

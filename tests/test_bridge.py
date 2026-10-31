@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from maltego_mcp.config import Settings
-from maltego_mcp.maltego.bridge import BY_NAME, read_current_case, run_local, write_mtz
+from maltego_mcp.maltego.bridge import read_current_case, run_local, transforms_by_name, write_mtz
 from maltego_mcp.server import build_service
 from maltego_mcp.transforms.protocol import parse_response
 
@@ -62,7 +62,7 @@ def test_mtz_generado_con_sdk_oficial(tmp_path: Path) -> None:
     with zipfile.ZipFile(out) as zf:
         names = set(zf.namelist())
         assert "Servers/Local.tas" in names and "TransformSets/MCP Maltego.set" in names
-        for name in BY_NAME:
+        for name in transforms_by_name():
             assert f"TransformRepositories/Local/{name}.transform" in names
             settings_xml = zf.read(f"TransformRepositories/Local/{name}.transformsettings").decode()
             assert f"run --quiet maltego-mcp-bridge local {name}<" in settings_xml
@@ -71,7 +71,7 @@ def test_mtz_generado_con_sdk_oficial(tmp_path: Path) -> None:
         assert 'type="maltego.Domain"' in neighbors
     from maltego_mcp.domain.entity_types import all_entity_types
 
-    assert len(BY_NAME) == 2 + 2 * len(all_entity_types())
+    assert len(transforms_by_name()) == 2 + 2 * len(all_entity_types())
 
 
 def test_caso_viaja_en_la_entidad_y_urls_usan_su_propiedad(settings: Settings) -> None:
@@ -107,3 +107,29 @@ def test_salida_utf8_con_declaracion(
     assert out.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
     assert "Иван".encode() in out
     assert [e.value for e in parse_response(out).entities] == ["Иван"]
+
+
+def test_tipos_importados_tienen_transforms_puente(settings: Settings) -> None:
+    import json
+
+    from maltego_mcp.domain.entity_types import register_imported_types
+
+    settings.home.mkdir(parents=True, exist_ok=True)
+    (settings.home / "entities.json").write_text(
+        json.dumps(
+            {
+                "entity_types": [
+                    {"maltego_type": "acme.Employee", "main_property": "employee.id", "description": "Empleado"}
+                ]
+            }
+        ),
+        "utf-8",
+    )
+    try:
+        asyncio.run(build_service(settings).create_case("emp", ""))
+        call("mcpopencase", settings, "emp")
+        saved = call("mcpsave-employee", settings, "E-42")
+        assert "Guardada en el caso emp: E-42 (acme.Employee)" in saved.messages[0][1]
+        assert "mcpneighbors-employee" in transforms_by_name()
+    finally:
+        register_imported_types([])

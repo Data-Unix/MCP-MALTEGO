@@ -119,3 +119,21 @@ def test_lookup_transforms_export_y_mtz(
     repo = Path(__file__).resolve().parents[1]
     assert main(["mtz", "--repo", str(repo), "--output", str(tmp_path / "b.mtz"), "--uv", "uv"]) == 0
     assert zipfile.is_zipfile(tmp_path / "b.mtz")
+
+
+def test_inspect_rechaza_zip_bomb() -> None:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(GRAPH_MEMBER, b"<graphml>" + b" " * (60 * 1024 * 1024) + b"</graphml>")
+    rep = inspect_mtgx(buf.getvalue())
+    assert rep["valid"] is False and "demasiado grande" in rep["errors"][0]
+
+
+def test_logs_de_httpx_nunca_en_debug() -> None:
+    import logging
+
+    from maltego_mcp.server import configure_logging
+
+    configure_logging("DEBUG")
+    assert logging.getLogger("httpx").level == logging.WARNING
+    configure_logging("INFO")

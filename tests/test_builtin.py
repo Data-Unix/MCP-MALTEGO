@@ -378,3 +378,10 @@ def test_catalogo_integrado_coherente() -> None:
 
 def test_respuesta_serializable() -> None:
     assert json.dumps({"ok": True})
+
+
+async def test_txt_con_varias_cadenas(ctx: BuiltinContext) -> None:
+    DNS[("split.example", "TXT")] = ['"v=DKIM1; k=rsa; p=AAA" "BBB"']
+    assert await run(ctx, "DomainToTXT", "split.example") == [
+        ("maltego.Phrase", "[TXT] v=DKIM1; k=rsa; p=AAABBB", "txt_record")
+    ]

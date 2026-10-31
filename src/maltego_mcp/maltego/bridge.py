@@ -28,8 +28,8 @@ from maltego_trx.decorator_registry import TransformRegistry, TransformSet
 from maltego_trx.maltego import UIM_INFORM, UIM_PARTIAL, MaltegoMsg, MaltegoTransform
 from maltego_trx.utils import name_to_path
 
-from maltego_mcp.config import Settings
-from maltego_mcp.domain.entity_types import all_entity_types
+from maltego_mcp.config import ONTOLOGY_FILE, Settings
+from maltego_mcp.domain.entity_types import all_entity_types, load_imported_types
 from maltego_mcp.domain.normalize import validate_case_id
 from maltego_mcp.domain.records import EntityRecord
 from maltego_mcp.errors import MaltegoMcpError
@@ -98,7 +98,13 @@ def bridge_transforms() -> list[BridgeTransform]:
     return out
 
 
-BY_NAME: dict[str, BridgeTransform] = {t.name: t for t in bridge_transforms()}
+def transforms_by_name() -> dict[str, BridgeTransform]:
+    """Se calcula al usarse (no al importar) para incluir la ontología importada de Maltego."""
+    return {t.name: t for t in bridge_transforms()}
+
+
+def _load_ontology(settings: Settings) -> None:
+    load_imported_types(settings.home / ONTOLOGY_FILE)
 
 
 # ------------------------------------------------------------------------------------- ejecución
@@ -207,12 +213,13 @@ def run_local(
 ) -> str:
     """Ejecuta un transform local y devuelve el XML de respuesta (lo que Maltego lee por stdout)."""
     response = MaltegoTransform()
-    t = BY_NAME.get(name.lower())
+    settings = settings or Settings.from_env()
+    _load_ontology(settings)
+    t = transforms_by_name().get(name.lower())
     if t is None:
         response.addUIMessage(f"Transform desconocido: {name}. Regenera el .mtz.", UIM_PARTIAL)
         return str(response.returnOutput())
     try:
-        settings = settings or Settings.from_env()
         from maltego_mcp.server import build_service  # import diferido: evita ciclo
 
         svc = (service_factory or build_service)(settings)
@@ -265,11 +272,12 @@ def main(argv: list[str] | None = None) -> None:
     ns = parser.parse_args(argv)
     if ns.command == "mtz":
         settings = Settings.from_env()
+        _load_ontology(settings)
         repo = ns.repo.resolve()
         if not (repo / "pyproject.toml").exists():
             parser.error(f"{repo} no parece la carpeta del repo (falta pyproject.toml). Usa --repo.")
         out = write_mtz(ns.output or settings.home / "maltego-mcp-local.mtz", repo, ns.uv)
-        print(f"Generado {out} con {len(BY_NAME)} transforms locales.", file=sys.stderr)
+        print(f"Generado {out} con {len(transforms_by_name())} transforms locales.", file=sys.stderr)
         print(f"Importa en Maltego: Import | Export > Import Config > {out}", file=sys.stderr)
         return
     # Bytes UTF-8 con declaración: en Windows la salida por tubería usaría la página de códigos ANSI y fallaría

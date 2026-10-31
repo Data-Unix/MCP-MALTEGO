@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -586,6 +587,7 @@ class OsintService:
         start = time.perf_counter()
         result = MachineResult(root, definition.name)
         budget = [max_total_entities - 1]  # la entidad inicial cuenta dentro del total
+        result.stopped_by_budget = budget[0] <= 0
         processed: set[tuple[str, str]] = set()
         frontier: list[EntityRecord] = [root]
         known: set[str] = {root.id}
@@ -666,8 +668,12 @@ class OsintService:
         moved_e = [replace(e, case_id=tgt) for e in entities]
         moved_l = [replace(e, case_id=tgt, id=edge_id(tgt, e.out_id, e.label, e.in_id)) for e in edges]
         created, linked = await self.store.upsert_many(moved_e, moved_l)
-        for step in await self.store.list_steps(src, 0, MAX_SIDECAR_STEPS):
-            await self.store.append_step(replace(step, case_id=tgt, reason=f"[fusionado de {src}] {step.reason}"[:500]))
+        await self.store.append_steps(
+            [
+                replace(step, case_id=tgt, reason=f"[fusionado de {src}] {step.reason}"[:500])
+                for step in await self.store.list_steps(src, 0, MAX_SIDECAR_STEPS)
+            ]
+        )
         await self.record_step(tgt, "manual", f"merge:{src}", new_entities=created)
         return created, linked
 
@@ -738,13 +744,17 @@ class OsintService:
     async def timeline(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
         return await self.store.list_steps(validate_case_id(case_id), since_seq, limit)
 
-    async def report_data(self, case_id: str) -> ReportData:
+    async def report_data(self, case_id: str, include_actions: bool = True) -> ReportData:
         cid = validate_case_id(case_id)
         case = await self.store.get_case(cid)
         if case is None:
             raise NotFound(f"El caso '{cid}' no existe. Revisa osint_list_cases.")
         entities, edges, steps = await self._case_state(cid)
-        actions, scores = await self.suggest(cid, 10)
+        scores = score_entities(entities, edges, self._provider_transforms())
+        actions: list[Action] = []
+        if include_actions:  # recomendaciones: requieren el historial global (más caro)
+            specs = list(self.catalog.transforms.values())
+            actions = next_best_actions(scores, steps, specs, self.env, await self.learning(), 10)
         return ReportData(case, entities, edges, steps, scores, actions, utc_now())
 
     # ---------- investigación en una llamada ----------
@@ -887,14 +897,23 @@ class OsintService:
             edges[eid] = EdgeRecord(eid, cid, lbl, out_id, in_id, clamp_confidence(link.confidence), [origin], now, now)
         result.new_entities, result.links = await self.store.upsert_many(list(records.values()), list(edges.values()))
         result.entities = len(records)
-        for raw in list(graph.sidecar.get("steps", []))[:MAX_SIDECAR_STEPS]:
-            try:
-                step = StepRecord(**{**raw, "case_id": cid})
-            except TypeError:
-                continue
-            await self.store.append_step(step)
-            result.steps += 1
-        await self.record_step(cid, "import", path.name, new_entities=result.new_entities)
+        # La memoria del .mtgx solo se añade la primera vez que se importa ese mismo fichero en el caso.
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        marker = f"{path.name}#{digest}"
+        already = any(
+            x.kind == "import" and x.action.endswith(f"#{digest}")
+            for x in await self.store.list_steps(cid, 0, MAX_SIDECAR_STEPS)
+        )
+        if not already:
+            imported: list[StepRecord] = []
+            for raw in list(graph.sidecar.get("steps", []))[:MAX_SIDECAR_STEPS]:
+                try:
+                    imported.append(StepRecord(**{**raw, "case_id": cid}))
+                except TypeError:
+                    continue
+            await self.store.append_steps(imported)
+            result.steps = len(imported)
+        await self.record_step(cid, "import", marker, new_entities=result.new_entities)
         if graph.skipped:
             result.skipped.append(f"{graph.skipped} nodos sin tipo o sin valor")
         return result
