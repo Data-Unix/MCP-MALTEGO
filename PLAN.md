@@ -1,6 +1,6 @@
 # PLAN — MCP Maltego
 
-Estado: **plan, sin código todavía**. Base metodológica: skill `mcp-builder` (Anthropic) — fases 1-4.
+Estado: **v1 implementada** (14 tools, backends memory y gremlin, transforms TRX/iTDS y cadenas). Detalle y pendientes en `docs/USO.md`. Base metodológica: skill `mcp-builder` (Anthropic) — fases 1-4.
 
 ## 0. Decisiones clave
 

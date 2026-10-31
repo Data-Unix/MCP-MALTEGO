@@ -1,0 +1,46 @@
+# Catálogo de transforms para MCP Maltego.
+# Copia este fichero a config/transforms.toml (ignorado por git) y adáptalo.
+# Los servidores TRX/iTDS no publican su lista de transforms: hay que declararlos aquí.
+# El agente solo puede ejecutar los transforms listados (no puede indicar URLs arbitrarias).
+
+[[servers]]
+name = "local-trx"                  # servidor de ejemplo: uv run python examples/trx_server/server.py
+url = "http://127.0.0.1:8080"
+timeout_s = 30
+# api_key_env = "MI_TRX_API_KEY"    # opcional: se envía como "Authorization: Bearer <valor>"
+
+[[transforms]]
+name = "EmailToDomain"              # path por defecto: nombre en minúsculas, '_' -> '-' (emailtodomain)
+server = "local-trx"
+input_types = ["maltego.EmailAddress"]
+output_types = ["maltego.Domain"]
+description = "Dominio de un correo electrónico."
+
+[[transforms]]
+name = "EmailToHandle"
+server = "local-trx"
+input_types = ["maltego.EmailAddress"]
+output_types = ["maltego.Alias"]
+description = "Parte local del correo como posible alias."
+
+[[transforms]]
+name = "URLToDomain"
+server = "local-trx"
+input_types = ["maltego.URL"]
+output_types = ["maltego.Domain"]
+description = "Dominio que aloja una URL."
+
+[[transforms]]
+name = "DomainToWebsite"
+server = "local-trx"
+input_types = ["maltego.Domain"]
+output_types = ["maltego.Website", "maltego.URL"]
+description = "Web y URL raíz de un dominio."
+
+[[transforms]]
+name = "DomainToIP"
+server = "local-trx"
+input_types = ["maltego.Domain", "maltego.DNSName", "maltego.Website"]
+output_types = ["maltego.IPv4Address"]
+description = "Resolución DNS real a IPv4."
+# settings = { clave = "valor" }    # opcional: TransformFields enviados en cada petición
