@@ -25,12 +25,14 @@ def test_ida_y_vuelta_conserva_tipos_valores_propiedades_y_enlaces() -> None:
         xml = zf.read(GRAPH_MEMBER).decode()
     assert 'xmlns:mtg="http://maltego.paterva.com/xml/mtgx"' in xml
     assert '<mtg:MaltegoEntity type="maltego.Domain">' in xml
+    assert 'xmlns="http://graphml.graphdrawing.org/xmlns"' in xml
     assert 'name="fqdn"' in xml and "maltego.link.manual.type" in xml
     g = read_mtgx(data)
     got = {(e.maltego_type, e.value): e.properties for e in g.entities}
     assert got[("maltego.Domain", "example.com")] == {"registrar": "ACME <&>"}
     assert ("acme.Ticket", "TCK-1") in got
-    assert sorted(g.links) == [("a", "b", "resolves_to"), ("c", "a", "ref")]
+    assert sorted((x.source, x.target, x.label) for x in g.links) == [("a", "b", "resolves_to"), ("c", "a", "ref")]
+    assert {e.confidence for e in g.entities} == {0.8}
 
 
 def test_lee_exportacion_con_estructura_de_maltego() -> None:
@@ -61,7 +63,7 @@ def test_lee_exportacion_con_estructura_de_maltego() -> None:
         ("maltego.Website", "www.paterva.com"),
     ]
     assert g.entities[0].properties == {"whois-info": "x"}
-    assert g.links == [("n0", "n1", "To Website")]
+    assert [(x.source, x.target, x.label) for x in g.links] == [("n0", "n1", "To Website")]
     assert g.skipped == 1
 
 
@@ -88,3 +90,20 @@ def test_xml_malicioso_se_rechaza() -> None:
 def test_propiedad_principal() -> None:
     assert main_property_for("maltego.EmailAddress") == "email"
     assert main_property_for("acme.Ticket") == "properties.ticket"
+
+
+def test_url_incluye_propiedad_visible_de_maltego() -> None:
+    data = write_mtgx([ent("u", "maltego.URL", "https://example.com/a")], [])
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        xml = zf.read(GRAPH_MEMBER).decode()
+    assert 'name="url"' in xml and 'name="short-title"' in xml
+    assert read_mtgx(data).entities[0].value == "https://example.com/a"
+
+
+def test_no_altera_el_espacio_de_nombres_global() -> None:
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    write_mtgx([ent("a", "maltego.Domain", "a.com")], [])
+    root = Element("{http://graphml.graphdrawing.org/xmlns}graphml")
+    SubElement(root, "plain")
+    tostring(root)  # fallaría con ValueError si se hubiera registrado "" como prefijo global

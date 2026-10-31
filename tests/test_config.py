@@ -55,3 +55,23 @@ def test_main_sale_con_error_de_configuracion(
         main([])
     assert exc.value.code == 2
     assert "error de configuración" in capsys.readouterr().err
+
+
+def test_migra_grafo_antiguo_una_vez(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from maltego_mcp.server import migrate_legacy_data
+
+    monkeypatch.chdir(tmp_path)
+    legacy = tmp_path / "data" / "graph.json"
+    legacy.parent.mkdir()
+    legacy.write_text('{"cases": []}', encoding="utf-8")
+    s = Settings.from_env({"MALTEGO_MCP_HOME": str(tmp_path / "home")})
+    assert migrate_legacy_data(s) is True
+    assert s.data_file is not None and s.data_file.read_text(encoding="utf-8") == '{"cases": []}'
+    assert legacy.exists()  # el original se conserva
+    assert migrate_legacy_data(s) is False  # no sobrescribe
+
+
+def test_settings_por_defecto_usan_el_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MALTEGO_MCP_HOME", str(tmp_path))
+    s = Settings()
+    assert (s.export_dir, s.import_dir) == (tmp_path / "exports", tmp_path / "imports")

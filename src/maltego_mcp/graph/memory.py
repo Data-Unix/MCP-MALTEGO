@@ -242,6 +242,31 @@ class MemoryGraphStore:
 
         return await self._write(mutate)
 
+    async def upsert_many(self, entities: list[EntityRecord], edges: list[EdgeRecord]) -> tuple[int, int]:
+        """Una sola escritura del fichero para todo el lote."""
+
+        def mutate() -> tuple[int, int]:
+            created = saved = 0
+            for entity in entities:
+                self._require_case(entity.case_id)
+                bucket = self._entities[entity.case_id]
+                existing = bucket.get(entity.id)
+                bucket[entity.id] = merge_entity(existing, entity)
+                created += existing is None
+            for edge in edges:
+                ents = self._entities.get(edge.case_id, {})
+                if edge.out_id not in ents or edge.in_id not in ents:
+                    continue
+                bucket_e = self._edges[edge.case_id]
+                bucket_e[edge.id] = merge_edge(bucket_e.get(edge.id), edge)
+                saved += 1
+            for case_id in {e.case_id for e in entities} | {e.case_id for e in edges}:
+                if case_id in self._cases:
+                    self._touch_case(case_id)
+            return created, saved
+
+        return await self._write(mutate)
+
     async def neighbors(
         self, case_id: str, entity_id: str, edge_label: str, direction: Direction, limit: int
     ) -> list[Neighbor]:

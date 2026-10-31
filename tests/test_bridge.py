@@ -44,7 +44,7 @@ def test_flujo_maltego_completo(settings: Settings) -> None:
     assert back.entities[0].reversed_link is True
     missing = call("mcpneighbors-domain", settings, "otro.com")
     assert "no está en el caso" in missing.messages[0][1]
-    saved = call("mcpsave-emailaddress", settings, "Ana@Example.com", "nota=vista en foro#mcp.case=ignorar")
+    saved = call("mcpsave-emailaddress", settings, "Ana@Example.com", "nota=vista en foro#email=Ana@Example.com")
     assert "Guardada en el caso demo" in saved.messages[0][1]
     ent = asyncio.run(build_service(settings).search("demo", "ana@", "", 5, 0)).items[0]
     assert ent.properties == {"nota": "vista en foro"}
@@ -70,3 +70,38 @@ def test_mtz_generado_con_sdk_oficial(tmp_path: Path) -> None:
         neighbors = zf.read("TransformRepositories/Local/mcpneighbors-domain.transform").decode()
         assert 'type="maltego.Domain"' in neighbors
     assert len(BY_NAME) == 42
+
+
+def test_caso_viaja_en_la_entidad_y_urls_usan_su_propiedad(settings: Settings) -> None:
+    svc = build_service(settings)
+    asyncio.run(svc.upsert_entity("caso-a", "maltego.URL", "https://example.com/x", 0.9, "agente", []))
+    asyncio.run(svc.create_case("caso-b", ""))
+    call("mcpopencase", settings, "caso-b")  # el caso actual es b...
+    opened = call("mcpopencase", settings, "caso-a")
+    url = opened.entities[0]
+    assert url.properties["url"] == "https://example.com/x"
+    call("mcpopencase", settings, "caso-b")  # ...pero la entidad trae mcp.case=caso-a
+    # Maltego muestra el título (short-title) como valor; la URL real viaja en la propiedad "url"
+    res = call(
+        "mcpsave-url",
+        settings,
+        "Example Domain",
+        "url=https://example.com/x#mcp.case=caso-a#short-title=Example Domain",
+    )
+    assert "Actualizada en el caso caso-a: https://example.com/x" in res.messages[0][1]
+    ent = asyncio.run(svc.search("caso-a", "example", "", 5, 0)).items[0]
+    assert "short-title" not in ent.properties and "url" not in ent.properties
+
+
+def test_salida_utf8_con_declaracion(
+    settings: Settings, capsysbinary: pytest.CaptureFixture[bytes], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from maltego_mcp.maltego import bridge
+
+    monkeypatch.setenv("MALTEGO_MCP_HOME", str(settings.home))
+    asyncio.run(build_service(settings).upsert_entity("ru", "maltego.Alias", "Иван", 0.5, "m", []))
+    bridge.main(["local", "mcpopencase", "ru"])
+    out = capsysbinary.readouterr().out
+    assert out.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
+    assert "Иван".encode() in out
+    assert [e.value for e in parse_response(out).entities] == ["Иван"]

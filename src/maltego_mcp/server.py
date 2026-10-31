@@ -8,8 +8,10 @@ import argparse
 import copy
 import functools
 import logging
+import shutil
 import sys
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Annotated, Literal
 
 import uvicorn
@@ -19,7 +21,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from maltego_mcp import __version__
-from maltego_mcp.config import Settings
+from maltego_mcp.config import LEGACY_DATA_FILE, Settings
 from maltego_mcp.domain.entity_types import ENTITY_TYPES
 from maltego_mcp.errors import MaltegoMcpError
 from maltego_mcp.format import (
@@ -105,7 +107,19 @@ def build_store(settings: Settings) -> GraphStore:
             settings.gremlin_endpoint, settings.gremlin_username, settings.gremlin_password
         )
         return GremlinGraphStore(executor, close=executor.close)
+    migrate_legacy_data(settings)
     return MemoryGraphStore(settings.data_file)
+
+
+def migrate_legacy_data(settings: Settings, legacy: Path = LEGACY_DATA_FILE) -> bool:
+    """Copia el grafo de la ubicación antigua (data/graph.json en el repo) a la carpeta compartida, una vez."""
+    target = settings.data_file
+    if target is None or target.exists() or not legacy.is_file():
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy, target)
+    logger.warning("Grafo migrado de %s a %s (el original se conserva).", legacy.resolve(), target)
+    return True
 
 
 def build_service(settings: Settings) -> OsintService:
@@ -632,8 +646,9 @@ def create_server(settings: Settings | None = None, service: OsintService | None
         name="osint_expand_entity",
         title="Expandir entidad con todos sus transforms",
         description=(
-            "Ejecuta sobre una entidad del caso todos los transforms del catálogo que aceptan su tipo (como "
-            "'Run All' en Maltego) y guarda los resultados. Úsala para pivotar desde un nodo concreto."
+            "Ejecuta sobre una entidad del caso todos los transforms del catálogo que declaran su tipo en input_types "
+            "(como 'Run All' en Maltego; los genéricos sin input_types se lanzan con osint_run_transform) y guarda "
+            "los resultados. Úsala para pivotar desde un nodo concreto."
         ),
         annotations=OPEN_WORLD,
         structured_output=False,

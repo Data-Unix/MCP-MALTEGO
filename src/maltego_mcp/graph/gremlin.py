@@ -323,6 +323,18 @@ class GremlinGraphStore:
         await self._touch_case(edge.case_id)
         return merged, existing is None
 
+    async def upsert_many(self, entities: list[EntityRecord], edges: list[EdgeRecord]) -> tuple[int, int]:
+        created = saved = 0
+        for entity in entities:
+            created += (await self.upsert_entity(entity))[1]
+        for edge in edges:
+            try:
+                await self.upsert_edge(edge)
+                saved += 1
+            except NotFound:
+                continue
+        return created, saved
+
     async def neighbors(
         self, case_id: str, entity_id: str, edge_label: str, direction: Direction, limit: int
     ) -> list[Neighbor]:

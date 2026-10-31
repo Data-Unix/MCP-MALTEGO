@@ -61,6 +61,10 @@ class GraphStore(Protocol):
 
     async def upsert_edge(self, edge: EdgeRecord) -> tuple[EdgeRecord, bool]: ...
 
+    async def upsert_many(self, entities: list[EntityRecord], edges: list[EdgeRecord]) -> tuple[int, int]:
+        """Inserta/fusiona en bloque (importaciones). Devuelve (entidades nuevas, relaciones guardadas)."""
+        ...
+
     async def neighbors(
         self, case_id: str, entity_id: str, edge_label: str, direction: Direction, limit: int
     ) -> list[Neighbor]: ...

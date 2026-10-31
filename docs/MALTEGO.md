@@ -27,7 +27,10 @@ Transforms (set "MCP Maltego"):
 - **MCP · Guardar en el caso** (sobre cualquier entidad soportada): la guarda en el caso actual para los agentes.
 
 Las entidades que llegan desde el MCP traen propiedades `mcp.entity_id`, `mcp.case`, `mcp.confidence` y
-`mcp.sources`. El peso de la entidad refleja la confianza.
+`mcp.sources`. El peso de la entidad refleja la confianza. "Vecinos" y "Guardar" usan el caso de la propiedad
+`mcp.case` de la entidad; si no la tiene (entidad creada en Maltego), el último caso abierto.
+
+Para URL y Document, Maltego muestra un título; el puente usa la propiedad `url`, que es el valor real.
 
 Limitación de Maltego: un transform local solo recibe el valor y las propiedades (no el tipo), por eso hay una
 versión de "Vecinos" y "Guardar" por cada tipo de entidad.

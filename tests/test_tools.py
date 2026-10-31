@@ -491,3 +491,33 @@ async def test_importacion_no_permite_rutas_arbitrarias(service: OsintService, t
     )
     (tmp_path / "imports" / "cab.csv").write_text("a,b\n1,2\n", encoding="utf-8")
     assert "Cabecera CSV" in await err(service, "osint_import_graph", {"case_id": "c1", "file_name": "cab.csv"})
+
+
+async def test_importacion_grande_y_confianza_en_csv(service: OsintService, tmp_path: Path) -> None:
+    import time
+
+    from maltego_mcp.domain.records import EdgeRecord, EntityRecord
+    from maltego_mcp.maltego.mtgx import write_mtgx
+
+    ents = [EntityRecord(f"n{i}", "x", "domain", "maltego.Domain", f"h{i}.example.com", 0.9) for i in range(3000)]
+    edges = [EdgeRecord(f"e{i}", "x", "rel", "n0", f"n{i}") for i in range(1, 3000)]
+    (tmp_path / "imports").mkdir()
+    (tmp_path / "imports" / "grande.mtgx").write_bytes(write_mtgx(ents, edges))
+    start = time.perf_counter()
+    text = await ok(service, "osint_import_graph", {"case_id": "grande", "file_name": "grande.mtgx"})
+    assert "3000 entidades (3000 nuevas) y 2999 relaciones" in text
+    assert time.perf_counter() - start < 15  # una sola escritura del fichero, no 6000
+    one = (await service.search("grande", "h7.example.com", "", 1, 0)).items[0]
+    assert one.confidence == 0.9  # la confianza viaja en el .mtgx
+    csv_text = (
+        "source_type,source_value,relation,target_type,target_value,confidence\n"
+        "maltego.Domain,a.com,resolves_to,maltego.IPv4Address,1.1.1.1,0.9\nmaltego.Phrase,suelta,,,,0.3\n"
+    )
+    (tmp_path / "imports" / "conf.csv").write_text(csv_text, encoding="utf-8")
+    await ok(service, "osint_import_graph", {"case_id": "conf", "file_name": "conf.csv"})
+    s = await service.case_summary("conf", 5)
+    assert s.edge_count == 1
+    phrase = (await service.search("conf", "suelta", "", 1, 0)).items[0]
+    assert phrase.confidence == 0.3
+    nb = await service.neighbors("conf", (await service.search("conf", "a.com", "", 1, 0)).items[0].id, "", "out", 5)
+    assert nb[0].edge.confidence == 0.9

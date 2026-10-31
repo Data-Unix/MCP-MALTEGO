@@ -38,6 +38,8 @@ MAX_ENTITIES = 20_000
 MAX_LINKS = 50_000
 
 _MAIN_PROPERTY = {e.maltego_type.lower(): e.main_property for e in ENTITY_TYPES}
+# Tipos cuyo valor visible en Maltego no es la propiedad principal (p. ej. URL muestra short-title).
+DISPLAY_PROPERTY = {"maltego.url": "short-title", "maltego.document": "title"}
 
 
 def main_property_for(maltego_type: str) -> str:
@@ -95,11 +97,12 @@ def _layout(entities: list[EntityRecord], edges: list[EdgeRecord]) -> dict[str, 
 
 
 def write_mtgx(entities: list[EntityRecord], edges: list[EdgeRecord]) -> bytes:
-    register_namespace("", GRAPHML_NS)
+    # Solo prefijos con nombre: los elementos GraphML van sin calificar bajo un xmlns literal en la raíz, así no se
+    # altera el espacio de nombres por defecto global de ElementTree.
     register_namespace("mtg", MTG_NS)
     register_namespace("y", YFILES_NS)
     register_namespace("xsi", XSI_NS)
-    root = Element(_q(GRAPHML_NS, "graphml"))
+    root = Element("graphml", {"xmlns": GRAPHML_NS})
     for attrs in (
         {"for": "graphml", "id": "d0", "yfiles.type": "resources"},
         {"for": "port", "id": "d1", "yfiles.type": "portgraphics"},
@@ -110,37 +113,40 @@ def write_mtgx(entities: list[EntityRecord], edges: list[EdgeRecord]) -> bytes:
         {"attr.name": "MaltegoLink", "for": "edge", "id": "d6"},
         {"for": "edge", "id": "d7", "yfiles.type": "edgegraphics"},
     ):
-        SubElement(root, _q(GRAPHML_NS, "key"), attrs)
-    graph = SubElement(root, _q(GRAPHML_NS, "graph"), id="G", edgedefault="directed")
+        SubElement(root, "key", attrs)
+    graph = SubElement(root, "graph", id="G", edgedefault="directed")
     positions = _layout(entities, edges)
     ids = {e.id for e in entities}
     for e in entities:
-        node = SubElement(graph, _q(GRAPHML_NS, "node"), id=e.id)
-        data = SubElement(node, _q(GRAPHML_NS, "data"), key="d4")
+        node = SubElement(graph, "node", id=e.id)
+        data = SubElement(node, "data", key="d4")
         ment = SubElement(data, _q(MTG_NS, "MaltegoEntity"), type=e.maltego_type)
         props = SubElement(ment, _q(MTG_NS, "Properties"))
         main = main_property_for(e.maltego_type)
         _prop(props, main, main, e.value)
+        display = DISPLAY_PROPERTY.get(e.maltego_type.lower())
+        if display:
+            _prop(props, display, display, e.properties.get(display, e.value))
         for k, v in e.properties.items():
-            if k != main:
+            if k not in (main, display):
                 _prop(props, k, k, v)
         _prop(props, "mcp.confidence", "Confianza (MCP)", str(e.confidence))
         _prop(props, "mcp.sources", "Fuentes (MCP)", "; ".join(e.sources))
-        g = SubElement(node, _q(GRAPHML_NS, "data"), key="d5")
+        g = SubElement(node, "data", key="d5")
         renderer = SubElement(g, _q(MTG_NS, "EntityRenderer"))
         x, y = positions.get(e.id, (0.0, 0.0))
         SubElement(renderer, _q(MTG_NS, "Position"), x=f"{x:.1f}", y=f"{y:.1f}")
     for ed in edges:
         if ed.out_id not in ids or ed.in_id not in ids:
             continue
-        edge = SubElement(graph, _q(GRAPHML_NS, "edge"), id=ed.id, source=ed.out_id, target=ed.in_id)
-        data = SubElement(edge, _q(GRAPHML_NS, "data"), key="d6")
+        edge = SubElement(graph, "edge", id=ed.id, source=ed.out_id, target=ed.in_id)
+        data = SubElement(edge, "data", key="d6")
         link = SubElement(data, _q(MTG_NS, "MaltegoLink"), type="maltego.link.manual-link")
         props = SubElement(link, _q(MTG_NS, "Properties"))
         _prop(props, "maltego.link.show-label", "Show Label", "1", "int")
         _prop(props, LINK_LABEL_PROP, "Label", ed.label)
-        SubElement(SubElement(edge, _q(GRAPHML_NS, "data"), key="d7"), _q(MTG_NS, "LinkRenderer"))
-    SubElement(root, _q(GRAPHML_NS, "data"), key="d0")
+        SubElement(SubElement(edge, "data", key="d7"), _q(MTG_NS, "LinkRenderer"))
+    SubElement(root, "data", key="d0")
     xml = tostring(root, encoding="utf-8", xml_declaration=True)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -155,12 +161,21 @@ class ImportedEntity:
     maltego_type: str
     value: str
     properties: dict[str, str] = field(default_factory=dict)
+    confidence: float = 0.5
+
+
+@dataclass(frozen=True, slots=True)
+class ImportedLink:
+    source: str
+    target: str
+    label: str
+    confidence: float = 0.5
 
 
 @dataclass(slots=True)
 class ImportedGraph:
     entities: list[ImportedEntity] = field(default_factory=list)
-    links: list[tuple[str, str, str]] = field(default_factory=list)  # (origen, destino, etiqueta)
+    links: list[ImportedLink] = field(default_factory=list)
     skipped: int = 0
 
 
@@ -211,11 +226,15 @@ def parse_graphml(xml: bytes) -> ImportedGraph:
                 props[name] = val.text.strip()
         main = main_property_for(mtype)
         value = props.pop(main, "") or (props.pop(next(iter(props))) if props else "")
+        try:
+            confidence = float(props.get("mcp.confidence", 0.5))
+        except ValueError:
+            confidence = 0.5
         props = {k: v for k, v in props.items() if not k.startswith("mcp.")}
         if not value:
             out.skipped += 1
             continue
-        out.entities.append(ImportedEntity(node_id, mtype, value, props))
+        out.entities.append(ImportedEntity(node_id, mtype, value, props, confidence))
     keys = {e.key for e in out.entities}
     for edge in root.iter(_q(GRAPHML_NS, "edge")):
         src, dst = edge.get("source"), edge.get("target")
@@ -230,5 +249,5 @@ def parse_graphml(xml: bytes) -> ImportedGraph:
                 if val is not None and val.text and val.text.strip():
                     label = val.text.strip()
                     break
-        out.links.append((src, dst, label))
+        out.links.append(ImportedLink(src, dst, label))
     return out

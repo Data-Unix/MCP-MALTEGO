@@ -33,6 +33,7 @@ from maltego_mcp.domain.entity_types import ENTITY_TYPES
 from maltego_mcp.domain.normalize import validate_case_id
 from maltego_mcp.domain.records import EntityRecord
 from maltego_mcp.errors import MaltegoMcpError
+from maltego_mcp.maltego.mtgx import DISPLAY_PROPERTY, main_property_for
 from maltego_mcp.service import OsintService
 
 TRANSFORM_SET = TransformSet("MCP Maltego", "Puente entre Maltego y el grafo compartido de los agentes (MCP)")
@@ -114,6 +115,8 @@ def read_current_case(settings: Settings) -> str:
 
 def _emit(response: MaltegoTransform, e: EntityRecord, link_label: str = "", reverse: bool = False) -> None:
     ent = response.addEntity(e.maltego_type, e.value)
+    if e.maltego_type.lower() in DISPLAY_PROPERTY:  # URL/Document: el valor real va en su propiedad principal
+        ent.addProperty(main_property_for(e.maltego_type), main_property_for(e.maltego_type), "strict", e.value)
     ent.addProperty("mcp.entity_id", "MCP id", "loose", e.id)
     ent.addProperty("mcp.case", "MCP caso", "loose", e.case_id)
     ent.addProperty("mcp.confidence", "MCP confianza", "loose", str(e.confidence))
@@ -151,30 +154,49 @@ async def _run(
             UIM_INFORM,
         )
         return
-    case_id = read_current_case(settings)
+    # El caso viaja en la propia entidad (mcp.case) si vino del MCP; si no, se usa el caso actual.
+    case_id = _case_from_entity(msg) or read_current_case(settings)
     if not case_id:
         response.addUIMessage(
             "No hay caso actual: ejecuta 'MCP · Abrir caso' sobre una frase con el id del caso.", UIM_PARTIAL
         )
         return
+    value = _entity_value(t.input_entity, msg)
     if t.kind == "neighbors":
-        entity = svc.build_entity(case_id, t.input_entity, msg.Value, 0.5, "maltego")
+        entity = svc.build_entity(case_id, t.input_entity, value, 0.5, "maltego")
         if await svc.store.get_entity(case_id, entity.id) is None:
             response.addUIMessage(
-                f"'{msg.Value}' no está en el caso {case_id}. Usa 'MCP · Guardar en el caso'.", UIM_PARTIAL
+                f"'{value}' no está en el caso {case_id}. Usa 'MCP · Guardar en el caso'.", UIM_PARTIAL
             )
             return
         for n in await svc.neighbors(case_id, entity.id, "", "both", limit):
             _emit(response, n.entity, n.edge.label, reverse=n.direction == "in")
         return
-    props = {k: str(v) for k, v in (msg.Properties or {}).items() if v and not k.startswith("mcp.")}
+    skip = {main_property_for(t.input_entity), DISPLAY_PROPERTY.get(t.input_entity.lower(), "")}
+    props = {k: str(v) for k, v in (msg.Properties or {}).items() if v and k not in skip and not k.startswith("mcp.")}
     ent, created = await svc.upsert_entity(
-        case_id, t.input_entity, msg.Value, 0.7, "maltego", [f"{k}={v}" for k, v in list(props.items())[:50]]
+        case_id, t.input_entity, value, 0.7, "maltego", [f"{k}={v}" for k, v in list(props.items())[:50]]
     )
     response.addUIMessage(
         f"{'Guardada' if created else 'Actualizada'} en el caso {case_id}: {ent.value} ({ent.maltego_type}).",
         UIM_INFORM,
     )
+
+
+def _entity_value(maltego_type: str, msg: MaltegoMsg) -> str:
+    """Valor real de la entidad: para URL/Document Maltego muestra un título y la URL va en una propiedad."""
+    if maltego_type.lower() in DISPLAY_PROPERTY:
+        real = (msg.Properties or {}).get(main_property_for(maltego_type))
+        if real:
+            return str(real)
+    return str(msg.Value)
+
+
+def _case_from_entity(msg: MaltegoMsg) -> str:
+    try:
+        return validate_case_id(str((msg.Properties or {}).get("mcp.case", "")))
+    except MaltegoMcpError:
+        return ""
 
 
 def run_local(
@@ -250,8 +272,11 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Generado {out} con {len(BY_NAME)} transforms locales.", file=sys.stderr)
         print(f"Importa en Maltego: Import | Export > Import Config > {out}", file=sys.stderr)
         return
-    sys.stdout.write(run_local(ns.transform, ns.args))
-    sys.stdout.flush()
+    # Bytes UTF-8 con declaración: en Windows la salida por tubería usaría la página de códigos ANSI y fallaría
+    # con valores no latinos.
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + run_local(ns.transform, ns.args)
+    sys.stdout.buffer.write(xml.encode("utf-8"))
+    sys.stdout.buffer.flush()
 
 
 if __name__ == "__main__":

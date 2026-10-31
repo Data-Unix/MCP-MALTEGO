@@ -15,6 +15,7 @@ from maltego_mcp.errors import ConfigError
 
 Backend = Literal["memory", "gremlin"]
 REPO_TRANSFORMS_FILE = Path("config/transforms.toml")
+LEGACY_DATA_FILE = Path("data/graph.json")  # ubicación usada hasta la v0.1 (dentro del repo)
 
 
 def default_home(env: dict[str, str] | None = None) -> Path:
@@ -29,8 +30,8 @@ class Settings:
     home: Path = field(default_factory=default_home)
     data_file: Path | None = None
     transforms_file: Path | None = None
-    export_dir: Path = Path("exports")
-    import_dir: Path = Path("imports")
+    export_dir: Path = field(default_factory=lambda: default_home() / "exports")
+    import_dir: Path = field(default_factory=lambda: default_home() / "imports")
     gremlin_endpoint: str = ""
     gremlin_username: str = ""
     gremlin_password: str = ""

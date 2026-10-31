@@ -30,11 +30,12 @@ from maltego_mcp.domain.records import (
     EntityRecord,
     clamp_confidence,
     clean_properties,
+    merge_entity,
     utc_now,
 )
 from maltego_mcp.errors import InvalidInput, MaltegoMcpError, NotFound, TransformError
 from maltego_mcp.graph.base import CaseSummary, Direction, GraphStore, Neighbor, Page
-from maltego_mcp.maltego.mtgx import ImportedEntity, ImportedGraph, read_mtgx, write_mtgx
+from maltego_mcp.maltego.mtgx import ImportedEntity, ImportedGraph, ImportedLink, read_mtgx, write_mtgx
 from maltego_mcp.transforms.catalog import TransformCatalog, TransformSpec
 from maltego_mcp.transforms.client import run_remote_transform
 from maltego_mcp.transforms.protocol import TransformResponse
@@ -467,27 +468,31 @@ class OsintService:
         result = ImportResult(path)
         origin = f"import:{path.name}"[:120]
         ids: dict[str, str] = {}
+        records: dict[str, EntityRecord] = {}
         for item in graph.entities:
             try:
                 entity = self.build_entity(
-                    cid, item.maltego_type, item.value, 0.5, origin, clean_properties(item.properties)
+                    cid, item.maltego_type, item.value, item.confidence, origin, clean_properties(item.properties)
                 )
             except InvalidInput as exc:
                 result.skipped.append(f"{item.maltego_type} '{item.value[:60]}': {exc}")
                 continue
-            entity, created = await self.store.upsert_entity(entity)
             ids[item.key] = entity.id
-            result.entities += 1
-            result.new_entities += int(created)
-        for src, dst, label in graph.links:
-            if src not in ids or dst not in ids or ids[src] == ids[dst]:
+            records[entity.id] = merge_entity(records.get(entity.id), entity)
+        now = utc_now()
+        edges: dict[str, EdgeRecord] = {}
+        for link in graph.links:
+            out_id, in_id = ids.get(link.source), ids.get(link.target)
+            if not out_id or not in_id or out_id == in_id:
                 continue
             try:
-                lbl = normalize_edge_label(label) if label else "related_to"
+                lbl = normalize_edge_label(link.label) if link.label else "related_to"
             except InvalidInput:
                 lbl = "related_to"
-            await self.link(cid, ids[src], ids[dst], lbl, origin, 0.5)
-            result.links += 1
+            eid = edge_id(cid, out_id, lbl, in_id)
+            edges[eid] = EdgeRecord(eid, cid, lbl, out_id, in_id, clamp_confidence(link.confidence), [origin], now, now)
+        result.new_entities, result.links = await self.store.upsert_many(list(records.values()), list(edges.values()))
+        result.entities = len(records)
         if graph.skipped:
             result.skipped.append(f"{graph.skipped} nodos sin tipo o sin valor")
         return result
@@ -505,21 +510,27 @@ def _read_csv(data: bytes) -> ImportedGraph:
     graph = ImportedGraph()
     keys: dict[tuple[str, str], str] = {}
 
-    def key_for(etype: str, value: str) -> str:
+    def key_for(etype: str, value: str, confidence: float) -> str:
         k = (etype.strip(), value.strip().lstrip("'"))
         if k not in keys:
             keys[k] = f"n{len(keys)}"
-            graph.entities.append(ImportedEntity(keys[k], k[0] or "auto", k[1]))
+            graph.entities.append(ImportedEntity(keys[k], k[0] or "auto", k[1], confidence=confidence))
         return keys[k]
 
     for row in reader:
         if not (row.get("source_value") or "").strip():
             graph.skipped += 1
             continue
-        a = key_for(row.get("source_type") or "", row["source_value"])
-        if (row.get("target_value") or "").strip():
-            b = key_for(row.get("target_type") or "", row["target_value"])
-            graph.links.append((a, b, (row.get("relation") or "").strip()))
+        try:
+            confidence = float(row.get("confidence") or 0.5)
+        except ValueError:
+            confidence = 0.5
+        has_target = bool((row.get("target_value") or "").strip())
+        # En filas de relación la confianza es la del enlace; en filas sueltas, la de la entidad.
+        a = key_for(row.get("source_type") or "", row["source_value"], 0.5 if has_target else confidence)
+        if has_target:
+            b = key_for(row.get("target_type") or "", row["target_value"], 0.5)
+            graph.links.append(ImportedLink(a, b, (row.get("relation") or "").strip(), confidence))
     return graph
 
 
