@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Literal
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from maltego_mcp.domain.detect import resolve_type_for_value
 from maltego_mcp.domain.entity_types import resolve_entity_type
 from maltego_mcp.domain.normalize import (
     edge_id,
@@ -33,12 +34,16 @@ from maltego_mcp.domain.records import (
 )
 from maltego_mcp.errors import InvalidInput, MaltegoMcpError, NotFound, TransformError
 from maltego_mcp.graph.base import CaseSummary, Direction, GraphStore, Neighbor, Page
+from maltego_mcp.maltego.mtgx import ImportedEntity, ImportedGraph, read_mtgx, write_mtgx
 from maltego_mcp.transforms.catalog import TransformCatalog, TransformSpec
 from maltego_mcp.transforms.client import run_remote_transform
 from maltego_mcp.transforms.protocol import TransformResponse
 
 logger = logging.getLogger(__name__)
-ExportFormat = Literal["json", "graphml", "csv"]
+ExportFormat = Literal["json", "graphml", "csv", "mtgx"]
+IMPORT_SUFFIXES = (".mtgx", ".csv")
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
+CSV_HEADER = ["source_type", "source_value", "relation", "target_type", "target_value", "confidence"]
 MAX_EXPORT_ITEMS = 10_000
 CHAIN_CONCURRENCY = 4
 
@@ -81,11 +86,31 @@ class ChainStep:
     skipped_inputs: int = 0
 
 
+@dataclass(slots=True)
+class ImportResult:
+    path: Path
+    entities: int = 0
+    new_entities: int = 0
+    links: int = 0
+    skipped: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ExpandResult:
+    entity: EntityRecord
+    runs: list[TransformRun] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    not_run: list[str] = field(default_factory=list)
+
+
 class OsintService:
-    def __init__(self, store: GraphStore, catalog: TransformCatalog, export_dir: Path) -> None:
+    def __init__(
+        self, store: GraphStore, catalog: TransformCatalog, export_dir: Path, import_dir: Path | None = None
+    ) -> None:
         self.store = store
         self.catalog = catalog
         self.export_dir = export_dir
+        self.import_dir = import_dir or export_dir.parent / "imports"
 
     # ---------- casos ----------
     async def create_case(self, case_id: str, description: str) -> tuple[CaseRecord, bool]:
@@ -107,7 +132,7 @@ class OsintService:
         source: str,
         properties: dict[str, str] | None = None,
     ) -> EntityRecord:
-        etype = resolve_entity_type(entity_type)
+        etype = resolve_type_for_value(entity_type, value)
         norm = normalize_value(etype, value)
         now = utc_now()
         return EntityRecord(
@@ -276,6 +301,43 @@ class OsintService:
             run.results.append(TransformOutcome(entity, label, created))
         return run
 
+    async def expand_entity(self, case_id: str, eid: str, max_transforms: int, soft_limit: int) -> ExpandResult:
+        """Ejecuta sobre una entidad del caso todos los transforms del catálogo que la aceptan."""
+        cid, eid = validate_case_id(case_id), validate_entity_id(eid)
+        entity = await self.store.get_entity(cid, eid)
+        if entity is None:
+            raise NotFound(f"La entidad '{eid}' no existe en el caso '{cid}'. Búscala con osint_search_entities.")
+        specs = [
+            s
+            for s in sorted(self.catalog.transforms.values(), key=lambda s: s.name.lower())
+            if s.input_types and s.accepts(entity.maltego_type)
+        ]
+        if not specs:
+            raise InvalidInput(
+                f"No hay transforms en el catálogo que acepten {entity.maltego_type}. Revisa osint_list_transforms."
+            )
+        result = ExpandResult(entity, not_run=[s.name for s in specs[max_transforms:]])
+        sem = asyncio.Semaphore(CHAIN_CONCURRENCY)
+
+        async def fetch(spec: TransformSpec) -> TransformResponse | str:
+            async with sem:
+                try:
+                    return await self._fetch(spec, entity, soft_limit)
+                except MaltegoMcpError as exc:
+                    return f"{spec.name}: {exc}"
+
+        chosen = specs[:max_transforms]
+        responses = await asyncio.gather(*(fetch(s) for s in chosen))
+        for spec, response in zip(chosen, responses, strict=True):
+            if isinstance(response, str):
+                result.errors.append(response)
+                continue
+            try:
+                result.runs.append(await self._ingest(spec, entity, response, save=True))
+            except MaltegoMcpError as exc:
+                result.errors.append(f"{spec.name}: {exc}")
+        return result
+
     async def run_chain(
         self,
         case_id: str,
@@ -365,10 +427,100 @@ class OsintService:
             ).encode()
         elif fmt == "graphml":
             content = _to_graphml(entities, edges)
+        elif fmt == "mtgx":
+            content = write_mtgx(entities, edges)
         else:
             content = _to_csv(entities, edges).encode("utf-8-sig")
         path.write_bytes(content)
         return path, len(entities), len(edges)
+
+    def resolve_import_path(self, file_name: str) -> Path:
+        """Solo se importan ficheros de la carpeta de importación o de exportación (sin rutas arbitrarias)."""
+        name = file_name.strip().strip('"')
+        if not name:
+            raise InvalidInput("Indica file_name (p. ej. caso.mtgx).")
+        allowed = [self.import_dir.resolve(), self.export_dir.resolve()]
+        candidate = Path(name)
+        options = [candidate] if candidate.is_absolute() else [d / name for d in allowed]
+        for option in options:
+            resolved = option.resolve()
+            if any(resolved.is_relative_to(d) for d in allowed) and resolved.is_file():
+                if resolved.suffix.lower() not in IMPORT_SUFFIXES:
+                    raise InvalidInput("Formato no soportado: usa un fichero .mtgx (Maltego) o .csv.")
+                return resolved
+        available = sorted(
+            p.name for d in allowed if d.is_dir() for p in d.iterdir() if p.suffix.lower() in IMPORT_SUFFIXES
+        )[:20]
+        raise NotFound(
+            f"No encuentro '{name[:120]}' en {self.import_dir}. Copia ahí el fichero exportado desde Maltego. "
+            f"Disponibles: {', '.join(available) or 'ninguno'}."
+        )
+
+    async def import_graph(self, case_id: str, file_name: str) -> ImportResult:
+        cid = validate_case_id(case_id)
+        path = self.resolve_import_path(file_name)
+        if path.stat().st_size > MAX_IMPORT_BYTES:
+            raise InvalidInput("El fichero supera 20 MB.")
+        data = path.read_bytes()
+        graph = read_mtgx(data) if path.suffix.lower() == ".mtgx" else _read_csv(data)
+        await self.store.ensure_case(cid)
+        result = ImportResult(path)
+        origin = f"import:{path.name}"[:120]
+        ids: dict[str, str] = {}
+        for item in graph.entities:
+            try:
+                entity = self.build_entity(
+                    cid, item.maltego_type, item.value, 0.5, origin, clean_properties(item.properties)
+                )
+            except InvalidInput as exc:
+                result.skipped.append(f"{item.maltego_type} '{item.value[:60]}': {exc}")
+                continue
+            entity, created = await self.store.upsert_entity(entity)
+            ids[item.key] = entity.id
+            result.entities += 1
+            result.new_entities += int(created)
+        for src, dst, label in graph.links:
+            if src not in ids or dst not in ids or ids[src] == ids[dst]:
+                continue
+            try:
+                lbl = normalize_edge_label(label) if label else "related_to"
+            except InvalidInput:
+                lbl = "related_to"
+            await self.link(cid, ids[src], ids[dst], lbl, origin, 0.5)
+            result.links += 1
+        if graph.skipped:
+            result.skipped.append(f"{graph.skipped} nodos sin tipo o sin valor")
+        return result
+
+
+def _read_csv(data: bytes) -> ImportedGraph:
+    """CSV con cabecera source_type,source_value,relation,target_type,target_value[,confidence]."""
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise InvalidInput("El CSV debe estar en UTF-8.") from exc
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames or not {"source_type", "source_value"} <= set(reader.fieldnames):
+        raise InvalidInput(f"Cabecera CSV no reconocida; usa: {','.join(CSV_HEADER)}.")
+    graph = ImportedGraph()
+    keys: dict[tuple[str, str], str] = {}
+
+    def key_for(etype: str, value: str) -> str:
+        k = (etype.strip(), value.strip().lstrip("'"))
+        if k not in keys:
+            keys[k] = f"n{len(keys)}"
+            graph.entities.append(ImportedEntity(keys[k], k[0] or "auto", k[1]))
+        return keys[k]
+
+    for row in reader:
+        if not (row.get("source_value") or "").strip():
+            graph.skipped += 1
+            continue
+        a = key_for(row.get("source_type") or "", row["source_value"])
+        if (row.get("target_value") or "").strip():
+            b = key_for(row.get("target_type") or "", row["target_value"])
+            graph.links.append((a, b, (row.get("relation") or "").strip()))
+    return graph
 
 
 def _to_graphml(entities: list[EntityRecord], edges: list[EdgeRecord]) -> bytes:
@@ -408,7 +560,7 @@ def _to_csv(entities: list[EntityRecord], edges: list[EdgeRecord]) -> str:
     by_id = {e.id: e for e in entities}
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["source_type", "source_value", "relation", "target_type", "target_value", "confidence"])
+    writer.writerow(CSV_HEADER)
     linked: set[str] = set()
     for ed in edges:
         a, b = by_id.get(ed.out_id), by_id.get(ed.in_id)

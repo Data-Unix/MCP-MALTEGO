@@ -59,5 +59,30 @@ Al terminar: resume los cambios y lo que quede pendiente.
 
 - Orca lanza los agentes en modo de autonomía total (`--yolo` en Gemini, etc.). Trabaja siempre en worktrees,
   nunca en `main`, y revisa el diff antes de cualquier merge.
-- MCP: cuando exista el servidor, regístralo una vez en Orca → Settings → Integrations → MCP para que lo vean
-  todos los agentes (plantillas por agente en `config/mcp-clients/`).
+- MCP: ver sección 5.
+
+## 5. Registro del MCP en los agentes (verificado)
+
+Orca **no** registra servidores MCP para los agentes: lo comprobé en su código fuente (`src/shared/mcp-config.ts`
+y `McpConfigSection.tsx`). Su apartado **Settings → Repository → MCP Configs** solo *inspecciona* los ficheros MCP
+del repo (`.mcp.json`, `.cursor/mcp.json`, `.claude.json`, `.claude/mcp.json`) y cada agente CLI lee su propia
+configuración. La documentación de Orca que menciona "Settings → Integrations → MCP" está desactualizada.
+
+Por eso el repo incluye el fichero de proyecto que lee cada agente (todos ejecutan `uv run --quiet maltego-mcp`
+desde la raíz del worktree). Como están versionados, **cada worktree nuevo ya trae el MCP**:
+
+| Agente | Fichero | Paso único la primera vez |
+|---|---|---|
+| Claude Code | `.mcp.json` | Aprobar el servidor del proyecto cuando lo pregunte |
+| GitHub Copilot CLI | `.mcp.json` | Confirmar la confianza en la carpeta |
+| Gemini CLI | `.gemini/settings.json` | Ninguno, salvo que tengas activado "Trusted Folders" (entonces, confiar en la carpeta) |
+| Qwen Code | `.qwen/settings.json` | Igual que Gemini |
+| Codex | `.codex/config.toml` | Marcar el proyecto como de confianza |
+| OpenCode | `opencode.json` | Ninguno |
+| Cursor CLI | `.cursor/mcp.json` | Aprobar el servidor (`agent mcp enable maltego` o `--approve-mcps`) |
+
+Todos los agentes y worktrees comparten el mismo estado en `~/.maltego-mcp` (grafo, catálogo de transforms,
+importaciones y exportaciones), así que lo que guarda Gemini lo ve Claude y viceversa.
+
+Si antes registraste `maltego` a mano en la configuración de usuario de un agente (p. ej. `~/.gemini/settings.json`),
+quítalo para no tener el servidor duplicado.

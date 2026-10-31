@@ -394,3 +394,100 @@ async def test_cadena_no_supera_el_presupuesto(service: OsintService) -> None:
     )
     assert res["stopped_by_limit"] is True
     assert (await service.case_summary("budget", 0)).entity_count == 3
+
+
+async def test_tipo_auto(service: OsintService) -> None:
+    res = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {"case_id": "auto", "entity_type": "auto", "value": "Ana@Example.com", "response_format": "json"},
+        )
+    )
+    assert (res["entity"]["maltego_type"], res["entity"]["value"]) == ("maltego.EmailAddress", "ana@example.com")
+    run = json.loads(
+        await ok(
+            service,
+            "osint_run_transform",
+            {
+                "transform": "EmailToDomain",
+                "entity_type": "auto",
+                "value": "x@y.org",
+                "save": False,
+                "response_format": "json",
+            },
+        )
+    )
+    assert run["results"][0]["entity"]["value"] == "y.org"
+
+
+async def test_expandir_entidad(service: OsintService) -> None:
+    d = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {"case_id": "exp", "entity_type": "maltego.Domain", "value": "example.org", "response_format": "json"},
+        )
+    )["entity"]["id"]
+    res = json.loads(
+        await ok(service, "osint_expand_entity", {"case_id": "exp", "entity_id": d, "response_format": "json"})
+    )
+    ran = {r["transform"] for r in res["runs"]}
+    # Acepta maltego.Domain: DomainToIP, DomainToWebsite y AlwaysFails (respuesta 200 sin entidades)
+    assert {"DomainToWebsite", "DomainToIP", "AlwaysFails"} <= ran
+    assert all(":" in e for e in res["errors"])
+    md = await ok(service, "osint_expand_entity", {"case_id": "exp", "entity_id": d, "max_transforms": 1})
+    assert "No ejecutados" in md
+    ip = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {
+                "case_id": "exp",
+                "entity_type": "maltego.Hash",
+                "value": "d41d8cd98f00b204e9800998ecf8427e",
+                "response_format": "json",
+            },
+        )
+    )["entity"]["id"]
+    assert "No hay transforms" in await err(service, "osint_expand_entity", {"case_id": "exp", "entity_id": ip})
+
+
+async def test_exportar_e_importar_mtgx_y_csv(service: OsintService, tmp_path: Path) -> None:
+    await ok(
+        service,
+        "osint_run_transform_chain",
+        {
+            "case_id": "orig",
+            "entity_type": "maltego.EmailAddress",
+            "value": "ana@example.net",
+            "transforms": ["EmailToDomain", "DomainToWebsite"],
+        },
+    )
+    for fmt in ("mtgx", "csv"):
+        msg = await ok(service, "osint_export_case", {"case_id": "orig", "format": fmt})
+        assert "4 entidades y 3 relaciones" in msg
+        exported = next((tmp_path / "exports").glob(f"*.{fmt}"))
+        imports = tmp_path / "imports"
+        imports.mkdir(exist_ok=True)
+        (imports / f"desde-maltego.{fmt}").write_bytes(exported.read_bytes())
+        text = await ok(service, "osint_import_graph", {"case_id": f"copia-{fmt}", "file_name": f"desde-maltego.{fmt}"})
+        assert "4 entidades (4 nuevas) y 3 relaciones" in text, text
+        s = await service.case_summary(f"copia-{fmt}", 0)
+        assert (s.entity_count, s.edge_count) == (4, 3)
+    # también desde la carpeta de exportación directamente
+    assert "Importado" in await ok(service, "osint_import_graph", {"case_id": "orig", "file_name": exported.name})
+
+
+async def test_importacion_no_permite_rutas_arbitrarias(service: OsintService, tmp_path: Path) -> None:
+    secret = tmp_path / "secreto.csv"
+    secret.write_text("source_type,source_value\nmaltego.Phrase,x\n", encoding="utf-8")
+    (tmp_path / "imports").mkdir()
+    for bad in (str(secret), "../secreto.csv", "..\\secreto.csv"):
+        assert "No encuentro" in await err(service, "osint_import_graph", {"case_id": "c1", "file_name": bad})
+    (tmp_path / "imports" / "malo.txt").write_text("x", encoding="utf-8")
+    assert "Formato no soportado" in await err(
+        service, "osint_import_graph", {"case_id": "c1", "file_name": "malo.txt"}
+    )
+    (tmp_path / "imports" / "cab.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    assert "Cabecera CSV" in await err(service, "osint_import_graph", {"case_id": "c1", "file_name": "cab.csv"})

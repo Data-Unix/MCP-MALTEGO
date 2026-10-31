@@ -109,7 +109,9 @@ def build_store(settings: Settings) -> GraphStore:
 
 
 def build_service(settings: Settings) -> OsintService:
-    return OsintService(build_store(settings), load_catalog(settings.transforms_file), settings.export_dir)
+    return OsintService(
+        build_store(settings), load_catalog(settings.transforms_file), settings.export_dir, settings.import_dir
+    )
 
 
 def _entity_types_markdown() -> str:
@@ -583,8 +585,8 @@ def create_server(settings: Settings | None = None, service: OsintService | None
         name="osint_export_case",
         title="Exportar caso",
         description=(
-            "Exporta un caso a un fichero en el servidor: json (completo), graphml (Gephi/yEd) o csv (una fila por "
-            "relación, para 'Import Graph from Table' de Maltego). Devuelve la ruta y los recuentos."
+            "Exporta un caso a un fichero: mtgx (grafo nativo de Maltego, se abre con File > Open), json (completo), "
+            "graphml (Gephi/yEd) o csv (una fila por relación). Devuelve la ruta y los recuentos."
         ),
         annotations=ToolAnnotations(
             read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False
@@ -594,10 +596,92 @@ def create_server(settings: Settings | None = None, service: OsintService | None
     @tool_errors
     async def osint_export_case(
         case_id: CaseId,
-        format: Annotated[Literal["json", "graphml", "csv"], Field(description="json, graphml o csv.")] = "json",
+        format: Annotated[
+            Literal["mtgx", "json", "graphml", "csv"], Field(description="mtgx (Maltego), json, graphml o csv.")
+        ] = "mtgx",
     ) -> str:
         path, n_ent, n_edges = await svc.export_case(case_id, format)
         return f"Exportado {n_ent} entidades y {n_edges} relaciones a `{path}`."
+
+    @mcp.tool(
+        name="osint_import_graph",
+        title="Importar grafo de Maltego",
+        description=(
+            "Importa a un caso un grafo guardado en Maltego (.mtgx) o un CSV (formato de osint_export_case). "
+            "El fichero debe estar en la carpeta de importación del servidor (~/.maltego-mcp/imports) o en la de "
+            "exportación. Fusiona entidades existentes y crea las relaciones."
+        ),
+        annotations=WRITE_IDEMPOTENT,
+        structured_output=False,
+    )
+    @tool_errors
+    async def osint_import_graph(
+        case_id: CaseId,
+        file_name: Annotated[str, Field(max_length=300, description="Nombre del fichero, p. ej. caso.mtgx.")],
+    ) -> str:
+        r = await svc.import_graph(case_id, file_name)
+        lines = [
+            f"Importado `{r.path.name}`: {r.entities} entidades ({r.new_entities} nuevas) y {r.links} relaciones "
+            f"en el caso `{case_id.strip().lower()}`."
+        ]
+        if r.skipped:
+            lines.append("Descartados: " + "; ".join(safe(x, 160) for x in r.skipped[:10]))
+        return "\n".join(lines)
+
+    @mcp.tool(
+        name="osint_expand_entity",
+        title="Expandir entidad con todos sus transforms",
+        description=(
+            "Ejecuta sobre una entidad del caso todos los transforms del catálogo que aceptan su tipo (como "
+            "'Run All' en Maltego) y guarda los resultados. Úsala para pivotar desde un nodo concreto."
+        ),
+        annotations=OPEN_WORLD,
+        structured_output=False,
+    )
+    @tool_errors
+    async def osint_expand_entity(
+        case_id: CaseId,
+        entity_id: EntityId,
+        max_transforms: Annotated[int, Field(ge=1, le=20, description="Máximo de transforms a ejecutar.")] = 10,
+        soft_limit: Annotated[int, Field(ge=1, le=256, description="Máximo de resultados por transform.")] = 12,
+        response_format: Fmt = "markdown",
+    ) -> str:
+        r = await svc.expand_entity(case_id, entity_id, max_transforms, soft_limit)
+        if response_format == "json":
+            return to_json(
+                {
+                    "entity": r.entity.to_dict(),
+                    "runs": [
+                        {
+                            "transform": run.transform,
+                            "results": [
+                                {"edge_label": x.edge_label, "created": x.created, "entity": x.entity.to_dict()}
+                                for x in run.results
+                            ],
+                        }
+                        for run in r.runs
+                    ],
+                    "errors": r.errors,
+                    "not_run": r.not_run,
+                }
+            )
+        rows = [
+            f"Expansión de {code(r.entity.value)} ({r.entity.maltego_type}) con {len(r.runs)} transforms",
+            "| transform | relación | tipo | valor | id | nueva |",
+            "|---|---|---|---|---|---|",
+        ]
+        for run in r.runs:
+            rows += [
+                f"| {run.transform} | {x.edge_label} | {x.entity.maltego_type} | {code_cell(x.entity.value)} | "
+                f"`{x.entity.id}` | {'sí' if x.created else 'no'} |"
+                for x in run.results
+            ]
+        if r.errors:
+            rows.append("\nErrores: " + "; ".join(safe(e, 200) for e in r.errors[:10]))
+        if r.not_run:
+            rows.append("\nNo ejecutados (sube max_transforms): " + ", ".join(r.not_run))
+        rows.append(UNTRUSTED_NOTE)
+        return "\n".join(rows)
 
     return mcp
 
