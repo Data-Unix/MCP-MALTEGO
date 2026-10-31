@@ -44,9 +44,16 @@ async def run_remote_transform(
                 if size > MAX_RESPONSE_BYTES:
                     raise TransformError("La respuesta del transform supera 5 MB; reduce soft_limit.")
                 chunks.append(chunk)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        # En Windows, conectar a un puerto cerrado tarda ~2 s en fallar y puede llegar como ConnectTimeout.
+        raise TransformError(
+            f"No se pudo contactar con el servidor de transforms '{spec.server.name}' ({spec.server.url}). "
+            "¿Está arrancado?"
+        ) from exc
     except httpx.TimeoutException as exc:
         raise TransformError(
-            f"El transform '{spec.name}' superó el tiempo máximo ({spec.server.timeout_s:.0f}s)."
+            f"El transform '{spec.name}' superó el tiempo máximo ({spec.server.timeout_s:.0f}s). "
+            "Prueba con un soft_limit menor o aumenta timeout_s en el catálogo."
         ) from exc
     except httpx.HTTPError as exc:
         logger.warning("Error HTTP con %s: %s", spec.server.name, exc.__class__.__name__)
