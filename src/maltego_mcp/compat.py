@@ -27,9 +27,7 @@ FORBIDDEN_SCHEMA_KEYS: frozenset[str] = frozenset(
 ALLOWED_PROPERTY_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "boolean", "array"})
 ALLOWED_ITEM_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "boolean"})
 # Claves cuyo valor son datos (no subesquemas): no se inspeccionan como esquema.
-DATA_KEYS: frozenset[str] = frozenset(
-    {"default", "enum", "examples", "example", "required", "description", "title"}
-)
+DATA_KEYS: frozenset[str] = frozenset({"default", "enum", "examples", "example", "required", "description", "title"})
 TOOL_NAME_RE = re.compile(r"^osint_[a-z0-9_]+$")
 MAX_TOOL_NAME_LEN = 40
 MAX_TOOLS = 20

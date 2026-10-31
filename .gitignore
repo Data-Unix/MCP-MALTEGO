@@ -8,3 +8,7 @@ local.settings.json
 .mypy_cache/
 .ruff_cache/
 dist/
+data/
+exports/
+config/transforms.toml
+.coverage
