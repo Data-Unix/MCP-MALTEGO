@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "maltego": { "command": "uv", "args": ["run", "maltego-mcp"], "timeout": 60000 }
+  }
+}

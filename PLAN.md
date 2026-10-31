@@ -1,4 +1,4 @@
-# PLAN — osint-graph-mcp
+# PLAN — MCP Maltego
 
 Estado: **plan, sin código todavía**. Base metodológica: skill `mcp-builder` (Anthropic) — fases 1-4.
 
@@ -16,7 +16,7 @@ Estado: **plan, sin código todavía**. Base metodológica: skill `mcp-builder` 
 ## 1. Arquitectura (capas)
 
 ```
-src/osint_graph_mcp/
+src/maltego_mcp/
   domain/        # entidades, normalización, mapeo Maltego<->grafo (sin I/O)
   graph/         # cliente Cosmos Gremlin: catálogo de queries parametrizadas, retries 429, RU logging
   sources/       # conectores OSINT (APIs), cada uno con rate limit + timeout + caché
@@ -104,7 +104,7 @@ Criterio de "hecho" v1: los 10 evals con ≥ 80 % de acierto en ambos proveedore
 
 Descartados: `penetration-tester` (fuera de alcance), `protect-mcp` (hooks que descargan paquetes npm externos: riesgo de cadena de suministro), `code-reviewer`/`documentation-engineer` (ya cubiertos por `/code-review` y la skill).
 
-Nota Gemini: Gemini CLI no lee `.claude/agents`. Las reglas que debe cumplir están en `AGENTS.md` (enlazado como `GEMINI.md`); los agentes de `.claude/` sirven para revisar con Claude el trabajo hecho con Gemini.
+Nota multi-modelo (Orca): los agentes de `.claude/` solo los carga Claude Code. Las reglas comunes para todos los modelos están en `AGENTS.md` (importado por `CLAUDE.md`, `GEMINI.md` y `QWEN.md`). El reparto de roles por agente y el flujo de orquestación están en `docs/ORCA.md`.
 
 ## 7. Fuentes: a verificar / añadir
 

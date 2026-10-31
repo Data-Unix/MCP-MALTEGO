@@ -1,0 +1,6 @@
+# Configuración de Orca para este repo.
+# scripts.setup: se ejecuta al crear cada worktree (mismo formato que usa el propio repo de Orca).
+# Si tu versión de Orca no lo aplica, configura el mismo comando en Settings → Repository → Hooks.
+scripts:
+  setup: |
+    if command -v uv >/dev/null 2>&1 && [ -f pyproject.toml ]; then uv sync; else echo "orca setup: sin pyproject.toml o sin uv, nada que instalar"; fi

@@ -1,0 +1,3 @@
+# Ficheros ignorados por git que Orca copia a cada worktree nuevo (una ruta literal por línea).
+.env
+functions/local.settings.json

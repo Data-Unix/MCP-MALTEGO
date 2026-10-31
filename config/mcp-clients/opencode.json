@@ -1,0 +1,6 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "maltego": { "type": "local", "command": ["uv", "run", "maltego-mcp"], "enabled": true }
+  }
+}
