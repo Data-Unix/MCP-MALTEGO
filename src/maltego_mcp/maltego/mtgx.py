@@ -11,15 +11,18 @@ La lectura trata el fichero como no confiable: límites de tamaño, número de m
 from __future__ import annotations
 
 import io
+import json
+import math
 import zipfile
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any, Literal
 from xml.etree.ElementTree import Element, SubElement, register_namespace, tostring
 
 import defusedxml.ElementTree as SafeET
 from defusedxml import DefusedXmlException
 
-from maltego_mcp.domain.entity_types import ENTITY_TYPES
+from maltego_mcp.domain.entity_types import resolve_entity_type
 from maltego_mcp.domain.records import EdgeRecord, EntityRecord
 from maltego_mcp.errors import InvalidInput
 
@@ -36,16 +39,18 @@ MAX_GRAPHML_BYTES = 50 * 1024 * 1024
 MAX_MEMBERS = 2000
 MAX_ENTITIES = 20_000
 MAX_LINKS = 50_000
+MAX_SIDECAR_BYTES = 10 * 1024 * 1024
 
-_MAIN_PROPERTY = {e.maltego_type.lower(): e.main_property for e in ENTITY_TYPES}
 # Tipos cuyo valor visible en Maltego no es la propiedad principal (p. ej. URL muestra short-title).
 DISPLAY_PROPERTY = {"maltego.url": "short-title", "maltego.document": "title"}
 
 
 def main_property_for(maltego_type: str) -> str:
-    """Propiedad principal del tipo. Para tipos propios, la convención de Maltego: properties.<nombre>."""
-    known = _MAIN_PROPERTY.get(maltego_type.lower())
-    return known or f"properties.{maltego_type.rsplit('.', 1)[-1].lower()}"
+    """Propiedad principal del tipo (ontología importada, estándar o convención properties.<nombre>)."""
+    try:
+        return resolve_entity_type(maltego_type).main_property
+    except InvalidInput:
+        return f"properties.{maltego_type.rsplit('.', 1)[-1].lower()}"
 
 
 def _q(ns: str, tag: str) -> str:
@@ -66,20 +71,29 @@ def _prop(parent: Element, name: str, display: str, value: str, ptype: str = "st
     SubElement(p, _q(MTG_NS, "Value")).text = value
 
 
-def _layout(entities: list[EntityRecord], edges: list[EdgeRecord]) -> dict[str, tuple[float, float]]:
-    """Disposición por niveles (BFS desde la entidad más conectada de cada componente)."""
+Layout = Literal["hierarchical", "radial", "force"]
+SIDECAR_MEMBER = "maltego_mcp/investigation.json"
+MAX_FORCE_NODES = 1500
+
+
+def _adjacency(entities: list[EntityRecord], edges: list[EdgeRecord]) -> dict[str, set[str]]:
     adj: dict[str, set[str]] = {e.id: set() for e in entities}
     for ed in edges:
-        if ed.out_id in adj and ed.in_id in adj:
+        if ed.out_id in adj and ed.in_id in adj and ed.out_id != ed.in_id:
             adj[ed.out_id].add(ed.in_id)
             adj[ed.in_id].add(ed.out_id)
-    positions: dict[str, tuple[float, float]] = {}
-    x_offset = 0.0
+    return adj
+
+
+def _components(adj: dict[str, set[str]]) -> list[dict[int, list[str]]]:
+    """BFS por componente desde su nodo más conectado: lista de {nivel: nodos}."""
+    seen: set[str] = set()
+    comps: list[dict[int, list[str]]] = []
     for root in sorted(adj, key=lambda n: (-len(adj[n]), n)):
-        if root in positions:
+        if root in seen:
             continue
         levels: dict[int, list[str]] = {}
-        seen = {root}
+        seen.add(root)
         queue: deque[tuple[str, int]] = deque([(root, 0)])
         while queue:
             node, depth = queue.popleft()
@@ -88,15 +102,97 @@ def _layout(entities: list[EntityRecord], edges: list[EdgeRecord]) -> dict[str, 
                 if nxt not in seen:
                     seen.add(nxt)
                     queue.append((nxt, depth + 1))
+        comps.append(levels)
+    return comps
+
+
+def _hierarchical(adj: dict[str, set[str]]) -> dict[str, tuple[float, float]]:
+    positions: dict[str, tuple[float, float]] = {}
+    x_offset = 0.0
+    for levels in _components(adj):
         width = max(len(v) for v in levels.values())
         for depth, nodes in levels.items():
             for i, node in enumerate(nodes):
-                positions[node] = (x_offset + (i - len(nodes) / 2) * 180.0, depth * 200.0)
+                positions[node] = (x_offset + (i - (len(nodes) - 1) / 2) * 180.0, depth * 200.0)
         x_offset += width * 180.0 + 300.0
     return positions
 
 
-def write_mtgx(entities: list[EntityRecord], edges: list[EdgeRecord]) -> bytes:
+def _radial(adj: dict[str, set[str]]) -> dict[str, tuple[float, float]]:
+    positions: dict[str, tuple[float, float]] = {}
+    x_offset = 0.0
+    for levels in _components(adj):
+        radius_max = 0.0
+        for depth, nodes in levels.items():
+            radius = depth * 220.0
+            radius_max = max(radius_max, radius)
+            for i, node in enumerate(nodes):
+                angle = 2 * math.pi * i / max(1, len(nodes))
+                positions[node] = (radius * math.cos(angle), radius * math.sin(angle))
+        for node in [n for lvl in levels.values() for n in lvl]:
+            x, y = positions[node]
+            positions[node] = (x + x_offset + radius_max, y)
+        x_offset += 2 * radius_max + 400.0
+    return positions
+
+
+def _force(adj: dict[str, set[str]], iterations: int = 150) -> dict[str, tuple[float, float]]:
+    """Fruchterman-Reingold determinista (parte del layout radial); en grafos muy grandes, jerárquico."""
+    nodes = sorted(adj)
+    if len(nodes) > MAX_FORCE_NODES:
+        return _hierarchical(adj)
+    pos = {n: list(p) for n, p in _radial(adj).items()}
+    area = max(1.0, len(nodes)) * 40000.0
+    k = math.sqrt(area / max(1, len(nodes)))
+    temp = math.sqrt(area) / 10
+    for _ in range(iterations):
+        disp = {n: [0.0, 0.0] for n in nodes}
+        for i, a in enumerate(nodes):
+            for b in nodes[i + 1 :]:
+                dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
+                dist = math.hypot(dx, dy) or 0.01
+                force = k * k / dist
+                disp[a][0] += dx / dist * force
+                disp[a][1] += dy / dist * force
+                disp[b][0] -= dx / dist * force
+                disp[b][1] -= dy / dist * force
+        for a in nodes:
+            for b in adj[a]:
+                if a < b:
+                    dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
+                    dist = math.hypot(dx, dy) or 0.01
+                    force = dist * dist / k
+                    disp[a][0] -= dx / dist * force
+                    disp[a][1] -= dy / dist * force
+                    disp[b][0] += dx / dist * force
+                    disp[b][1] += dy / dist * force
+        for n in nodes:
+            d = math.hypot(*disp[n]) or 0.01
+            step = min(d, temp)
+            pos[n][0] += disp[n][0] / d * step
+            pos[n][1] += disp[n][1] / d * step
+        temp *= 0.95
+    return {n: (p[0], p[1]) for n, p in pos.items()}
+
+
+def compute_layout(
+    entities: list[EntityRecord], edges: list[EdgeRecord], layout: Layout = "hierarchical"
+) -> dict[str, tuple[float, float]]:
+    adj = _adjacency(entities, edges)
+    if layout == "radial":
+        return _radial(adj)
+    if layout == "force":
+        return _force(adj)
+    return _hierarchical(adj)
+
+
+def write_mtgx(
+    entities: list[EntityRecord],
+    edges: list[EdgeRecord],
+    layout: Layout = "hierarchical",
+    sidecar: dict[str, Any] | None = None,
+) -> bytes:
+    """Escribe el .mtgx. `sidecar` (memoria de la investigación) viaja en un fichero aparte que Maltego ignora."""
     # Solo prefijos con nombre: los elementos GraphML van sin calificar bajo un xmlns literal en la raíz, así no se
     # altera el espacio de nombres por defecto global de ElementTree.
     register_namespace("mtg", MTG_NS)
@@ -115,7 +211,7 @@ def write_mtgx(entities: list[EntityRecord], edges: list[EdgeRecord]) -> bytes:
     ):
         SubElement(root, "key", attrs)
     graph = SubElement(root, "graph", id="G", edgedefault="directed")
-    positions = _layout(entities, edges)
+    positions = compute_layout(entities, edges, layout)
     ids = {e.id for e in entities}
     for e in entities:
         node = SubElement(graph, "node", id=e.id)
@@ -152,6 +248,8 @@ def write_mtgx(entities: list[EntityRecord], edges: list[EdgeRecord]) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(GRAPH_MEMBER, xml)
         zf.writestr("version.properties", "maltego.graph.version=1.3\n")
+        if sidecar is not None:
+            zf.writestr(SIDECAR_MEMBER, json.dumps(sidecar, ensure_ascii=False))
     return buf.getvalue()
 
 
@@ -177,6 +275,7 @@ class ImportedGraph:
     entities: list[ImportedEntity] = field(default_factory=list)
     links: list[ImportedLink] = field(default_factory=list)
     skipped: int = 0
+    sidecar: dict[str, Any] = field(default_factory=dict)
 
 
 def read_mtgx(payload: bytes) -> ImportedGraph:
@@ -200,7 +299,17 @@ def read_mtgx(payload: bytes) -> ImportedGraph:
             xml = fh.read(MAX_GRAPHML_BYTES + 1)
         if len(xml) > MAX_GRAPHML_BYTES:
             raise InvalidInput("El grafo del .mtgx es demasiado grande (>50 MB descomprimido).")
-    return parse_graphml(xml)
+        sidecar: dict[str, Any] = {}
+        side = next((i for i in infos if i.filename == SIDECAR_MEMBER), None)
+        if side is not None and side.file_size <= MAX_SIDECAR_BYTES:
+            try:
+                loaded = json.loads(zf.read(side).decode("utf-8"))
+                sidecar = loaded if isinstance(loaded, dict) else {}
+            except (ValueError, UnicodeDecodeError):
+                sidecar = {}
+    graph = parse_graphml(xml)
+    graph.sidecar = sidecar
+    return graph
 
 
 def parse_graphml(xml: bytes) -> ImportedGraph:

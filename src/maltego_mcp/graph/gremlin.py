@@ -14,13 +14,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any
 
 from maltego_mcp.domain.records import (
     CaseRecord,
     EdgeRecord,
     EntityRecord,
+    StepRecord,
     merge_edge,
     merge_entity,
     utc_now,
@@ -57,10 +60,11 @@ Q_ADD_ENTITY = (
     ".property('maltego_type', maltego_type).property('value', val).property('value_lc', value_lc)"
     ".property('confidence', confidence).property('sources_json', sources_json)"
     ".property('props_json', props_json).property('first_seen', first_seen).property('last_seen', last_seen)"
+    ".property('notes', notes)"
 )
 Q_UPDATE_ENTITY = (
     "g.V(vid).has('pk', pk).property('confidence', confidence).property('sources_json', sources_json)"
-    ".property('props_json', props_json).property('last_seen', last_seen)"
+    ".property('props_json', props_json).property('last_seen', last_seen).property('notes', notes)"
 )
 Q_GET_EDGE = "g.V(out_id).has('pk', pk).outE(elabel).hasId(eid).valueMap(true)"
 Q_ADD_EDGE = (
@@ -102,6 +106,21 @@ Q_DEGREES = (
     "g.V().has('pk', pk).has('value_lc').limit(scan).project('v', 'degree').by(valueMap(true)).by(bothE().count())"
 )
 MAX_DEGREE_SCAN = 2000
+Q_COUNT_BOTH_EDGES = "g.V(vid).has('pk', pk).bothE().count()"
+Q_DROP_VERTEX = "g.V(vid).has('pk', pk).drop()"
+Q_COUNT_EDGE = "g.E(eid).has('case_id', pk).count()"
+Q_DROP_EDGE = "g.E(eid).has('case_id', pk).drop()"
+Q_DROP_CASE = "g.V().has('pk', pk).drop()"
+Q_ADD_STEP = (
+    "g.addV('step').property('id', vid).property('pk', pk).property('case_id', pk).property('seq', seq)"
+    ".property('timestamp', ts).property('kind', kind).property('action', step_action)"
+    ".property('input_id', input_id).property('input_value', input_value).property('reason', reason)"
+    ".property('outputs_json', outputs_json).property('new_entities', new_entities).property('error', err)"
+    ".property('duration_ms', duration_ms)"
+)
+Q_LIST_STEPS = "g.V().has('pk', pk).hasLabel('step').has('seq', gt(since)).limit(scan).valueMap(true)"
+Q_LIST_ALL_STEPS = "g.V().hasLabel('step').limit(scan).valueMap(true)"
+MAX_STEPS_SCAN = 5000
 Q_EXPORT_VERTICES = "g.V().has('pk', pk).has('value_lc').limit(n).valueMap(true)"
 Q_EXPORT_EDGES = "g.V().has('pk', pk).outE().limit(n).valueMap(true)"
 
@@ -164,6 +183,25 @@ def entity_from_vm(vm: dict[Any, Any]) -> EntityRecord:
         properties=_json_dict(d.get("props_json")),
         first_seen=str(d.get("first_seen", "")),
         last_seen=str(d.get("last_seen", "")),
+        notes=str(d.get("notes", "")),
+    )
+
+
+def step_from_vm(vm: dict[Any, Any]) -> StepRecord:
+    d = _flat(vm)
+    return StepRecord(
+        seq=int(d.get("seq", 0)),
+        case_id=str(d.get("case_id") or d.get("pk", "")),
+        timestamp=str(d.get("timestamp", "")),
+        kind=str(d.get("kind", "")),
+        action=str(d.get("action", "")),
+        input_id=str(d.get("input_id", "")),
+        input_value=str(d.get("input_value", "")),
+        reason=str(d.get("reason", "")),
+        outputs=_json_list(d.get("outputs_json")),
+        new_entities=int(d.get("new_entities", 0)),
+        error=str(d.get("error", "")),
+        duration_ms=int(d.get("duration_ms", 0)),
     )
 
 
@@ -232,7 +270,7 @@ class GremlinGraphStore:
         if not rows:
             return None
         ent = entity_from_vm(rows[0])
-        return ent if ent.label != "case" else None
+        return ent if ent.label not in ("case", "step") else None
 
     async def upsert_entity(self, entity: EntityRecord) -> tuple[EntityRecord, bool]:
         await self._require_case(entity.case_id)
@@ -253,6 +291,7 @@ class GremlinGraphStore:
             "props_json": json.dumps(merged.properties, ensure_ascii=False),
             "first_seen": merged.first_seen,
             "last_seen": merged.last_seen,
+            "notes": merged.notes,
         }
         if existing is None:
             try:
@@ -264,7 +303,7 @@ class GremlinGraphStore:
         else:
             await self._run(
                 Q_UPDATE_ENTITY,
-                {k: b[k] for k in ("vid", "pk", "confidence", "sources_json", "props_json", "last_seen")},
+                {k: b[k] for k in ("vid", "pk", "confidence", "sources_json", "props_json", "last_seen", "notes")},
             )
         await self._touch_case(entity.case_id)
         return merged, existing is None
@@ -387,6 +426,75 @@ class GremlinGraphStore:
         kept = {e.id for e in vs}
         es = [edge_from_vm(r) for r in await self._run(Q_EXPORT_EDGES, {"pk": case_id, "n": max_items})]
         return vs, [e for e in es if e.out_id in kept and e.in_id in kept]
+
+    async def replace_entity(self, entity: EntityRecord) -> EntityRecord:
+        if await self.get_entity(entity.case_id, entity.id) is None:
+            await self._require_case(entity.case_id)
+            raise NotFound(f"La entidad '{entity.id}' no existe en el caso '{entity.case_id}'.")
+        bindings = {
+            "vid": entity.id,
+            "pk": entity.case_id,
+            "confidence": entity.confidence,
+            "sources_json": json.dumps(entity.sources, ensure_ascii=False),
+            "props_json": json.dumps(entity.properties, ensure_ascii=False),
+            "last_seen": entity.last_seen,
+            "notes": entity.notes,
+        }
+        await self._run(Q_UPDATE_ENTITY, bindings)
+        await self._touch_case(entity.case_id)
+        return entity
+
+    async def delete_entity(self, case_id: str, entity_id: str) -> int:
+        if await self.get_entity(case_id, entity_id) is None:
+            await self._require_case(case_id)
+            raise NotFound(f"La entidad '{entity_id}' no existe en el caso '{case_id}'.")
+        rows = await self._run(Q_COUNT_BOTH_EDGES, {"vid": entity_id, "pk": case_id})
+        await self._run(Q_DROP_VERTEX, {"vid": entity_id, "pk": case_id})
+        await self._touch_case(case_id)
+        return int(rows[0]) if rows else 0
+
+    async def delete_edge(self, case_id: str, edge_id: str) -> bool:
+        await self._require_case(case_id)
+        rows = await self._run(Q_COUNT_EDGE, {"eid": edge_id, "pk": case_id})
+        if not rows or int(rows[0]) == 0:
+            return False
+        await self._run(Q_DROP_EDGE, {"eid": edge_id, "pk": case_id})
+        await self._touch_case(case_id)
+        return True
+
+    async def delete_case(self, case_id: str) -> tuple[int, int]:
+        summary = await self.case_summary(case_id, 0)
+        await self._run(Q_DROP_CASE, {"pk": case_id})
+        return summary.entity_count, summary.edge_count
+
+    async def append_step(self, step: StepRecord) -> StepRecord:
+        seq = time.time_ns() // 1000  # microsegundos: creciente sin contar (evita carreras entre procesos)
+        stored = replace(step, seq=seq)
+        bindings = {
+            "vid": f"step-{seq}",
+            "pk": step.case_id,
+            "seq": seq,
+            "ts": step.timestamp,
+            "kind": step.kind,
+            "step_action": step.action,
+            "input_id": step.input_id,
+            "input_value": step.input_value,
+            "reason": step.reason,
+            "outputs_json": json.dumps(step.outputs),
+            "new_entities": step.new_entities,
+            "err": step.error,
+            "duration_ms": step.duration_ms,
+        }
+        await self._run(Q_ADD_STEP, bindings)
+        return stored
+
+    async def list_steps(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
+        if case_id:
+            await self._require_case(case_id)
+            rows = await self._run(Q_LIST_STEPS, {"pk": case_id, "since": since_seq, "scan": MAX_STEPS_SCAN})
+            return sorted((step_from_vm(r) for r in rows), key=lambda x: x.seq)[:limit]
+        rows = await self._run(Q_LIST_ALL_STEPS, {"scan": MAX_STEPS_SCAN})
+        return sorted((step_from_vm(r) for r in rows), key=lambda x: x.seq)[-limit:]
 
     async def close(self) -> None:
         if self._close:

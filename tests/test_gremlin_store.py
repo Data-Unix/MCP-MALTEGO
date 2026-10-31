@@ -119,6 +119,49 @@ class FakeGraph:
             ]
         if q == G.Q_PATHS:
             return [[b["src"], b["dst"]]]
+        if q == G.Q_ADD_STEP:
+            props = {
+                "id": b["vid"],
+                "label": "step",
+                "pk": b["pk"],
+                "case_id": b["pk"],
+                "seq": b["seq"],
+                "timestamp": b["ts"],
+                "kind": b["kind"],
+                "action": b["step_action"],
+                "input_id": b["input_id"],
+                "input_value": b["input_value"],
+                "reason": b["reason"],
+                "outputs_json": b["outputs_json"],
+                "new_entities": b["new_entities"],
+                "error": b["err"],
+                "duration_ms": b["duration_ms"],
+            }
+            self.v[(b["pk"], b["vid"])] = props
+            return []
+        if q == G.Q_LIST_STEPS:
+            return [
+                self.vm(p)
+                for p in self.v.values()
+                if p["label"] == "step" and p["pk"] == b["pk"] and p["seq"] > b["since"]
+            ]
+        if q == G.Q_LIST_ALL_STEPS:
+            return [self.vm(p) for p in self.v.values() if p["label"] == "step"]
+        if q == G.Q_COUNT_BOTH_EDGES:
+            return [sum(1 for e in self.e.values() if b["vid"] in (e["out_id"], e["in_id"]))]
+        if q == G.Q_DROP_VERTEX:
+            self.v.pop((b["pk"], b["vid"]), None)
+            self.e = {k: e for k, e in self.e.items() if b["vid"] not in (e["out_id"], e["in_id"])}
+            return []
+        if q == G.Q_COUNT_EDGE:
+            return [int(b["eid"] in self.e)]
+        if q == G.Q_DROP_EDGE:
+            self.e.pop(b["eid"], None)
+            return []
+        if q == G.Q_DROP_CASE:
+            self.v = {k: p for k, p in self.v.items() if p["pk"] != b["pk"]}
+            self.e = {k: e for k, e in self.e.items() if e["case_id"] != b["pk"]}
+            return []
         raise AssertionError(f"consulta no esperada: {q}")
 
     def _search(self, q: str, b: dict[str, Any]) -> list[dict[str, Any]]:
@@ -271,3 +314,28 @@ async def test_ejecutor_rechaza_bindings_reservados() -> None:
 async def test_409_se_traduce_a_conflicto() -> None:
     with pytest.raises(G.ConflictError):
         await _executor(_Client([_Err({"x-ms-status-code": 409})]))("q", {})
+
+
+async def test_crud_y_memoria_en_gremlin(svc: OsintService, fake: FakeGraph) -> None:
+    await svc.create_case("g1", "")
+    d, _ = await svc.upsert_entity("g1", "maltego.Domain", "a.com", 0.5, "m", [], "nota")
+    i, _ = await svc.upsert_entity("g1", "maltego.IPv4Address", "1.1.1.1", 0.5, "m", [])
+    await svc.link("g1", d.id, i.id, "resolves_to", "m", 0.5)
+    up = await svc.update_entity("g1", d.id, 0.9, "otra", ["k=v"], [])
+    assert (up.confidence, up.notes, up.properties) == (0.9, "otra", {"k": "v"})
+    assert (await svc.get_entity("g1", d.id)).notes == "otra"
+    steps = await svc.timeline("g1", 0, 50)
+    assert [s.action for s in steps][-1] == "update_entity" and steps == sorted(steps, key=lambda s: s.seq)
+    assert await svc.timeline("g1", steps[-1].seq, 50) == []
+    assert await svc.unlink("g1", d.id, i.id, "resolves_to") is True
+    assert await svc.unlink("g1", d.id, i.id, "resolves_to") is False
+    await svc.link("g1", d.id, i.id, "resolves_to", "m", 0.5)
+    assert await svc.delete_entity("g1", i.id) == 1
+    with pytest.raises(NotFound):
+        await svc.delete_entity("g1", i.id)
+    assert (await svc.learning()) == {}
+    assert await svc.delete_case("g1", "g1") == (1, 0)
+    with pytest.raises(NotFound):
+        await svc.case_summary("g1", 0)
+    for query, bindings in fake.calls:
+        assert not (G.RESERVED_BINDINGS & bindings.keys()), query

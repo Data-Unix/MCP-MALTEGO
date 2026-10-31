@@ -41,6 +41,7 @@ class EntityRecord:
     properties: dict[str, str] = field(default_factory=dict)
     first_seen: str = ""
     last_seen: str = ""
+    notes: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +55,7 @@ class EntityRecord:
             "properties": dict(self.properties),
             "first_seen": self.first_seen,
             "last_seen": self.last_seen,
+            "notes": self.notes,
         }
 
 
@@ -80,6 +82,44 @@ class EdgeRecord:
             "sources": list(self.sources),
             "first_seen": self.first_seen,
             "last_seen": self.last_seen,
+        }
+
+
+MAX_NOTES_LEN = 4000
+MAX_STEP_OUTPUTS = 200
+
+
+@dataclass(slots=True)
+class StepRecord:
+    """Paso de la investigación (memoria procedimental): qué se hizo, sobre qué, por qué y con qué resultado."""
+
+    seq: int
+    case_id: str
+    timestamp: str
+    kind: str  # transform | machine | import | manual | investigate
+    action: str  # nombre del transform/máquina/acción
+    input_id: str = ""
+    input_value: str = ""
+    reason: str = ""
+    outputs: list[str] = field(default_factory=list)  # ids de entidades obtenidas (acotado)
+    new_entities: int = 0
+    error: str = ""
+    duration_ms: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "seq": self.seq,
+            "case_id": self.case_id,
+            "timestamp": self.timestamp,
+            "kind": self.kind,
+            "action": self.action,
+            "input_id": self.input_id,
+            "input_value": self.input_value,
+            "reason": self.reason,
+            "outputs": list(self.outputs),
+            "new_entities": self.new_entities,
+            "error": self.error,
+            "duration_ms": self.duration_ms,
         }
 
 
@@ -111,6 +151,7 @@ def merge_entity(existing: EntityRecord | None, incoming: EntityRecord) -> Entit
     props = {**existing.properties, **incoming.properties}
     return replace(
         existing,
+        notes=incoming.notes or existing.notes,
         confidence=max(existing.confidence, incoming.confidence),
         sources=_merge_sources(existing.sources, incoming.sources),
         properties=clean_properties(props),

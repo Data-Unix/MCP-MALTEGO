@@ -4,30 +4,64 @@
 Permite que cualquier agente (Gemini, Claude, Codex...) ejecute transforms de Maltego, encadenarlos como una
 Machine, guardar los resultados en un grafo por caso, analizarlo y exportarlo.
 
-## Tools (16)
+## Tools (20)
 
-| Tool | Para qué | Escribe |
+| Grupo | Tool | Para qué |
 |---|---|---|
-| `osint_list_entity_types` | Tipos de entidad Maltego soportados (y personalizados `prefijo.Nombre`) | no |
-| `osint_list_transforms` | Transforms del catálogo, filtrables por tipo de entrada | no |
-| `osint_create_case` | Crear caso / actualizar descripción | sí |
-| `osint_list_cases` | Listar casos (paginado) | no |
-| `osint_get_case_summary` | Recuentos por tipo y entidades más conectadas | no |
-| `osint_upsert_entity` | Guardar entidad (normaliza el valor, id determinista, fusiona fuentes) | sí |
-| `osint_get_entity` | Detalle de una entidad | no |
-| `osint_search_entities` | Buscar por texto/tipo en un caso o en todos (correlación entre casos) | no |
-| `osint_link_entities` | Relación dirigida entre entidades | sí |
-| `osint_get_neighbors` | Entidades relacionadas | no |
-| `osint_find_paths` | Caminos entre dos entidades (hasta 4 saltos) | no |
-| `osint_run_transform` | Ejecutar un transform sobre una entidad (opcionalmente sin guardar) | sí |
-| `osint_run_transform_chain` | Cadena de transforms tipo Machine, con límites de coste | sí |
-| `osint_expand_entity` | Ejecutar todos los transforms aplicables sobre una entidad (como "Run All") | sí |
-| `osint_import_graph` | Importar un grafo guardado en Maltego (.mtgx) o un CSV a un caso | sí |
-| `osint_export_case` | Exportar a mtgx (se abre en Maltego), json, graphml (Gephi/yEd) o csv | fichero |
+| Catálogo | `osint_list_entity_types` | Ontología por categoría (estándar + importada de tu Maltego) |
+| | `osint_list_transforms` | Transforms, Machines, proveedores configurados y estado de servidores |
+| Casos | `osint_manage_case` | Crear, fusionar (`merge`) o borrar (`delete` + `confirm`) |
+| | `osint_list_cases` | Listado paginado |
+| | `osint_get_case_summary` | Recuentos, entidades prioritarias e índices de calidad |
+| Entidades | `osint_upsert_entity` | Crear o fusionar (normaliza, id determinista, notas) |
+| | `osint_manage_entity` | Editar confianza, notas o propiedades; borrar |
+| | `osint_get_entity` | Detalle, puntuación explicada, procedencia y transforms pendientes |
+| | `osint_search_entities` | Búsqueda en un caso o entre casos; orden por prioridad |
+| Relaciones | `osint_link_entities` | Relacionar (`link`) o quitar relación (`unlink`) |
+| | `osint_get_neighbors` | Vecinos con dirección y tipo de relación |
+| | `osint_find_paths` | Caminos entre dos entidades (hasta 6 saltos) |
+| Transforms | `osint_run_transform` | Un transform (integrado, de proveedor o TRX/iTDS) |
+| | `osint_expand_entity` | Todos los transforms aplicables ("Run All") |
+| | `osint_run_machine` | Machines predefinidas/propias o cadena ad hoc, con rondas y presupuestos |
+| Copiloto | `osint_investigate` | Todo en una llamada: tipo, caso, Machine, puntuación, recomendaciones |
+| | `osint_suggest_next_steps` | Siguiente mejor acción, determinista, con rendimiento histórico |
+| | `osint_get_timeline` | Memoria del caso; sondeo de novedades con `since_seq` |
+| Intercambio | `osint_export_case` | mtgx (con layout y memoria), json, graphml, csv, report_md, report_html |
+| | `osint_import_graph` | Importar `.mtgx` (con memoria) o CSV a un caso |
 
-`entity_type` admite `"auto"`: detecta correo, URL, IP, rango, hash, AS, teléfono, dominio o frase.
+`entity_type` admite `"auto"`. Las acciones aceptan `reason`, que queda en la memoria del caso.
+Matriz completa de funciones y verificación: `docs/COBERTURA.md`.
 
-Todas aceptan `response_format` = `markdown` (por defecto) o `json` cuando devuelven datos.
+## Transforms integrados
+- **Sin API key:** DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS (DNS sobre
+  HTTPS), DomainToWhois, IPToWhois (RDAP), DomainToSubdomains (crt.sh), IPToAS, IPToNetblock (Team Cymru),
+  AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), EmailToDomain, EmailToAlias, URLToDomain,
+  WebsiteToDomain, DomainToWebsite.
+- **Con API key** (define la variable de entorno y se activan): `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`,
+  `SECURITYTRAILS_API_KEY`, `CENSYS_API_ID` + `CENSYS_API_SECRET`, `HUNTER_API_KEY`, `HIBP_API_KEY`,
+  `GREYNOISE_API_KEY`, `TATUM_API_KEY`. Para los agentes de Orca, ponlas en las variables de entorno de usuario
+  del sistema (Windows: "Editar las variables de entorno de tu cuenta") y reinicia Orca.
+
+## Machines
+DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint y URLRecon. Las propias se
+declaran en el catálogo:
+```toml
+[[machines]]
+name = "MiRecon"
+input_types = ["maltego.Domain"]
+stages = [["DNSToIP", "DomainToNS"], ["IPToAS"]]
+rounds = 1
+```
+
+## maltegoctl (terminal / CI)
+```
+uv run maltegoctl inspect grafo.mtgx          # valida un .mtgx
+uv run maltegoctl lookup DomainToMX gmail.com # consulta rápida sin guardar
+uv run maltegoctl transforms --type maltego.Domain
+uv run maltegoctl import-entities config.mtz  # ontología exacta de tu Maltego
+uv run maltegoctl export demo --format report_html
+uv run maltegoctl mtz                         # transforms locales para Maltego
+```
 
 ## Configuración (variables de entorno)
 

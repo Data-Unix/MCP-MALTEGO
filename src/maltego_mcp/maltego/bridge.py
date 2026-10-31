@@ -29,7 +29,7 @@ from maltego_trx.maltego import UIM_INFORM, UIM_PARTIAL, MaltegoMsg, MaltegoTran
 from maltego_trx.utils import name_to_path
 
 from maltego_mcp.config import Settings
-from maltego_mcp.domain.entity_types import ENTITY_TYPES
+from maltego_mcp.domain.entity_types import all_entity_types
 from maltego_mcp.domain.normalize import validate_case_id
 from maltego_mcp.domain.records import EntityRecord
 from maltego_mcp.errors import MaltegoMcpError
@@ -75,7 +75,7 @@ def bridge_transforms() -> list[BridgeTransform]:
             "Usa el valor de la frase como case_id, lo fija como caso actual y trae sus entidades.",
         ),
     ]
-    for et in ENTITY_TYPES:
+    for et in all_entity_types():
         suffix = _type_suffix(et.maltego_type)
         out.append(
             BridgeTransform(

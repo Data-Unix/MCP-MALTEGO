@@ -16,6 +16,7 @@ from maltego_mcp.errors import ConfigError
 Backend = Literal["memory", "gremlin"]
 REPO_TRANSFORMS_FILE = Path("config/transforms.toml")
 LEGACY_DATA_FILE = Path("data/graph.json")  # ubicación usada hasta la v0.1 (dentro del repo)
+ONTOLOGY_FILE = "entities.json"  # ontología importada de Maltego (maltegoctl import-entities)
 
 
 def default_home(env: dict[str, str] | None = None) -> Path:

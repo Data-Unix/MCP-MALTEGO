@@ -72,3 +72,33 @@ def test_api_key_por_variable_de_entorno(tmp_path: Path, monkeypatch: pytest.Mon
         cat.get("T").server.headers()
     monkeypatch.setenv("K", "s3cr3t")
     assert cat.get("T").server.headers() == {"Authorization": "Bearer s3cr3t"}
+
+
+def test_machines_propias_en_el_catalogo(tmp_path: Path) -> None:
+    text = (ROOT / "config" / "transforms.example.toml").read_text(encoding="utf-8") + '''
+[[machines]]
+name = "MiRecon"
+description = "DNS y luego AS"
+input_types = ["maltego.Domain"]
+stages = [["DNSToIP"], ["IPToAS"]]
+rounds = 2
+'''
+    cat = load_catalog(write(tmp_path, text))
+    m = cat.machines.get("mirecon")
+    assert (m.stages, m.default_rounds, m.origin) == ((("DNSToIP",), ("IPToAS",)), 2, "catálogo")
+    assert m.accepts("maltego.Domain") and not m.accepts("maltego.URL")
+    assert cat.machines.get("DomainRecon").origin == "predefinida"
+    assert cat.machines.for_type("maltego.IPv4Address").name == "InfrastructureRecon"
+    assert cat.machines.for_type("maltego.Phrase") is None
+    with pytest.raises(InvalidInput, match="Disponibles"):
+        cat.machines.get("nope")
+
+
+@pytest.mark.parametrize(
+    ("block", "fragment"),
+    [('[[machines]]\nname = "x y"\nstages = [["A"]]\n', "nombre inválido"),
+     ('[[machines]]\nname = "Vacia"\nstages = []\n', "stages")],
+)
+def test_machines_invalidas(tmp_path: Path, block: str, fragment: str) -> None:
+    with pytest.raises(ConfigError, match=fragment):
+        load_catalog(write(tmp_path, block))

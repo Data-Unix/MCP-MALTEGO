@@ -4,7 +4,7 @@ Servidor MCP (Python) para delegar en agentes LLM de cualquier proveedor (Gemini
 de Maltego: desde transforms individuales hasta cadenas tipo Machine, entidades y transforms personalizados y
 análisis de grafos OSINT persistidos en Azure Cosmos DB (Gremlin).
 
-Estado: 16 tools (casos, entidades, relaciones, análisis, transforms, cadenas tipo Machine, expansión, importación/exportación .mtgx) y puente con Maltego Desktop. Arranque: `uv sync` y `uv run maltego-mcp` (stdio) o `uv run maltego-mcp --transport http`. Guía: [docs/USO.md](docs/USO.md).
+Estado: 20 tools (casos, entidades, relaciones, transforms integrados y de proveedores, Machines, copiloto con memoria y recomendaciones, informes, .mtgx con layouts), puente con Maltego Desktop y `maltegoctl`. Arranque: `uv sync` y `uv run maltego-mcp`. Guía: [docs/USO.md](docs/USO.md) · Cobertura: [docs/COBERTURA.md](docs/COBERTURA.md).
 
 | Documento | Contenido |
 |---|---|

@@ -19,6 +19,7 @@ gremlin = ["gremlinpython>=3.7"]
 [project.scripts]
 maltego-mcp = "maltego_mcp.server:main"
 maltego-mcp-bridge = "maltego_mcp.maltego.bridge:main"
+maltegoctl = "maltego_mcp.cli:main"
 
 [dependency-groups]
 dev = [

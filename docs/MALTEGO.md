@@ -14,7 +14,7 @@ Funcionan en Maltego CE y comerciales, sin servidor ni iTDS: Maltego ejecuta un 
 Generar e importar (una vez, y de nuevo si mueves la carpeta del repo o uv):
 ```
 cd <carpeta del repo>
-uv run maltego-mcp-bridge mtz
+uv run maltegoctl mtz
 ```
 Crea `~/.maltego-mcp/maltego-mcp-local.mtz` con el SDK oficial `maltego-trx`. En Maltego: **Import | Export →
 Import Config** → elige ese fichero → importa todo.
@@ -44,6 +44,14 @@ versión de "Vecinos" y "Guardar" por cada tipo de entidad.
 El formato sigue la estructura de las exportaciones de Maltego (contrastada con dos implementaciones de la
 comunidad); confírmalo abriendo un export en tu versión de Maltego.
 
-## 3. Tus transforms TRX/iTDS
+## 3. Ontología exacta de tu Maltego
+En Maltego: **Import | Export → Export Config** → marca las entidades → guarda `config.mtz`. Después:
+```
+uv run maltegoctl import-entities config.mtz
+```
+El MCP usará los identificadores y propiedades principales de tu instalación (incluidas entidades de hubs y
+propias). `maltegoctl inspect` avisa si un `.mtgx` usa tipos que no conoce.
+
+## 4. Tus transforms TRX/iTDS
 Declara tus servidores y transforms en `~/.maltego-mcp/transforms.toml` (ver `config/transforms.example.toml`).
 Un servidor `maltego-trx` propio sirve a la vez a Maltego y a los agentes.

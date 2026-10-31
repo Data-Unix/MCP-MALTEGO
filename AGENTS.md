@@ -29,7 +29,8 @@ persistencia en Azure Cosmos DB for Apache Gremlin y pipelines serverless en Azu
   En Pydantic usa `Field(ge=, le=)`, nunca `gt/lt`.
 - `tests/test_schema_portability.py` debe pasar siempre (falla si aparece cualquiera de esas claves).
 - Nombres de tool: `osint_<verbo>_<objeto>`, snake_case, ≤ 40 caracteres, regex `^[a-z][a-z0-9_]*$`.
-- ≤ 20 tools. Toda funcionalidad crítica va en TOOLS (no depender de resources/prompts: soporte desigual entre clientes).
+- Exactamente 20 tools como máximo (hoy 20: `tests/test_copilot.py` lo comprueba); nuevas variantes van como
+  `action` de una tool existente. Toda funcionalidad crítica va en TOOLS (no depender de resources/prompts: soporte desigual entre clientes).
 - Cada respuesta devuelve SIEMPRE texto (markdown o JSON serializado) además de `structuredContent` opcional.
 - Errores: `isError=true` + mensaje accionable ("prueba con limit=20", "falta case_id").
 - Transportes: stdio (local, agentes en Orca) y Streamable HTTP stateless (remoto).
@@ -46,7 +47,12 @@ persistencia en Azure Cosmos DB for Apache Gremlin y pipelines serverless en Azu
 - `transforms/`: protocolo XML de Maltego (`protocol.py`), catálogo TOML (`catalog.py`), cliente HTTP (`client.py`).
 - `maltego/`: `.mtgx` (`mtgx.py`) y puente de transforms locales para Maltego Desktop (`bridge.py`, comando
   `maltego-mcp-bridge`).
-- `service.py`: casos de uso; `server.py`: tools MCP (finas, sin lógica de negocio); `format.py`: salida para LLMs.
+- `service.py`: casos de uso; `tools.py`: las 20 tools (finas); `server.py`: arranque y transportes;
+  `format.py`: salida para LLMs.
+- `transforms/builtin.py`: transforms integrados (sin clave y de proveedores); `machines.py`: Machines;
+  `analysis.py`: puntuación, siguiente mejor acción y aprendizaje; `report.py`: informes; `cli.py`: `maltegoctl`.
+- Cada ejecución de transform se registra como paso (`StepRecord`) en la memoria del caso.
+- Tests de transforms integrados con HTTP simulado: `tests/test_builtin.py` (`Router`); nunca dependas de la red en tests.
 - Errores esperados: subclases de `MaltegoMcpError` (mensaje seguro y accionable); el decorador `tool_errors`
   los convierte en `isError=true`. Cualquier otra excepción se oculta al cliente y se registra en stderr.
 - Tests: `tests/conftest.py` levanta un servidor maltego-trx real en un hilo; añade ahí transforms de prueba.

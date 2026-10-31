@@ -69,7 +69,9 @@ def test_mtz_generado_con_sdk_oficial(tmp_path: Path) -> None:
             assert "uv.exe" in settings_xml
         neighbors = zf.read("TransformRepositories/Local/mcpneighbors-domain.transform").decode()
         assert 'type="maltego.Domain"' in neighbors
-    assert len(BY_NAME) == 42
+    from maltego_mcp.domain.entity_types import all_entity_types
+
+    assert len(BY_NAME) == 2 + 2 * len(all_entity_types())
 
 
 def test_caso_viaja_en_la_entidad_y_urls_usan_su_propiedad(settings: Settings) -> None:

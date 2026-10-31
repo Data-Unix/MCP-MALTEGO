@@ -112,6 +112,13 @@ def _phone(value: str) -> str:
     return digits
 
 
+def _port(value: str) -> str:
+    text = value.strip().split("/", 1)[0]
+    if not text.isdigit() or not 0 < int(text) < 65536:
+        raise InvalidInput(f"'{value[:80]}' no es un puerto válido (1-65535, p. ej. 443).")
+    return str(int(text))
+
+
 def _hash(value: str) -> str:
     text = value.strip().lower()
     if not _HEX_RE.match(text) or len(text) not in _HASH_LENGTHS:
@@ -151,6 +158,8 @@ def _normalize(entity_type: EntityType, value: str) -> str:
             return _phone(value)
         case "hash":
             return _hash(value)
+        case "port":
+            return _port(value)
         case _:
             text = clean_text(value)
             if not text:
