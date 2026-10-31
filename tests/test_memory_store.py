@@ -120,3 +120,23 @@ async def test_caminos_no_explotan_en_grafo_denso(svc: OsintService) -> None:
                 await svc.link("c1", a, b, "rel", "m", 0.5)
     paths = await svc.find_paths("c1", ids[0], ids[1], 4, 20)
     assert len(paths) == 20
+
+
+async def test_varios_procesos_comparten_el_fichero_sin_perder_datos(tmp_path: Path) -> None:
+    """Dos instancias (como dos agentes en Orca) escriben alternadamente en el mismo fichero."""
+    path = tmp_path / "shared.json"
+    a = OsintService(MemoryGraphStore(path), TransformCatalog(), tmp_path)
+    b = OsintService(MemoryGraphStore(path), TransformCatalog(), tmp_path)
+    for i in range(5):
+        await a.upsert_entity("c1", "maltego.Domain", f"a{i}.com", 0.5, "agente-a", [])
+        await b.upsert_entity("c1", "maltego.Domain", f"b{i}.com", 0.5, "agente-b", [])
+    assert (await a.search("c1", "", "", 50, 0)).total == 10  # a ve lo que escribió b
+    fresh = OsintService(MemoryGraphStore(path), TransformCatalog(), tmp_path)
+    assert (await fresh.case_summary("c1", 0)).entity_count == 10
+
+
+def test_fichero_con_claves_inesperadas(tmp_path: Path) -> None:
+    p = tmp_path / "g.json"
+    p.write_text('{"cases": [{"case_id": "c1", "nueva_clave": 1}]}', encoding="utf-8")
+    with pytest.raises(BackendError, match="MALTEGO_MCP_DATA_FILE"):
+        MemoryGraphStore(p)

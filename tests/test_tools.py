@@ -353,7 +353,7 @@ async def test_todas_las_tools_en_markdown(service: OsintService) -> None:
     assert "| maltego.Domain" in await ok(service, "osint_list_entity_types", {})
     assert "`md`" in await ok(service, "osint_list_cases", {})
     assert "Más conectadas" in await ok(service, "osint_get_case_summary", {"case_id": "md"})
-    assert "k: `v\\|x`" in await ok(service, "osint_get_entity", {"case_id": "md", "entity_id": d})
+    assert "k: `v|x`" in await ok(service, "osint_get_entity", {"case_id": "md", "entity_id": d})
     assert "Casos: `md`" in await ok(service, "osint_search_entities", {"query": "a.com"})
     assert "Sin resultados" in await ok(service, "osint_search_entities", {"query": "zzz"})
     assert "→" in await ok(service, "osint_get_neighbors", {"case_id": "md", "entity_id": d, "direction": "out"})
@@ -375,3 +375,22 @@ async def test_todas_las_tools_en_markdown(service: OsintService) -> None:
     assert "No hay transforms configurados para" in await ok(
         service, "osint_list_transforms", {"entity_type": "maltego.Hash"}
     ) or "EchoInput" in await ok(service, "osint_list_transforms", {"entity_type": "maltego.Hash"})
+
+
+async def test_cadena_no_supera_el_presupuesto(service: OsintService) -> None:
+    res = json.loads(
+        await ok(
+            service,
+            "osint_run_transform_chain",
+            {
+                "case_id": "budget",
+                "entity_type": "maltego.EmailAddress",
+                "value": "ana@example.net",
+                "transforms": ["EmailToDomain", "DomainToWebsite"],
+                "max_total_entities": 3,
+                "response_format": "json",
+            },
+        )
+    )
+    assert res["stopped_by_limit"] is True
+    assert (await service.case_summary("budget", 0)).entity_count == 3

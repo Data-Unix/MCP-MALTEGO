@@ -1,16 +1,22 @@
 """Backend en memoria, con persistencia opcional en un fichero JSON.
 
 Pensado para desarrollo local, pruebas y uso sin Azure. Mismo contrato que el backend Gremlin.
+Varios procesos (p. ej. varios agentes en Orca) pueden compartir el fichero: cada escritura toma un
+bloqueo de fichero, recarga si otro proceso lo cambió, aplica el cambio y guarda.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
+import sys
 import tempfile
+import threading
 from collections import Counter, deque
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -38,27 +44,93 @@ class MemoryGraphStore:
         self._cases: dict[str, CaseRecord] = {}
         self._entities: dict[str, dict[str, EntityRecord]] = {}
         self._edges: dict[str, dict[str, EdgeRecord]] = {}
-        if data_file and data_file.exists():
-            self._load(data_file)
+        self._loaded_mtime: tuple[int, int, int] | None = None
+        # Protege el estado frente al hilo de escritura (asyncio.to_thread) y lecturas concurrentes.
+        self._sync_lock = threading.RLock()
+        self._reload_if_changed()
 
     # ---------- persistencia ----------
+    def _mtime(self) -> tuple[int, int, int] | None:
+        """Huella del fichero. Cada guardado crea un inodo nuevo (os.replace), así que la huella cambia
+        aunque el sistema de ficheros tenga poca resolución de fechas."""
+        try:
+            st = self._data_file.stat() if self._data_file else None
+        except FileNotFoundError:
+            return None
+        return (st.st_ino, st.st_mtime_ns, st.st_size) if st else None
+
+    def _reload_if_changed(self) -> None:
+        """Recarga el fichero si otro proceso lo modificó desde la última lectura/escritura."""
+        with self._sync_lock:
+            mtime = self._mtime()
+            if self._data_file is None or mtime is None or mtime == self._loaded_mtime:
+                return
+            self._load(self._data_file)
+            self._loaded_mtime = mtime
+
     def _load(self, path: Path) -> None:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise BackendError(f"No se pudo leer el fichero de datos {path.name}: {exc.__class__.__name__}.") from exc
-        for c in raw.get("cases", []):
-            case = CaseRecord(**c)
-            self._cases[case.case_id] = case
-            self._entities.setdefault(case.case_id, {})
-            self._edges.setdefault(case.case_id, {})
-        for e in raw.get("entities", []):
-            ent = EntityRecord(**e)
+            cases = {c["case_id"]: CaseRecord(**c) for c in raw.get("cases", [])}
+            entities = [EntityRecord(**e) for e in raw.get("entities", [])]
+            edges = [EdgeRecord(**e) for e in raw.get("edges", [])]
+        except (OSError, json.JSONDecodeError, TypeError, KeyError, AttributeError) as exc:
+            raise BackendError(
+                f"No se pudo leer el fichero de datos {path.name} ({exc.__class__.__name__}). "
+                "Revísalo o apunta MALTEGO_MCP_DATA_FILE a otro fichero."
+            ) from exc
+        self._cases = cases
+        self._entities = {cid: {} for cid in cases}
+        self._edges = {cid: {} for cid in cases}
+        for ent in entities:
             self._entities.setdefault(ent.case_id, {})[ent.id] = ent
-        for e in raw.get("edges", []):
-            edge = EdgeRecord(**e)
+        for edge in edges:
             self._edges.setdefault(edge.case_id, {})[edge.id] = edge
         logger.info("Grafo cargado desde %s (%d casos)", path, len(self._cases))
+
+    @contextlib.contextmanager
+    def _file_lock(self) -> Iterator[None]:
+        """Bloqueo exclusivo entre procesos sobre <data_file>.lock (POSIX y Windows)."""
+        if self._data_file is None:
+            yield
+            return
+        self._data_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._data_file.with_suffix(self._data_file.suffix + ".lock"), "a+b") as fh:
+            if sys.platform == "win32":  # pragma: no cover - solo Windows
+                import msvcrt
+
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
+
+    def _write_sync[T](self, mutate: Callable[[], T]) -> T:
+        with self._file_lock(), self._sync_lock:
+            self._reload_if_changed()
+            result = mutate()
+            self._save()
+            return result
+
+    async def _write[T](self, mutate: Callable[[], T]) -> T:
+        """Serializa escrituras en el proceso y ejecuta la E/S de fichero fuera del bucle de eventos."""
+        async with self._lock:
+            if self._data_file is None:
+                return mutate()
+            return await asyncio.to_thread(self._write_sync, mutate)
+
+    def _read(self) -> None:
+        self._reload_if_changed()
 
     def _save(self) -> None:
         if not self._data_file:
@@ -75,32 +147,40 @@ class MemoryGraphStore:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, ensure_ascii=False)
             os.replace(tmp, self._data_file)
+            self._loaded_mtime = self._mtime()
         except OSError as exc:
             Path(tmp).unlink(missing_ok=True)
             raise BackendError(f"No se pudo guardar el grafo: {exc.__class__.__name__}.") from exc
 
     # ---------- casos ----------
     async def ensure_case(self, case_id: str, description: str = "") -> tuple[CaseRecord, bool]:
-        async with self._lock:
-            existing = self._cases.get(case_id)
+        self._read()
+        existing = self._cases.get(case_id)
+        if existing and (not description or description == existing.description):
+            return existing, False  # sin cambios: no se escribe
+
+        def mutate() -> tuple[CaseRecord, bool]:
             now = utc_now()
-            if existing:
-                if description and description != existing.description:
-                    existing = replace(existing, description=description, updated=now)
-                    self._cases[case_id] = existing
-                    self._save()
-                return existing, False
+            current = self._cases.get(case_id)
+            if current:
+                if description and description != current.description:
+                    current = replace(current, description=description, updated=now)
+                    self._cases[case_id] = current
+                return current, False
             case = CaseRecord(case_id=case_id, description=description, created=now, updated=now)
             self._cases[case_id] = case
             self._entities.setdefault(case_id, {})
             self._edges.setdefault(case_id, {})
-            self._save()
             return case, True
 
+        return await self._write(mutate)
+
     async def get_case(self, case_id: str) -> CaseRecord | None:
+        self._read()
         return self._cases.get(case_id)
 
     async def list_cases(self, limit: int, offset: int) -> Page[CaseRecord]:
+        self._read()
         cases = sorted(self._cases.values(), key=lambda c: c.updated, reverse=True)
         return Page(cases[offset : offset + limit], len(cases), offset, limit)
 
@@ -110,22 +190,25 @@ class MemoryGraphStore:
 
     # ---------- entidades ----------
     async def upsert_entity(self, entity: EntityRecord) -> tuple[EntityRecord, bool]:
-        async with self._lock:
+        def mutate() -> tuple[EntityRecord, bool]:
             self._require_case(entity.case_id)
             bucket = self._entities[entity.case_id]
             existing = bucket.get(entity.id)
             merged = merge_entity(existing, entity)
             bucket[entity.id] = merged
             self._touch_case(entity.case_id)
-            self._save()
             return merged, existing is None
 
+        return await self._write(mutate)
+
     async def get_entity(self, case_id: str, entity_id: str) -> EntityRecord | None:
+        self._read()
         return self._entities.get(case_id, {}).get(entity_id)
 
     async def search_entities(
         self, case_id: str, query: str, maltego_type: str, limit: int, offset: int
     ) -> Page[EntityRecord]:
+        self._read()
         if case_id:
             self._require_case(case_id)
             pools = [self._entities.get(case_id, {})]
@@ -144,7 +227,7 @@ class MemoryGraphStore:
 
     # ---------- aristas ----------
     async def upsert_edge(self, edge: EdgeRecord) -> tuple[EdgeRecord, bool]:
-        async with self._lock:
+        def mutate() -> tuple[EdgeRecord, bool]:
             self._require_case(edge.case_id)
             ents = self._entities[edge.case_id]
             for eid in (edge.out_id, edge.in_id):
@@ -155,12 +238,14 @@ class MemoryGraphStore:
             merged = merge_edge(existing, edge)
             bucket[edge.id] = merged
             self._touch_case(edge.case_id)
-            self._save()
             return merged, existing is None
+
+        return await self._write(mutate)
 
     async def neighbors(
         self, case_id: str, entity_id: str, edge_label: str, direction: Direction, limit: int
     ) -> list[Neighbor]:
+        self._read()
         self._require_case(case_id)
         ents = self._entities[case_id]
         if entity_id not in ents:
@@ -179,6 +264,7 @@ class MemoryGraphStore:
     async def find_paths(
         self, case_id: str, source_id: str, target_id: str, max_depth: int, limit: int
     ) -> list[list[str]]:
+        self._read()
         self._require_case(case_id)
         ents = self._entities[case_id]
         for eid in (source_id, target_id):
@@ -205,6 +291,7 @@ class MemoryGraphStore:
         return paths
 
     async def case_summary(self, case_id: str, top: int) -> CaseSummary:
+        self._read()
         self._require_case(case_id)
         ents = self._entities[case_id]
         edges = self._edges[case_id]
@@ -217,6 +304,7 @@ class MemoryGraphStore:
         return CaseSummary(self._cases[case_id], len(ents), len(edges), dict(by_type), top_connected)
 
     async def export_case(self, case_id: str, max_items: int) -> tuple[list[EntityRecord], list[EdgeRecord]]:
+        self._read()
         self._require_case(case_id)
         ents = list(self._entities[case_id].values())[:max_items]
         kept = {e.id for e in ents}

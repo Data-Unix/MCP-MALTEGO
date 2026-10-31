@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import logging
+import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -216,9 +217,7 @@ class OsintService:
             source_entity, _ = await self.store.upsert_entity(source_entity)
         return await self._run_on_entity(spec, source_entity, soft_limit, save)
 
-    async def _run_on_entity(
-        self, spec: TransformSpec, source: EntityRecord, soft_limit: int, save: bool
-    ) -> TransformRun:
+    async def _fetch(self, spec: TransformSpec, source: EntityRecord, soft_limit: int) -> TransformResponse:
         response = await run_remote_transform(
             spec, source.maltego_type, source.value, source.properties, soft_limit=soft_limit
         )
@@ -226,7 +225,12 @@ class OsintService:
             raise TransformError(
                 f"El transform '{spec.name}' devolvió un error: " + " | ".join(x[:300] for x in response.exceptions)
             )
-        return await self._ingest(spec, source, response, save)
+        return response
+
+    async def _run_on_entity(
+        self, spec: TransformSpec, source: EntityRecord, soft_limit: int, save: bool
+    ) -> TransformRun:
+        return await self._ingest(spec, source, await self._fetch(spec, source, soft_limit), save)
 
     async def _ingest(
         self, spec: TransformSpec, source: EntityRecord, response: TransformResponse, save: bool
@@ -294,27 +298,42 @@ class OsintService:
         stopped = False
         sem = asyncio.Semaphore(CHAIN_CONCURRENCY)
 
-        async def run_one(spec: TransformSpec, ent: EntityRecord) -> TransformRun | str:
+        async def fetch(spec: TransformSpec, ent: EntityRecord, limit: int) -> TransformResponse | str:
             async with sem:
                 try:
-                    return await self._run_on_entity(spec, ent, soft_limit, save=True)
+                    return await self._fetch(spec, ent, limit)
                 except MaltegoMcpError as exc:
                     return f"{ent.value[:60]}: {exc}"
 
         for spec in specs:
+            remaining = max_total_entities - len(seen)
+            if remaining <= 0:
+                stopped = True
+                break
             step = ChainStep(spec.name)
             steps.append(step)
-            candidates = [e for e in frontier if spec.accepts(e.maltego_type)]
-            step.skipped_inputs = len(frontier) - len(candidates) + max(0, len(candidates) - max_inputs_per_step)
-            candidates = candidates[:max_inputs_per_step]
+            accepted = [e for e in frontier if spec.accepts(e.maltego_type)]
+            candidates = accepted[: min(max_inputs_per_step, remaining)]
+            step.skipped_inputs = len(frontier) - len(candidates)
             step.inputs = len(candidates)
-            outcomes = await asyncio.gather(*(run_one(spec, e) for e in candidates))
+            # Las consultas se lanzan en paralelo; el guardado es secuencial y respeta el presupuesto.
+            responses = await asyncio.gather(*(fetch(spec, e, min(soft_limit, remaining)) for e in candidates))
             next_frontier: list[EntityRecord] = []
-            for outcome in outcomes:
-                if isinstance(outcome, str):
-                    step.errors.append(outcome)
+            for ent, response in zip(candidates, responses, strict=True):
+                if isinstance(response, str):
+                    step.errors.append(response)
                     continue
-                for res in outcome.results:
+                remaining = max_total_entities - len(seen)
+                if remaining <= 0:
+                    stopped = True
+                    break
+                response.entities = response.entities[:remaining]
+                try:
+                    run = await self._ingest(spec, ent, response, save=True)
+                except MaltegoMcpError as exc:
+                    step.errors.append(f"{ent.value[:60]}: {exc}")
+                    continue
+                for res in run.results:
                     step.outputs += 1
                     if res.entity.id not in seen:
                         seen.add(res.entity.id)
@@ -323,8 +342,7 @@ class OsintService:
             frontier = next_frontier
             if len(seen) >= max_total_entities:
                 stopped = True
-                break
-            if not frontier:
+            if stopped or not frontier:
                 break
         return root, steps, stopped
 
@@ -332,9 +350,9 @@ class OsintService:
     async def export_case(self, case_id: str, fmt: ExportFormat) -> tuple[Path, int, int]:
         cid = validate_case_id(case_id)
         entities, edges = await self.store.export_case(cid, MAX_EXPORT_ITEMS)
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         self.export_dir.mkdir(parents=True, exist_ok=True)
-        path = self.export_dir / f"{cid}-{stamp}.{fmt}"
+        path = self.export_dir / f"{cid}-{stamp}-{secrets.token_hex(3)}.{fmt}"
         if fmt == "json":
             content = json.dumps(
                 {

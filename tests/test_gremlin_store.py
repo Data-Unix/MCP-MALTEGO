@@ -54,8 +54,10 @@ class FakeGraph:
             self.v[(b["pk"], b["vid"])].update({k: b[k] for k in ("description", "now") if k in b})
             return []
         if q == G.Q_ADD_ENTITY:
-            props = {k: v for k, v in b.items() if k not in ("vid",)}
-            props.update(id=b["vid"], case_id=b["pk"])
+            if (b["pk"], b["vid"]) in self.v:
+                raise G.ConflictError("409")
+            props = {k: v for k, v in b.items() if k not in ("vid", "vlabel", "val")}
+            props.update(id=b["vid"], case_id=b["pk"], label=b["vlabel"], value=b["val"])
             self.v[(b["pk"], b["vid"])] = props
             return []
         if q == G.Q_UPDATE_ENTITY:
@@ -65,9 +67,11 @@ class FakeGraph:
             p = self.e.get(b["eid"])
             return [self.vm(p)] if p else []
         if q == G.Q_ADD_EDGE:
+            if b["eid"] in self.e:
+                raise G.ConflictError("409")
             self.e[b["eid"]] = {
                 "id": b["eid"],
-                "label": b["label"],
+                "label": b["elabel"],
                 "case_id": b["pk"],
                 "out_id": b["out_id"],
                 "in_id": b["in_id"],
@@ -89,7 +93,7 @@ class FakeGraph:
             rows = []
             for e in self.e.values():
                 if (out and e["out_id"] == b["vid"]) or (not out and e["in_id"] == b["vid"]):
-                    if "label" in b and e["label"] != b["label"]:
+                    if "elabel" in b and e["label"] != b["elabel"]:
                         continue
                     other = e["in_id"] if out else e["out_id"]
                     rows.append({"e": self.vm(e), "v": self.vm(self.v[(b["pk"], other)])})
@@ -168,6 +172,7 @@ async def test_flujo_completo_y_ningun_valor_en_la_consulta(svc: OsintService, f
         base = query.removesuffix(".count()").removesuffix(".range(lo, hi).valueMap(true)")
         assert query in templates or base in {G._search_query(a, b, c) for a in (0, 1) for b in (0, 1) for c in (0, 1)}
         assert all(isinstance(k, str) and k.isidentifier() for k in bindings)
+        assert not (G.RESERVED_BINDINGS & bindings.keys()), (query, bindings)
 
 
 async def test_errores_de_existencia(svc: OsintService) -> None:
@@ -236,3 +241,33 @@ async def test_error_de_conexion_y_de_servidor() -> None:
         await _executor(_Client([ConnectionError("down")]))("q", {})
     with pytest.raises(BackendError, match="estado 400"):
         await _executor(_Client([_Err({"x-ms-status-code": 400})]))("q", {})
+
+
+async def test_alta_concurrente_se_fusiona_en_vez_de_fallar(svc: OsintService, fake: FakeGraph) -> None:
+    """Simula que otra petición crea la entidad entre la lectura y el addV (409 en Cosmos)."""
+    await svc.create_case("c1", "")
+    original = fake.__call__
+    created_behind = False
+
+    async def racing(q: str, b: dict[str, Any]) -> list[Any]:
+        nonlocal created_behind
+        if q == G.Q_ADD_ENTITY and not created_behind:
+            created_behind = True
+            await original(q, {**b, "confidence": 0.2, "sources_json": '["otro"]'})
+        return await original(q, b)
+
+    store = GremlinGraphStore(racing)
+    ent = svc.build_entity("c1", "maltego.Domain", "a.com", 0.9, "yo")
+    merged, created = await store.upsert_entity(ent)
+    assert created is False
+    assert merged.confidence == 0.9 and merged.sources == ["otro", "yo"]
+
+
+async def test_ejecutor_rechaza_bindings_reservados() -> None:
+    with pytest.raises(BackendError, match="reservados"):
+        await _executor(_Client([]))("g.V(label)", {"label": "x"})
+
+
+async def test_409_se_traduce_a_conflicto() -> None:
+    with pytest.raises(G.ConflictError):
+        await _executor(_Client([_Err({"x-ms-status-code": 409})]))("q", {})

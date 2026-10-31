@@ -31,6 +31,14 @@ from maltego_mcp.graph.base import CaseSummary, Direction, Neighbor, Page
 logger = logging.getLogger(__name__)
 
 Executor = Callable[[str, dict[str, Any]], Awaitable[list[Any]]]
+# Gremlin Server rechaza bindings con nombres de tokens T (id, key, label, value).
+RESERVED_BINDINGS = frozenset({"id", "key", "label", "value"})
+
+
+class ConflictError(BackendError):
+    """El elemento ya existe (409): otra petición concurrente lo creó."""
+
+
 MAX_CASES_SCAN = 500
 
 # ----------------------------------------------------------------------------------------------
@@ -45,8 +53,8 @@ Q_UPDATE_CASE = "g.V(vid).has('pk', pk).property('description', description).pro
 Q_TOUCH_CASE = "g.V(vid).has('pk', pk).property('updated', now)"
 Q_LIST_CASES = "g.V().hasLabel('case').limit(max_cases).valueMap(true)"
 Q_ADD_ENTITY = (
-    "g.addV(label).property('id', vid).property('pk', pk).property('case_id', pk)"
-    ".property('maltego_type', maltego_type).property('value', value).property('value_lc', value_lc)"
+    "g.addV(vlabel).property('id', vid).property('pk', pk).property('case_id', pk)"
+    ".property('maltego_type', maltego_type).property('value', val).property('value_lc', value_lc)"
     ".property('confidence', confidence).property('sources_json', sources_json)"
     ".property('props_json', props_json).property('first_seen', first_seen).property('last_seen', last_seen)"
 )
@@ -54,15 +62,15 @@ Q_UPDATE_ENTITY = (
     "g.V(vid).has('pk', pk).property('confidence', confidence).property('sources_json', sources_json)"
     ".property('props_json', props_json).property('last_seen', last_seen)"
 )
-Q_GET_EDGE = "g.V(out_id).has('pk', pk).outE(label).hasId(eid).valueMap(true)"
+Q_GET_EDGE = "g.V(out_id).has('pk', pk).outE(elabel).hasId(eid).valueMap(true)"
 Q_ADD_EDGE = (
-    "g.V(out_id).has('pk', pk).addE(label).to(g.V(in_id).has('pk', pk)).property('id', eid)"
+    "g.V(out_id).has('pk', pk).addE(elabel).to(g.V(in_id).has('pk', pk)).property('id', eid)"
     ".property('case_id', pk).property('out_id', out_id).property('in_id', in_id)"
     ".property('confidence', confidence).property('sources_json', sources_json)"
     ".property('first_seen', first_seen).property('last_seen', last_seen)"
 )
 Q_UPDATE_EDGE = (
-    "g.V(out_id).has('pk', pk).outE(label).hasId(eid).property('confidence', confidence)"
+    "g.V(out_id).has('pk', pk).outE(elabel).hasId(eid).property('confidence', confidence)"
     ".property('sources_json', sources_json).property('last_seen', last_seen)"
 )
 Q_NEIGHBORS = {
@@ -73,7 +81,7 @@ Q_NEIGHBORS = {
     (
         "out",
         True,
-    ): "g.V(vid).has('pk', pk).outE(label).limit(n).project('e', 'v').by(valueMap(true)).by(inV().valueMap(true))",
+    ): "g.V(vid).has('pk', pk).outE(elabel).limit(n).project('e', 'v').by(valueMap(true)).by(inV().valueMap(true))",
     (
         "in",
         False,
@@ -81,7 +89,7 @@ Q_NEIGHBORS = {
     (
         "in",
         True,
-    ): "g.V(vid).has('pk', pk).inE(label).limit(n).project('e', 'v').by(valueMap(true)).by(outV().valueMap(true))",
+    ): "g.V(vid).has('pk', pk).inE(elabel).limit(n).project('e', 'v').by(valueMap(true)).by(outV().valueMap(true))",
 }
 Q_PATHS = (
     "g.V(src).has('pk', pk).repeat(both().simplePath()).until(hasId(dst).or().loops().is(gte(max_depth)))"
@@ -228,14 +236,17 @@ class GremlinGraphStore:
 
     async def upsert_entity(self, entity: EntityRecord) -> tuple[EntityRecord, bool]:
         await self._require_case(entity.case_id)
+        return await self._upsert_entity(entity, retry_on_conflict=True)
+
+    async def _upsert_entity(self, entity: EntityRecord, retry_on_conflict: bool) -> tuple[EntityRecord, bool]:
         existing = await self.get_entity(entity.case_id, entity.id)
         merged = merge_entity(existing, entity)
         b = {
             "vid": merged.id,
             "pk": merged.case_id,
-            "label": merged.label,
+            "vlabel": merged.label,
             "maltego_type": merged.maltego_type,
-            "value": merged.value,
+            "val": merged.value,
             "value_lc": merged.value.lower(),
             "confidence": merged.confidence,
             "sources_json": json.dumps(merged.sources, ensure_ascii=False),
@@ -244,7 +255,12 @@ class GremlinGraphStore:
             "last_seen": merged.last_seen,
         }
         if existing is None:
-            await self._run(Q_ADD_ENTITY, b)
+            try:
+                await self._run(Q_ADD_ENTITY, b)
+            except ConflictError:  # creada en paralelo: se fusiona con la versión ya guardada
+                if not retry_on_conflict:
+                    raise
+                return await self._upsert_entity(entity, retry_on_conflict=False)
         else:
             await self._run(
                 Q_UPDATE_ENTITY,
@@ -277,7 +293,10 @@ class GremlinGraphStore:
         for eid in (edge.out_id, edge.in_id):
             if await self.get_entity(edge.case_id, eid) is None:
                 raise NotFound(f"La entidad '{eid}' no existe en el caso '{edge.case_id}'.")
-        key = {"out_id": edge.out_id, "pk": edge.case_id, "label": edge.label, "eid": edge.id}
+        return await self._upsert_edge(edge, retry_on_conflict=True)
+
+    async def _upsert_edge(self, edge: EdgeRecord, retry_on_conflict: bool) -> tuple[EdgeRecord, bool]:
+        key = {"out_id": edge.out_id, "pk": edge.case_id, "elabel": edge.label, "eid": edge.id}
         rows = await self._run(Q_GET_EDGE, key)
         existing = edge_from_vm(rows[0]) if rows else None
         merged = merge_edge(existing, edge)
@@ -290,11 +309,16 @@ class GremlinGraphStore:
             "last_seen": merged.last_seen,
         }
         if existing is None:
-            await self._run(Q_ADD_EDGE, b)
+            try:
+                await self._run(Q_ADD_EDGE, b)
+            except ConflictError:
+                if not retry_on_conflict:
+                    raise
+                return await self._upsert_edge(edge, retry_on_conflict=False)
         else:
             await self._run(
                 Q_UPDATE_EDGE,
-                {k: b[k] for k in ("out_id", "pk", "label", "eid", "confidence", "sources_json", "last_seen")},
+                {k: b[k] for k in ("out_id", "pk", "elabel", "eid", "confidence", "sources_json", "last_seen")},
             )
         await self._touch_case(edge.case_id)
         return merged, existing is None
@@ -310,7 +334,7 @@ class GremlinGraphStore:
         for d in dirs:
             b: dict[str, Any] = {"vid": entity_id, "pk": case_id, "n": limit}
             if edge_label:
-                b["label"] = edge_label
+                b["elabel"] = edge_label
             rows = await self._run(Q_NEIGHBORS[(d, bool(edge_label))], b)
             for row in rows:
                 result.append(Neighbor(edge_from_vm(row["e"]), entity_from_vm(row["v"]), "out" if d == "out" else "in"))
@@ -399,6 +423,9 @@ class GremlinPythonExecutor:
         return list(rows)
 
     async def __call__(self, query: str, bindings: dict[str, Any]) -> list[Any]:
+        reserved = RESERVED_BINDINGS & bindings.keys()
+        if reserved:
+            raise BackendError(f"Error interno: bindings reservados {sorted(reserved)}.")
         attempt = 0
         while True:
             try:
@@ -414,6 +441,8 @@ class GremlinPythonExecutor:
                     await asyncio.sleep(delay)
                     continue
                 logger.error("Error Gremlin (estado %s): %s", status, exc.__class__.__name__)
+                if status == 409:
+                    raise ConflictError("El elemento ya existe en el grafo.") from exc
                 if status == 429:
                     raise BackendError(
                         "Cosmos DB está limitando peticiones (429). Reduce limit o reintenta en unos segundos."

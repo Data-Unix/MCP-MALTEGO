@@ -24,7 +24,9 @@ from maltego_mcp.domain.entity_types import ENTITY_TYPES
 from maltego_mcp.errors import MaltegoMcpError
 from maltego_mcp.format import (
     UNTRUSTED_NOTE,
+    cell,
     code,
+    code_cell,
     entities_table,
     entity_line,
     pagination_line,
@@ -184,7 +186,7 @@ def create_server(settings: Settings | None = None, service: OsintService | None
         rows = ["| transform | acepta | produce | servidor | descripción |", "|---|---|---|---|---|"]
         rows += [
             f"| {s.name} | {', '.join(s.input_types) or 'cualquiera'} | {', '.join(s.output_types) or '?'} | "
-            f"{s.server.name} | {safe(s.description, 160)} |"
+            f"{s.server.name} | {cell(s.description, 160)} |"
             for s in specs
         ]
         return "\n".join(rows)
@@ -230,7 +232,7 @@ def create_server(settings: Settings | None = None, service: OsintService | None
         if not page.items:
             return "No hay casos. Crea uno con osint_create_case."
         rows = ["| case_id | descripción | actualizado |", "|---|---|---|"]
-        rows += [f"| `{c.case_id}` | {safe(c.description, 120)} | {c.updated} |" for c in page.items]
+        rows += [f"| `{c.case_id}` | {cell(c.description, 120)} | {c.updated} |" for c in page.items]
         rows.append(pagination_line(page.total, offset, len(page.items), page.next_offset))
         return "\n".join(rows)
 
@@ -419,7 +421,7 @@ def create_server(settings: Settings | None = None, service: OsintService | None
             return "La entidad no tiene relaciones" + (f" de tipo {safe(edge_label)}" if edge_label else "") + "."
         rows = ["| dirección | relación | entidad | tipo | id |", "|---|---|---|---|---|"]
         rows += [
-            f"| {'→' if n.direction == 'out' else '←'} | {n.edge.label} | {code(n.entity.value)} | "
+            f"| {'→' if n.direction == 'out' else '←'} | {n.edge.label} | {code_cell(n.entity.value)} | "
             f"{n.entity.maltego_type} | `{n.entity.id}` |"
             for n in items
         ]
@@ -497,7 +499,7 @@ def create_server(settings: Settings | None = None, service: OsintService | None
         if run.results:
             rows = ["| relación | tipo | valor | id | nueva |", "|---|---|---|---|---|"]
             rows += [
-                f"| {r.edge_label} | {r.entity.maltego_type} | {code(r.entity.value)} | `{r.entity.id}` | "
+                f"| {r.edge_label} | {r.entity.maltego_type} | {code_cell(r.entity.value)} | `{r.entity.id}` | "
                 f"{'sí' if r.created else 'no'} |"
                 for r in run.results
             ]

@@ -73,8 +73,13 @@ def _url(value: str) -> str:
     parts = urlsplit(value.strip())
     if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
         raise InvalidInput(f"'{value[:80]}' no es una URL http(s) válida (ej.: https://example.com/a).")
-    host = _domain(parts.hostname) if not _is_ip(parts.hostname) else parts.hostname
-    netloc = host if parts.port is None else f"{host}:{parts.port}"
+    if _is_ip(parts.hostname):
+        ip = ipaddress.ip_address(parts.hostname)
+        host = f"[{ip.compressed}]" if ip.version == 6 else ip.compressed
+    else:
+        host = _domain(parts.hostname)
+    port = parts.port  # ValueError si el puerto es inválido: se traduce en normalize_value
+    netloc = host if port is None else f"{host}:{port}"
     if parts.username or parts.password:
         raise InvalidInput("La URL no puede incluir credenciales (usuario:clave@).")
     return urlunsplit((parts.scheme.lower(), netloc, parts.path or "/", parts.query, ""))
@@ -120,6 +125,13 @@ def normalize_value(entity_type: EntityType, value: str) -> str:
         raise InvalidInput("value no puede estar vacío.")
     if len(value) > MAX_VALUE_LEN:
         raise InvalidInput(f"value supera {MAX_VALUE_LEN} caracteres.")
+    try:
+        return _normalize(entity_type, value)
+    except ValueError as exc:  # p. ej. puertos o rangos fuera de límites en la librería estándar
+        raise InvalidInput(f"'{value[:80]}' no es un valor válido para {entity_type.maltego_type}.") from exc
+
+
+def _normalize(entity_type: EntityType, value: str) -> str:
     match entity_type.normalizer:
         case "domain":
             return _domain(value)
@@ -128,10 +140,7 @@ def normalize_value(entity_type: EntityType, value: str) -> str:
         case "ipv6":
             return _ip(value, 6)
         case "netblock":
-            try:
-                return _netblock(value)
-            except ValueError as exc:
-                raise InvalidInput(f"'{value[:80]}' no es un rango de red válido.") from exc
+            return _netblock(value)
         case "asn":
             return _asn(value)
         case "url":
