@@ -23,33 +23,55 @@ FORBIDDEN_SCHEMA_KEYS: frozenset[str] = frozenset(
         "const",
     }
 )
-ALLOWED_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "boolean", "array", "object"})
+# Tipos permitidos en propiedades. "object" solo se admite en la raíz del inputSchema.
+ALLOWED_PROPERTY_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "boolean", "array"})
+ALLOWED_ITEM_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "boolean"})
+# Claves cuyo valor son datos (no subesquemas): no se inspeccionan como esquema.
+DATA_KEYS: frozenset[str] = frozenset(
+    {"default", "enum", "examples", "example", "required", "description", "title"}
+)
 TOOL_NAME_RE = re.compile(r"^osint_[a-z0-9_]+$")
 MAX_TOOL_NAME_LEN = 40
 MAX_TOOLS = 20
 
 
-def find_schema_issues(schema: Any, path: str = "$") -> list[str]:
-    """Devuelve una lista de problemas de portabilidad encontrados en un JSON Schema."""
-    issues: list[str] = []
-    if isinstance(schema, dict):
-        for key, value in schema.items():
-            here = f"{path}.{key}"
-            if key in FORBIDDEN_SCHEMA_KEYS:
-                issues.append(f"{here}: clave no portable '{key}'")
-            if key == "type":
-                if not isinstance(value, str):
-                    issues.append(f"{here}: 'type' debe ser un único string, no {value!r}")
-                elif value not in ALLOWED_TYPES:
-                    issues.append(f"{here}: tipo no soportado '{value}'")
-            if key == "properties" and isinstance(value, dict):
-                for prop, sub in value.items():
-                    issues.extend(find_schema_issues(sub, f"{here}.{prop}"))
-            elif key != "properties":
-                issues.extend(find_schema_issues(value, here))
-    elif isinstance(schema, list):
-        for i, item in enumerate(schema):
-            issues.extend(find_schema_issues(item, f"{path}[{i}]"))
+def find_schema_issues(schema: Any) -> list[str]:
+    """Devuelve los problemas de portabilidad de un inputSchema de tool (raíz = objeto)."""
+    if not isinstance(schema, dict):
+        return ["$: el inputSchema debe ser un objeto"]
+    issues = _check_node(schema, "$", allowed_types=frozenset({"object"}))
+    for prop, sub in (schema.get("properties") or {}).items():
+        issues.extend(_check_property(sub, f"$.properties.{prop}"))
+    return issues
+
+
+def _check_property(schema: Any, path: str) -> list[str]:
+    if not isinstance(schema, dict):
+        return [f"{path}: la propiedad debe ser un esquema"]
+    issues = _check_node(schema, path, allowed_types=ALLOWED_PROPERTY_TYPES)
+    if "properties" in schema:
+        issues.append(f"{path}: objetos anidados no permitidos; usa parámetros planos")
+    if schema.get("type") == "array":
+        items = schema.get("items")
+        if not isinstance(items, dict):
+            issues.append(f"{path}: los arrays deben declarar 'items' con un tipo primitivo")
+        else:
+            issues.extend(_check_node(items, f"{path}.items", allowed_types=ALLOWED_ITEM_TYPES))
+            if "properties" in items or "items" in items:
+                issues.append(f"{path}.items: solo se permiten arrays de primitivos")
+    return issues
+
+
+def _check_node(node: dict[str, Any], path: str, allowed_types: frozenset[str]) -> list[str]:
+    issues = [f"{path}.{k}: clave no portable '{k}'" for k in node if k in FORBIDDEN_SCHEMA_KEYS]
+    if "type" not in node:
+        issues.append(f"{path}: falta 'type'")
+    else:
+        t = node["type"]
+        if not isinstance(t, str):
+            issues.append(f"{path}.type: 'type' debe ser un único string, no {t!r}")
+        elif t not in allowed_types:
+            issues.append(f"{path}.type: tipo '{t}' no permitido aquí (permitidos: {sorted(allowed_types)})")
     return issues
 
 

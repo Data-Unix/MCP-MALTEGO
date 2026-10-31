@@ -41,15 +41,30 @@ async def test_todas_las_tools_tienen_descripcion_y_anotaciones(tools) -> None: 
             "exclusiveMinimum",
         ),
         ({"type": "object", "$defs": {}}, "$defs"),
-        ({"type": ["string", "null"]}, "único string"),
+        ({"type": "object", "properties": {"x": {"type": ["string", "null"]}}}, "único string"),
+        ({"type": "object", "properties": {"f": {"type": "object"}}}, "no permitido"),
+        ({"type": "object", "properties": {"f": {"type": "object", "properties": {}}}}, "anidados"),
+        (
+            {"type": "object", "properties": {"l": {"type": "array", "items": {"type": "object"}}}},
+            "no permitido",
+        ),
+        ({"type": "object", "properties": {"l": {"type": "array"}}}, "items"),
+        ({"type": "object", "properties": {"x": {"description": "sin tipo"}}}, "falta 'type'"),
     ],
 )
 def test_el_validador_detecta_claves_prohibidas(schema: dict[str, object], expected: str) -> None:
     assert any(expected in issue for issue in find_schema_issues(schema))
 
 
-def test_propiedad_llamada_como_clave_prohibida_no_es_falso_positivo() -> None:
-    schema = {"type": "object", "properties": {"const": {"type": "string"}}}
+def test_sin_falsos_positivos_en_nombres_y_valores() -> None:
+    schema = {
+        "type": "object",
+        "required": ["const"],
+        "properties": {
+            "const": {"type": "string", "default": {"anyOf": 1}, "examples": [{"type": ["a"]}]},
+            "tags": {"type": "array", "items": {"type": "string", "enum": ["a", "b"]}},
+        },
+    }
     assert find_schema_issues(schema) == []
 
 

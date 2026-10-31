@@ -1,10 +1,12 @@
 import json
+import sys
 
+import pytest
 from mcp import Client
 from mcp.types import TextContent
 
 from maltego_mcp.domain.entity_types import ENTITY_TYPES
-from maltego_mcp.server import create_server
+from maltego_mcp.server import configure_logging, create_server, main
 
 
 def _text(result) -> str:  # type: ignore[no-untyped-def]
@@ -43,3 +45,20 @@ async def test_anotaciones_de_solo_lectura() -> None:
     assert tool.annotations is not None
     assert tool.annotations.read_only_hint is True
     assert tool.annotations.destructive_hint is False
+
+
+def test_http_fuera_de_localhost_se_rechaza_sin_flag_explicito() -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--transport", "http", "--host", "0.0.0.0"])
+    assert exc.value.code == 2
+
+
+def test_log_level_se_aplica() -> None:
+    import logging
+
+    create_server()  # instala el handler del SDK; configure_logging debe prevalecer
+    configure_logging("DEBUG")
+    root = logging.getLogger()
+    assert root.level == logging.DEBUG
+    assert all(getattr(h, "stream", None) is sys.stderr for h in root.handlers)
+    configure_logging("INFO")
