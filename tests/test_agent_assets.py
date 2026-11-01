@@ -69,10 +69,13 @@ def test_no_escribe_a_traves_de_enlaces(tmp_path: Path, monkeypatch) -> None:  #
     outside = tmp_path / "fuera.md"
     outside.write_text("no tocar", encoding="utf-8")
     link = ROOT / ".claude" / "agents" / "zz-enlace.md"
-    link.symlink_to(outside)
-    try:
-        import pytest
+    import pytest
 
+    try:
+        link.symlink_to(outside)
+    except OSError as exc:  # Windows sin modo desarrollador ni privilegio SeCreateSymbolicLink
+        pytest.skip(f"el sistema no permite crear enlaces simbólicos: {exc}")
+    try:
         with pytest.raises(SystemExit, match="fuera"):
             mod.main([])
         assert outside.read_text(encoding="utf-8") == "no tocar"
