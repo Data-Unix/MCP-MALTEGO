@@ -613,4 +613,3 @@ async def test_analyze_subject_behavior_transform(ctx: BuiltinContext) -> None:
         for e in res.entities
         if e.entity_type == "humint.PsychologicalTrait"
     )
-

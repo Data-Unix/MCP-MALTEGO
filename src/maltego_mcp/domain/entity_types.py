@@ -21,9 +21,7 @@ from maltego_mcp.errors import InvalidInput
 logger = logging.getLogger(__name__)
 
 Normalizer = Literal["domain", "ipv4", "ipv6", "netblock", "asn", "url", "email", "phone", "hash", "port", "text"]
-Category = Literal[
-    "infraestructura", "identidad", "organizacion", "artefacto", "cripto", "social", "humint", "general"
-]
+Category = Literal["infraestructura", "identidad", "organizacion", "artefacto", "cripto", "social", "humint", "general"]
 HUMINT_ONTOLOGY_PATH = Path(__file__).resolve().parents[1] / "ontology" / "humint.json"
 
 

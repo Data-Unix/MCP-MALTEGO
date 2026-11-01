@@ -796,4 +796,3 @@ def infer_relationship_attributes(
         "humint.shared_neighbors": str(shared),
         "humint.epistemic_status": status,
     }
-

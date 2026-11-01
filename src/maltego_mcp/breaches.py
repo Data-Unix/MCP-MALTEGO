@@ -198,8 +198,7 @@ def sync_breach_dir(home: Path) -> int:
     total_added = 0
     with _connect(db_path) as conn:
         known = {
-            str(r[0]): int(r[1])
-            for r in conn.execute("SELECT file_name, mtime_ns FROM breach_sources").fetchall()
+            str(r[0]): int(r[1]) for r in conn.execute("SELECT file_name, mtime_ns FROM breach_sources").fetchall()
         }
     for f in sorted(breach_dir.iterdir()):
         if not f.is_file() or f.suffix.lower() not in (".csv", ".tsv", ".jsonl", ".txt"):
@@ -249,4 +248,3 @@ def query_local_breaches(home: Path, kind: str, normalized_value: str, limit: in
         )
         for r in rows
     ]
-

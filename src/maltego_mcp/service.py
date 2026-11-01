@@ -815,9 +815,7 @@ class OsintService:
             raise InvalidInput(f"Para borrar el caso escribe su id en confirm (confirm='{cid}'). No se puede deshacer.")
         return await self.store.delete_case(cid)
 
-    async def merge_cases(
-        self, target_case: str, source_case: str, expected_version: int = 0
-    ) -> tuple[int, int]:
+    async def merge_cases(self, target_case: str, source_case: str, expected_version: int = 0) -> tuple[int, int]:
         """Fusiona las entidades, relaciones y memoria de source_case (o 'all' para sub-casos) en target_case."""
         tgt = validate_case_id(target_case)
         await self.store.ensure_case(tgt)

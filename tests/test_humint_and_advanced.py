@@ -297,9 +297,7 @@ async def test_humint1_y_2_ontologia_behavior_y_persona_machine(service: OsintSe
     )
     assert beh["emitted"]
     assert all(
-        e["value"].startswith("[Hipótesis]")
-        for e in beh["emitted"]
-        if e["maltego_type"] == "humint.PsychologicalTrait"
+        e["value"].startswith("[Hipótesis]") for e in beh["emitted"] if e["maltego_type"] == "humint.PsychologicalTrait"
     )
 
     # Verificar que PersonaFootprint está disponible en el catálogo de Machines

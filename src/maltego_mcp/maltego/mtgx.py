@@ -465,9 +465,7 @@ def parse_graphml(xml: bytes) -> ImportedGraph:
             confidence = float(props.get("mcp.confidence", 0.5))
         except ValueError:
             confidence = 0.5
-        props = {
-            k: v for k, v in props.items() if not k.startswith("mcp.") and k != "maltego.calculated.weight"
-        }
+        props = {k: v for k, v in props.items() if not k.startswith("mcp.") and k != "maltego.calculated.weight"}
         if not value:
             out.skipped += 1
             continue

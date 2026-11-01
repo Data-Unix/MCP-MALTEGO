@@ -639,9 +639,7 @@ async def _breach_semantic_pivot(
                 )
             )
         if kind != "alias" and hit.alias:
-            items.append(
-                _ent("maltego.Alias", hit.alias, "leaked_alias", weight=75, breach__name=hit.breach_name)
-            )
+            items.append(_ent("maltego.Alias", hit.alias, "leaked_alias", weight=75, breach__name=hit.breach_name))
         if kind != "phone" and hit.phone:
             items.append(
                 _ent("maltego.PhoneNumber", hit.phone, "leaked_phone", weight=75, breach__name=hit.breach_name)
