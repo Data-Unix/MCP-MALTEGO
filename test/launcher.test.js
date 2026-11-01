@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { buildInvocation, COMMANDS } = require("../bin/mcp-maltego.js");
+const { buildInvocation, findUv, ensureEnvTemplate, COMMANDS } = require("../bin/mcp-maltego.js");
 
 const ROOT = path.resolve(__dirname, "..");
 const BIN = path.join(ROOT, "bin", "mcp-maltego.js");
@@ -53,4 +53,21 @@ test("server.json y package.json coherentes", () => {
   assert.equal(server.packages[0].identifier, PKG.name);
   assert.equal(server.packages[0].version, PKG.version);
   assert.ok(server.description.length <= 100);
+});
+
+test("findUv localiza uv en MALTEGO_MCP_HOME/bin y ensureEnvTemplate no sobrescribe", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-home-"));
+  const binDir = path.join(tmp, "bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  const exe = process.platform === "win32" ? "uv.exe" : "uv";
+  const fakeUv = path.join(binDir, exe);
+  fs.writeFileSync(fakeUv, "fake");
+  const env = { MALTEGO_MCP_HOME: tmp, PATH: "", HOME: tmp, USERPROFILE: tmp, LOCALAPPDATA: "" };
+  assert.equal(findUv(env), fakeUv);
+  const first = ensureEnvTemplate(tmp);
+  assert.equal(first.created, true);
+  fs.writeFileSync(first.path, "SHODAN_API_KEY=123\n");
+  const second = ensureEnvTemplate(tmp);
+  assert.equal(second.created, false);
+  assert.match(fs.readFileSync(first.path, "utf8"), /SHODAN_API_KEY=123/);
 });

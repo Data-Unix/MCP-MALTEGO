@@ -109,7 +109,7 @@ jobs:
           npm publish $FLAGS
 
   mcp-registry:
-    needs: npmjs
+    needs: [verify, npmjs]
     if: vars.MCP_REGISTRY_PUBLISH == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -122,6 +122,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Wait for npmjs.com index propagation
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          for i in $(seq 1 24); do
+            if curl -fsSL "https://registry.npmjs.org/mcp-maltego/$VERSION" >/dev/null 2>&1; then
+              echo "mcp-maltego@$VERSION visible en registry.npmjs.org (intento $i)"
+              break
+            fi
+            echo "Esperando propagación de mcp-maltego@$VERSION en npmjs.com ($i/24)..."
+            sleep 5
+          done
       - name: Install mcp-publisher (versión fijada)
         env:
           GH_TOKEN: ${{ github.token }}
