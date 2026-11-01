@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import shutil
 import sys
 from collections.abc import Callable, Coroutine
@@ -247,6 +248,30 @@ def build_registry() -> TransformRegistry:
     return registry
 
 
+def default_uv() -> str:
+    """Localiza el ejecutable uv incluso cuando no está en el PATH global (p. ej. ~/.local/bin o ~/.maltego-mcp/bin)."""
+    env_uv = os.environ.get("MCP_MALTEGO_UV", "").strip()
+    if env_uv and Path(env_uv).is_file():
+        return env_uv
+    which_uv = shutil.which("uv")
+    if which_uv:
+        return which_uv
+    exe = "uv.exe" if sys.platform == "win32" else "uv"
+    home_dir = Path.home()
+    candidates = [
+        Settings.from_env().home / "bin" / exe,
+        home_dir / ".local" / "bin" / exe,
+        home_dir / ".cargo" / "bin" / exe,
+    ]
+    local_app = os.environ.get("LOCALAPPDATA", "").strip()
+    if sys.platform == "win32" and local_app:
+        candidates.append(Path(local_app) / "uv" / exe)
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return "uv"
+
+
 def write_mtz(output: Path, repo_dir: Path, uv_command: str) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     build_registry().write_local_mtz(
@@ -265,7 +290,7 @@ def main(argv: list[str] | None = None) -> None:
     mtz = sub.add_parser("mtz", help="Genera el .mtz con los transforms locales para importar en Maltego")
     mtz.add_argument("--output", type=Path, default=None)
     mtz.add_argument("--repo", type=Path, default=Path.cwd(), help="Carpeta del repo (por defecto, la actual)")
-    mtz.add_argument("--uv", default=shutil.which("uv") or "uv", help="Ruta completa de uv")
+    mtz.add_argument("--uv", default="", help="Ruta completa de uv")
     local = sub.add_parser("local", help="Lo invoca Maltego")
     local.add_argument("transform")
     local.add_argument("args", nargs=argparse.REMAINDER)
@@ -276,7 +301,7 @@ def main(argv: list[str] | None = None) -> None:
         repo = ns.repo.resolve()
         if not (repo / "pyproject.toml").exists():
             parser.error(f"{repo} no parece la carpeta del repo (falta pyproject.toml). Usa --repo.")
-        out = write_mtz(ns.output or settings.home / "maltego-mcp-local.mtz", repo, ns.uv)
+        out = write_mtz(ns.output or settings.home / "maltego-mcp-local.mtz", repo, ns.uv or default_uv())
         print(f"Generado {out} con {len(transforms_by_name())} transforms locales.", file=sys.stderr)
         print(f"Importa en Maltego: Import | Export > Import Config > {out}", file=sys.stderr)
         return

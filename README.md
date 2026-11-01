@@ -52,14 +52,13 @@ exports everything to Maltego Desktop. One graph is shared by every agent you us
 ## Requirements
 
 - [Node.js](https://nodejs.org) 18 or newer (for `npx`).
-- [uv](https://docs.astral.sh/uv/) — manages the Python runtime; it downloads Python 3.12 if needed.
-  - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-  - macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- [uv](https://docs.astral.sh/uv/) — manages the Python 3.12 runtime automatically (if `uv` is not installed yet,
+  `mcp-maltego` installs it automatically into `~/.maltego-mcp/bin` on first run).
 
-Check everything with:
+Prepare the runtime, `~/.maltego-mcp/.env` template and Maltego Desktop bridge `.mtz` in one command:
 
 ```bash
-npx -y mcp-maltego doctor
+npx -y mcp-maltego setup
 ```
 
 ## Getting started

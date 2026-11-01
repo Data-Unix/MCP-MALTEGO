@@ -33,10 +33,12 @@ Machine, guardar los resultados en un grafo por caso, analizarlo y exportarlo.
 Matriz completa de funciones y verificación: `docs/COBERTURA.md`.
 
 ## Transforms integrados
-- **Sin API key:** DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS (DNS sobre
-  HTTPS), DomainToWhois, IPToWhois (RDAP), DomainToSubdomains (crt.sh), IPToAS, IPToNetblock (Team Cymru),
-  AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), EmailToDomain, EmailToAlias, URLToDomain,
-  WebsiteToDomain, DomainToWebsite.
+- **Sin API key (26):** DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS (DNS sobre
+  HTTPS), HackerTargetSubdomains, DomainToWhois, IPToWhois (RDAP con respaldo ARIN), DomainToSubdomains (crt.sh con
+  respaldo CertSpotter), CertSpotterSubdomains, URLScanDomainSearch, IPToAS, IPToNetblock (Team Cymru),
+  RIPEStatASNToNetblocks, InternetDBIPToServices (Shodan InternetDB), AliasToProfiles (GitHub, GitLab, Hacker News,
+  Keybase, DEV), GitHubAliasToDetails, GravatarEmailToProfile, OTXHashToThreatPulses (AlienVault OTX), EmailToDomain,
+  EmailToAlias, URLToDomain, WebsiteToDomain, DomainToWebsite.
 - **Con API key** (define la variable de entorno o guárdala en `~/.maltego-mcp/.env` y se activan solos):
   `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`, `SECURITYTRAILS_API_KEY`, `HUNTER_API_KEY`, `GREYNOISE_API_KEY`,
   `TATUM_API_KEY` (todos con capa gratuita / Community sin suscripción de pago), más `CENSYS_API_ID` +

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from maltego_mcp.config import Settings
-from maltego_mcp.maltego.bridge import read_current_case, run_local, transforms_by_name, write_mtz
+from maltego_mcp.maltego.bridge import default_uv, read_current_case, run_local, transforms_by_name, write_mtz
 from maltego_mcp.server import build_service
 from maltego_mcp.transforms.protocol import parse_response
 
@@ -133,3 +133,18 @@ def test_tipos_importados_tienen_transforms_puente(settings: Settings) -> None:
         assert "mcpneighbors-employee" in transforms_by_name()
     finally:
         register_imported_types([])
+
+
+def test_default_uv_detecta_variable_y_home_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = tmp_path / "custom-uv.exe"
+    fake.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("MCP_MALTEGO_UV", str(fake))
+    assert default_uv() == str(fake)
+    monkeypatch.delenv("MCP_MALTEGO_UV", raising=False)
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    monkeypatch.setenv("MALTEGO_MCP_HOME", str(tmp_path))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    home_uv = bin_dir / ("uv.exe" if __import__("sys").platform == "win32" else "uv")
+    home_uv.write_text("x", encoding="utf-8")
+    assert default_uv() == str(home_uv)

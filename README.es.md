@@ -51,14 +51,13 @@ recomienda el siguiente pivote y lo exporta todo a Maltego Desktop. Todos los ag
 ## Requisitos
 
 - [Node.js](https://nodejs.org) 18 o superior (para `npx`).
-- [uv](https://docs.astral.sh/uv/), que gestiona Python (descarga Python 3.12 si hace falta).
-  - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-  - macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- [uv](https://docs.astral.sh/uv/), que gestiona Python 3.12 (si no está instalado, `mcp-maltego` lo instala de forma
+  autónoma en `~/.maltego-mcp/bin` en el primer arranque).
 
-Comprueba todo con:
+Prepara el entorno, la plantilla `~/.maltego-mcp/.env` y el `.mtz` para Maltego Desktop en un solo comando:
 
 ```bash
-npx -y mcp-maltego doctor
+npx -y mcp-maltego setup
 ```
 
 ## Inicio rápido
