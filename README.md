@@ -303,13 +303,6 @@ npx @modelcontextprotocol/inspector uv run maltego-mcp        # inspect the serv
 Architecture, conventions for contributors and AI agents: [AGENTS.md](AGENTS.md). Coverage of the functional
 specification: [docs/COBERTURA.md](docs/COBERTURA.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
-## Roadmap
-
-- Validate the Azure Cosmos DB (Gremlin) backend against a live account.
-- Authentication (Entra ID / OAuth) for the remote HTTP transport.
-- Censys Platform API; more providers.
-- Publication in the official MCP Registry (`server.json` included).
-
 ## License
 
 [MIT](LICENSE). Maltego is a trademark of Maltego Technologies GmbH. This project is independent and not affiliated
