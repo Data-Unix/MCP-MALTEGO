@@ -1,14 +1,116 @@
-.venv/
-__pycache__/
-*.pyc
+# =============================================================================
+# MCP Maltego — .gitignore
+# Regla general: nada de secretos, datos de investigaciones ni artefactos generados.
+# =============================================================================
+
+# --- Secretos y credenciales ------------------------------------------------
 .env
 .env.*
+!.env.example
+*.env
+.envrc
+.npmrc
+.pypirc
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*.asc
+*.gpg
+secrets.*
+*secret*.json
+*credentials*.json
+service-account*.json
 local.settings.json
+functions/local.settings.json
+.azure/
+
+# --- Datos OSINT y estado local (contienen información de personas/objetivos) --
+data/
+exports/
+imports/
+*.mtgx
+*.mtz
+!tests/fixtures/**/*.mtgx
+!tests/fixtures/**/*.mtz
+graph.json
+graph.json.lock
+receipts/
+config/transforms.toml
+config/*.local.toml
+entities.json
+current_case
+.maltego-mcp/
+
+# --- Python -----------------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-dist/
-data/
-exports/
-config/transforms.toml
+.dmypy.json
 .coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# --- Node / npm -------------------------------------------------------------
+node_modules/
+*.tgz
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+
+# --- Agentes de IA: estado local por usuario (las configs del proyecto SÍ se versionan) --
+.claude/settings.local.json
+.claude/*.local.*
+.gemini/.env
+.gemini/tmp/
+.qwen/.env
+.qwen/tmp/
+.cursor/*.local.*
+.codex/auth.json
+.codex/history*
+.codex/sessions/
+.codex/log/
+.orca/
+.handoff/
+CLAUDE.local.md
+AGENTS.local.md
+
+# --- Editores y sistema operativo ------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs y temporales ---------------------------------------------------------
+*.log
+logs/
+tmp/
+.tmp/

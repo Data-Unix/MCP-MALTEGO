@@ -23,6 +23,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-node@v4
         with:
@@ -47,6 +49,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -73,6 +77,8 @@ jobs:
       id-token: write   # Trusted Publishing (OIDC) y provenance
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -108,6 +114,8 @@ jobs:
       MCP_PUBLISHER_VERSION: v1.8.1
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install mcp-publisher (versión fijada)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -128,6 +136,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-node@v4
         with:

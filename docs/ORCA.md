@@ -11,12 +11,13 @@ Este documento fija qué agente se usa para qué en este proyecto y cómo coordi
 | Implementación principal (Python, MCP, Functions) | Gemini CLI | Codex / OpenCode | Desarrollador principal del proyecto; valida en la práctica que el MCP funciona con Gemini |
 | Revisión de código y seguridad | Un proveedor distinto del autor | — | Revisión cruzada: Gemini escribe → Claude o Codex revisan, y viceversa |
 | Tests y evaluaciones del MCP | Codex | Gemini CLI | Las evaluaciones se ejecutan contra Claude **y** Gemini para medir compatibilidad |
-| Infra Azure (Bicep, GitHub Actions) | Claude Code (agente `azure-infra-engineer`) | Gemini CLI | |
+| Releases y publicación | Cualquiera (agente `release-manager`) | — | Skill `release` |
 | Investigación con fuentes web | Gemini CLI | Claude Code | |
 | Decisiones difíciles de diseño | **Varios en paralelo** (2-3 agentes, mismo prompt) | — | Comparar propuestas y quedarse con la mejor |
 
-Los agentes de `.claude/agents/` (mcp-developer, osint-graph-modeler, security-auditor...) solo los carga Claude Code.
-Para el resto, las reglas comunes están en `AGENTS.md`, que todos leen directamente o vía `GEMINI.md`/`CLAUDE.md`/`QWEN.md`.
+Los 7 agentes del proyecto (`mcp-architect`, `transform-engineer`, `osint-graph-modeler`, `security-reviewer`,
+`test-engineer`, `release-manager`, `osint-analyst`) y las 7 skills existen para todas las herramientas (ver `AGENTS.md`,
+sección «Agentes y skills»). Las reglas comunes están en `AGENTS.md`.
 
 ## 2. Flujos de trabajo
 

@@ -23,6 +23,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -41,6 +43,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -55,3 +59,29 @@ jobs:
           npm install --no-audit --no-fund "$RUNNER_TEMP"/mcp-maltego-*.tgz
           npx mcp-maltego --version
           npx mcp-maltego doctor
+
+  security:
+    name: Security (secrets + dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # todo el historial: los secretos borrados siguen en git
+          persist-credentials: false
+      - name: Gitleaks (secretos en todo el historial)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@v6
+      - name: pip-audit (vulnerabilidades conocidas en dependencias Python)
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt > requirements-audit.txt
+          uvx pip-audit --strict -r requirements-audit.txt
+      - name: npm package contents (sin ficheros sensibles)
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "
+            const files = require('./pack.json')[0].files.map(f => f.path);
+            const bad = files.filter(f => /(^|\/)(\.env|.*\.(pem|key|mtgx|mtz)|graph\.json|__pycache__)/.test(f));
+            if (bad.length) { console.error('Ficheros prohibidos en el paquete:', bad); process.exit(1); }
+            console.log(files.length + ' ficheros en el paquete, ninguno sensible');"
