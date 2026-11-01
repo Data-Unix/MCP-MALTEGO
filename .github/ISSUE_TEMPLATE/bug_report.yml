@@ -1,0 +1,28 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, expected vs actual result. Never paste API keys or personal data.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: mcp-maltego version
+      placeholder: "npx mcp-maltego --version"
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client / agent
+      options: [Claude Code, Claude Desktop, Gemini CLI, Codex, Copilot CLI, Cursor, OpenCode, Qwen Code, Other]
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `npx mcp-maltego doctor`
+      render: text

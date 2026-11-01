@@ -1,0 +1,64 @@
+{
+  "name": "mcp-maltego",
+  "version": "0.2.0",
+  "description": "MCP server for Maltego OSINT: transforms, Machines, link-graph analysis and native .mtgx for any AI agent (Claude, Gemini, Codex...).",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "maltego",
+    "osint",
+    "threat-intelligence",
+    "cti",
+    "link-analysis",
+    "graph",
+    "mtgx",
+    "transforms",
+    "recon",
+    "dns",
+    "whois",
+    "rdap",
+    "claude",
+    "gemini",
+    "ai-agents"
+  ],
+  "homepage": "https://github.com/Data-Unix/MCP-MALTEGO#readme",
+  "bugs": {
+    "url": "https://github.com/Data-Unix/MCP-MALTEGO/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Data-Unix/MCP-MALTEGO.git"
+  },
+  "license": "MIT",
+  "author": "Data-Unix",
+  "mcpName": "io.github.Data-Unix/mcp-maltego",
+  "bin": {
+    "mcp-maltego": "bin/mcp-maltego.js"
+  },
+  "files": [
+    "bin/",
+    "src/maltego_mcp/",
+    "pyproject.toml",
+    "uv.lock",
+    "config/transforms.example.toml",
+    "examples/trx_server/",
+    "docs/",
+    "server.json",
+    "CHANGELOG.md",
+    "README.es.md",
+    "SECURITY.md",
+    "!**/__pycache__/**",
+    "!**/*.pyc"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "pack:check": "npm pack --dry-run"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

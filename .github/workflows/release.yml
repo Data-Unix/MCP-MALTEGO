@@ -1,0 +1,104 @@
+name: Release
+
+# Se ejecuta al publicar una release en GitHub (tag vX.Y.Z):
+#  1. verifica que la versión del tag coincide con package.json / pyproject.toml / server.json y pasa los tests
+#  2. publica el paquete en GitHub Packages como @data-unix/mcp-maltego (sección "Packages" del repo)
+#  3. publica en npmjs.com como mcp-maltego si existe el secreto NPM_TOKEN (con provenance si el repo es público)
+#  4. adjunta el .tgz del paquete npm y el wheel de Python a la release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: version
+        name: Check versions
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          echo "version=$PKG" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "release" ] && [ "${GITHUB_REF_NAME#v}" != "$PKG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME no coincide con package.json $PKG"; exit 1
+          fi
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: npm test
+
+  github-packages:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@data-unix"
+      - name: Publish @data-unix/mcp-maltego
+        run: |
+          npm pkg set name="@data-unix/mcp-maltego"
+          npm pkg set publishConfig.registry="https://npm.pkg.github.com"
+          npm pkg delete publishConfig.access
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npmjs:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Publish mcp-maltego to npmjs.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          IS_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN no configurado: se omite la publicación en npmjs.com"; exit 0
+          fi
+          if [ "$IS_PRIVATE" = "true" ]; then
+            npm publish --access public
+          else
+            npm publish --access public --provenance
+          fi
+
+  assets:
+    needs: verify
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm pack
+      - run: uv build --wheel --sdist
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" mcp-maltego-*.tgz dist/* --clobber

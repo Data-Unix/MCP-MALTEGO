@@ -1,0 +1,15 @@
+name: Feature request
+description: New transform, provider, Machine or tool behaviour
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What investigation need does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Data source / API, input and output entity types, expected links.

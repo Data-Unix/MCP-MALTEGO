@@ -103,6 +103,7 @@ def _uvicorn_log_config() -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="maltego-mcp", description="Servidor MCP de MCP Maltego")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--transport", choices=["stdio", "http"], default="stdio")
     parser.add_argument("--host", default="127.0.0.1", help="Solo con --transport http")
     parser.add_argument("--port", type=int, default=8000, help="Solo con --transport http")
