@@ -6,7 +6,7 @@ license: MIT
 # Despliegue híbrido
 
 - **Local (recomendado)**: `npx -y mcp-maltego` en la configuración del cliente (stdio). Requisitos: Node 18+ y uv.
-  Diagnóstico: `npx -y mcp-maltego doctor`. Sin claves funcionan los 18 transforms gratuitos y todo el grafo.
+  Diagnóstico: `npx -y mcp-maltego doctor`. Sin claves funcionan los 26 transforms gratuitos, las 8 Machines y todo el grafo.
 - **Claves bajo demanda**: en `~/.maltego-mcp/.env` (leído automáticamente por todos los agentes y fuera del repo), en
   el bloque `env` del cliente MCP o en variables de entorno de usuario:
   `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`, `HUNTER_API_KEY`, `GREYNOISE_API_KEY`, `SECURITYTRAILS_API_KEY`,

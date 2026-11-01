@@ -7,11 +7,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - **20 MCP tools** covering cases, entities, links, transforms, Machines, an investigation copilot and import/export.
-- **30 built-in transforms**: 18 keyless (DNS over HTTPS, RDAP/WHOIS, crt.sh, Team Cymru ASN, profile lookup,
-  email/URL parsing) and 12 provider transforms enabled by API key (VirusTotal, Shodan, SecurityTrails, Censys,
-  Hunter.io, Have I Been Pwned, GreyNoise, Tatum).
-- **Machines**: DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon and
-  custom Machines in TOML, with recursive rounds and cost budgets.
+- **38 built-in transforms**: 26 keyless (DNS over HTTPS, RDAP/WHOIS with ARIN fallback, crt.sh + CertSpotter,
+  HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar, GitHub profile details,
+  AlienVault OTX hash pulses, multi-network profile lookup, email/URL parsing) and 12 provider transforms enabled by API
+  key (VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise, Tatum).
+- **Dynamic `~/.maltego-mcp/.env` configuration** loaded automatically outside the repository by all agents, CLI and
+  Maltego Desktop bridge.
+- **Machines**: DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon,
+  ThreatSweep, ASNToNetblocks and custom Machines in TOML, with recursive rounds and cost budgets.
 - **Copilot**: procedural memory per case, provenance, explainable scoring, next-best-action and outcome learning.
 - **Maltego Desktop integration**: local transforms bridge (open case, neighbours, save), native `.mtgx` with
   hierarchical/radial/force layouts and embedded memory, ontology import from your Maltego (`.mtz`).

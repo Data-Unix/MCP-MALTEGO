@@ -92,8 +92,103 @@ class Router:
             return httpx.Response(404)
         if host == "crt.sh":
             return httpx.Response(200, json=CRT)
+        if host == "api.certspotter.com":
+            return httpx.Response(
+                200,
+                json=[
+                    {"dns_names": ["www.example.com", "*.example.com", "ct.example.com"]},
+                    {"dns_names": ["otro.org"]},
+                ],
+            )
+        if host == "api.hackertarget.com":
+            if params.get("q") == "quota.example":
+                return httpx.Response(200, text="API count exceeded - Increase Quota with Membership")
+            return httpx.Response(200, text="www.example.com,93.184.216.34\ndev.example.com,93.184.216.35\n")
+        if host == "urlscan.io":
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "page": {
+                                "domain": "www.example.com",
+                                "ip": "93.184.216.34",
+                                "url": "https://www.example.com/",
+                            }
+                        }
+                    ]
+                },
+            )
+        if host == "internetdb.shodan.io":
+            if path.endswith("/203.0.113.9"):
+                return httpx.Response(404)
+            return httpx.Response(
+                200,
+                json={
+                    "ip": "93.184.216.34",
+                    "ports": [80, 443],
+                    "cpes": ["cpe:/a:igor_sysoev:nginx:1.25"],
+                    "hostnames": ["edge.example.com"],
+                    "tags": ["cdn"],
+                    "vulns": ["CVE-2023-44487"],
+                },
+            )
+        if host == "stat.ripe.net":
+            if "as-overview" in path:
+                return httpx.Response(
+                    200, json={"data": {"holder": "EDGECAST - MCI Communications Services", "announced": True}}
+                )
+            if "announced-prefixes" in path:
+                return httpx.Response(200, json={"data": {"prefixes": [{"prefix": "93.184.216.0/24"}]}})
+        if host == "en.gravatar.com":
+            if path.startswith("/0000"):
+                return httpx.Response(404)
+            return httpx.Response(
+                200,
+                json={
+                    "entry": [
+                        {
+                            "preferredUsername": "jdoe",
+                            "displayName": "John Doe",
+                            "currentLocation": "Madrid",
+                            "profileUrl": "https://gravatar.com/jdoe",
+                            "accounts": [{"shortname": "github", "url": "https://github.com/jdoe"}],
+                        }
+                    ]
+                },
+            )
+        if host == "otx.alienvault.com":
+            return httpx.Response(
+                200,
+                json={
+                    "pulse_info": {
+                        "count": 2,
+                        "pulses": [
+                            {
+                                "name": "Emotet Wave",
+                                "created": "2026-01-10T00:00:00",
+                                "malware_families": ["Emotet"],
+                                "attack_ids": [{"id": "T1566"}],
+                            }
+                        ],
+                    },
+                },
+            )
         profiles = {
-            "api.github.com": (path == "/users/jdoe", {"login": "jdoe"}),
+            "api.github.com": (
+                path == "/users/jdoe",
+                {
+                    "login": "jdoe",
+                    "name": "John Doe",
+                    "company": "@AcmeCorp",
+                    "blog": "jdoe.dev",
+                    "location": "Madrid",
+                    "email": "jdoe@example.com",
+                    "html_url": "https://github.com/jdoe",
+                    "public_repos": 12,
+                    "followers": 34,
+                },
+            ),
             "gitlab.com": (True, [{"id": 1}] if params.get("username") == "jdoe" else []),
             "hacker-news.firebaseio.com": (True, {"id": "jdoe"} if "jdoe" in path else None),
             "keybase.io": (True, {"them": [None]}),
@@ -262,10 +357,102 @@ async def run(ctx: BuiltinContext, name: str, value: str, n: int = 20) -> list[t
         ("SecurityTrailsSubdomains", "example.com", [("maltego.DNSName", "intranet.example.com", "subdomain")]),
         ("HIBPEmailToBreaches", "ana@example.com", [("maltego.Phrase", "[Breach] Adobe", "exposed_in")]),
         ("TatumBTCAddressToTx", "bc1qxyz", [("maltego.CryptocurrencyTransaction", "ab" * 32, "transacted")]),
+        (
+            "CertSpotterSubdomains",
+            "example.com",
+            [
+                ("maltego.DNSName", "ct.example.com", "certificate_san"),
+                ("maltego.DNSName", "www.example.com", "certificate_san"),
+            ],
+        ),
+        (
+            "HackerTargetSubdomains",
+            "example.com",
+            [
+                ("maltego.DNSName", "www.example.com", "subdomain"),
+                ("maltego.IPv4Address", "93.184.216.34", "resolves_to"),
+                ("maltego.DNSName", "dev.example.com", "subdomain"),
+                ("maltego.IPv4Address", "93.184.216.35", "resolves_to"),
+            ],
+        ),
+        (
+            "URLScanDomainSearch",
+            "example.com",
+            [
+                ("maltego.DNSName", "www.example.com", "observed_in_urlscan"),
+                ("maltego.IPv4Address", "93.184.216.34", "resolves_to"),
+                ("maltego.URL", "https://www.example.com/", "observed_url"),
+            ],
+        ),
+        (
+            "InternetDBIPToServices",
+            "93.184.216.34",
+            [
+                ("maltego.Port", "80", "open_port"),
+                ("maltego.Port", "443", "open_port"),
+                ("maltego.Service", "cpe:/a:igor_sysoev:nginx:1.25", "runs_service"),
+                ("maltego.DNSName", "edge.example.com", "hostname"),
+                ("maltego.Phrase", "[CVE] CVE-2023-44487", "vulnerable_to"),
+                ("maltego.Phrase", "[InternetDB] cdn", "tagged_as"),
+            ],
+        ),
+        (
+            "RIPEStatASNToNetblocks",
+            "AS15133",
+            [
+                ("maltego.Organization", "EDGECAST - MCI Communications Services", "operated_by"),
+                ("maltego.Netblock", "93.184.216.0/24", "announces"),
+            ],
+        ),
+        (
+            "GravatarEmailToProfile",
+            "jdoe@example.com",
+            [
+                ("maltego.Alias", "jdoe", "has_alias"),
+                ("maltego.Person", "John Doe", "display_name"),
+                ("maltego.Location", "Madrid", "located_in"),
+                ("maltego.Affiliation", "jdoe (github)", "has_profile"),
+            ],
+        ),
+        (
+            "GitHubAliasToDetails",
+            "jdoe",
+            [
+                ("maltego.Person", "John Doe", "real_name"),
+                ("maltego.Organization", "AcmeCorp", "works_at"),
+                ("maltego.EmailAddress", "jdoe@example.com", "public_email"),
+                ("maltego.URL", "https://jdoe.dev", "website"),
+                ("maltego.Location", "Madrid", "located_in"),
+            ],
+        ),
+        (
+            "OTXHashToThreatPulses",
+            "ab" * 32,
+            [
+                ("maltego.Phrase", "[OTX] Presente en 2 pulso(s) de amenazas", "threat_intel"),
+                ("maltego.Phrase", "[OTX Pulse] Emotet Wave", "observed_in"),
+                ("maltego.Phrase", "[Malware] Emotet", "classified_as"),
+                ("maltego.Phrase", "[ATT&CK T1566]", "uses_technique"),
+            ],
+        ),
     ],
 )
 async def test_transforms(ctx: BuiltinContext, name: str, value: str, expected: list[tuple[str, str, str]]) -> None:
     assert await run(ctx, name, value) == expected
+
+
+async def test_crtsh_usa_respaldo_certspotter_si_falla(ctx: BuiltinContext, router: Router) -> None:
+    router.fail["crt.sh"] = 502
+    sub = await run(ctx, "DomainToSubdomains", "example.com")
+    assert ("maltego.DNSName", "ct.example.com", "certificate_san") in sub
+    assert any(r.url.host == "api.certspotter.com" for r in router.requests)
+
+
+async def test_hackertarget_cuota_y_internetdb_404(ctx: BuiltinContext) -> None:
+    ht = await T("HackerTargetSubdomains").handler(ctx, "maltego.Domain", "quota.example", {}, 10)
+    assert ht.entities == [] and "HackerTarget" in ht.messages[0][1]
+    idb = await T("InternetDBIPToServices").handler(ctx, "maltego.IPv4Address", "203.0.113.9", {}, 10)
+    assert idb.entities == [] and "InternetDB" in idb.messages[0][1]
 
 
 async def test_whois_dominio_e_ip(ctx: BuiltinContext) -> None:

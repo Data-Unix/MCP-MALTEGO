@@ -26,12 +26,14 @@ recomienda el siguiente pivote y lo exporta todo a Maltego Desktop. Todos los ag
 
 - **20 tools compatibles con todos los modelos.** Esquemas planos validados contra el subconjunto estricto de Gemini;
   las variantes van en un parámetro `action` para no saturar a los agentes.
-- **30 transforms reales incluidos.** 18 sin API key (DNS sobre HTTPS, RDAP/WHOIS, transparencia de certificados,
-  ASN, perfiles por alias, análisis) y 12 de proveedores que se activan al definir su clave: VirusTotal, Shodan,
-  SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise y Tatum.
+- **38 transforms reales incluidos.** 26 sin API key (DNS sobre HTTPS, RDAP/WHOIS con respaldo ARIN, transparencia de
+  certificados en crt.sh y CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, ASN y prefijos en Team Cymru y RIPE
+  Stat, Gravatar, detalle en GitHub, pulsos de amenazas en AlienVault OTX, perfiles por alias y análisis) y 12 de
+  proveedores que se activan al definir su clave: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been
+  Pwned, GreyNoise y Tatum.
 - **También tus transforms de Maltego.** Habla el protocolo XML TRX/iTDS de Maltego.
-- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon y las
-  tuyas en TOML, con rondas recursivas y presupuestos.
+- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon,
+  ThreatSweep, ASNToNetblocks y las tuyas en TOML, con rondas recursivas y presupuestos.
 - **Copiloto de investigación.** `osint_investigate` lo hace todo en una llamada. Cada paso queda registrado (qué, sobre
   qué, por qué, resultado), cada entidad tiene procedencia y prioridad explicables, y la siguiente mejor acción aprende
   del rendimiento de cada transform.

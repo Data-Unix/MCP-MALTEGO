@@ -12,6 +12,7 @@ guardan, puntúan y exportan igual que los transforms TRX/iTDS.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import os
 import re
@@ -317,21 +318,272 @@ async def _ip_whois(ctx: BuiltinContext, etype: str, value: str, props: dict[str
     return _limit(items, n)
 
 
-# ------------------------------------------------------------------------------------------ crt.sh
+# ------------------------------------------------------------------------------------------ crt.sh / CertSpotter
+async def _certspotter_names(ctx: BuiltinContext, domain: str) -> list[str]:
+    data = (
+        await _get_json(
+            ctx,
+            "https://api.certspotter.com/v1/issuances",
+            params={"domain": domain, "include_subdomains": "true", "expand": "dns_names"},
+        )
+        or []
+    )
+    out: list[str] = []
+    for row in data:
+        for name in row.get("dns_names", []) or []:
+            host = _host(str(name)).removeprefix("*.")
+            if host.endswith("." + domain) and _HOSTNAME_RE.match(host):
+                out.append(host)
+    return out
+
+
 async def _crtsh(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
     domain = _host(value)
-    data = await _get_json(ctx, "https://crt.sh/", params={"q": f"%.{domain}", "output": "json"})
     names: list[str] = []
-    for row in data or []:
-        for name in str(row.get("name_value", "")).split("\n"):
-            host = _host(name).removeprefix("*.")
-            if host.endswith("." + domain) and _HOSTNAME_RE.match(host):
-                names.append(host)
+    try:
+        data = await _get_json(ctx, "https://crt.sh/", params={"q": f"%.{domain}", "output": "json"})
+        for row in data or []:
+            for name in str(row.get("name_value", "")).split("\n"):
+                host = _host(name).removeprefix("*.")
+                if host.endswith("." + domain) and _HOSTNAME_RE.match(host):
+                    names.append(host)
+    except TransformError:
+        names = await _certspotter_names(ctx, domain)
     counts: dict[str, int] = {}
     for h in names:
         counts[h] = counts.get(h, 0) + 1
     ordered = sorted(counts, key=lambda h: (-counts[h], h))
     return _limit([_ent("maltego.DNSName", h, "certificate_san", ct__certificates=str(counts[h])) for h in ordered], n)
+
+
+async def _certspotter(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
+    domain = _host(value)
+    names = await _certspotter_names(ctx, domain)
+    return _limit([_ent("maltego.DNSName", h, "certificate_san") for h in sorted(set(names))], n)
+
+
+# ------------------------------------------------------------------------------------------ fuentes públicas sin clave
+async def _hackertarget_subdomains(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    domain = _host(value)
+    url = "https://api.hackertarget.com/hostsearch/"
+    try:
+        resp = await ctx.http.get(url, params={"q": domain})
+    except httpx.TimeoutException as exc:
+        raise TransformError("Tiempo de espera agotado consultando api.hackertarget.com.") from exc
+    except httpx.HTTPError as exc:
+        raise TransformError("No se pudo contactar con api.hackertarget.com.") from exc
+    if resp.status_code == 429:
+        raise TransformError("api.hackertarget.com limita las peticiones (429). Reintenta más tarde.")
+    if resp.status_code >= 400:
+        raise TransformError(f"api.hackertarget.com respondió HTTP {resp.status_code}.")
+    text = resp.text.strip()
+    if not text or text.lower().startswith(("error", "api count exceeded", "no records")):
+        return TransformResponse(messages=[("Inform", f"HackerTarget no devolvió hosts para {domain}.")])
+    items: list[ResultEntity] = []
+    for line in text.splitlines():
+        host_raw, sep, ip_raw = line.partition(",")
+        host = _host(host_raw)
+        ip = ip_raw.strip()
+        if sep and (host == domain or host.endswith("." + domain)) and _HOSTNAME_RE.match(host):
+            if host != domain:
+                items.append(_ent("maltego.DNSName", host, "subdomain", hackertarget__ip=ip))
+            try:
+                addr = ipaddress.ip_address(ip)
+                items.append(
+                    _ent(
+                        "maltego.IPv4Address" if addr.version == 4 else "maltego.IPv6Address",
+                        addr.compressed,
+                        "resolves_to",
+                        hackertarget__host=host,
+                    )
+                )
+            except ValueError:
+                pass
+    return _limit(items, n)
+
+
+async def _urlscan_domain(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    domain = _host(value)
+    data = (
+        await _get_json(
+            ctx,
+            "https://urlscan.io/api/v1/search/",
+            params={"q": f"domain:{domain}", "size": min(n, 50)},
+        )
+        or {}
+    )
+    items: list[ResultEntity] = []
+    for r in data.get("results", []) or []:
+        page = r.get("page", {}) or {}
+        host = _host(str(page.get("domain", "")))
+        if host and (host == domain or host.endswith("." + domain)) and _HOSTNAME_RE.match(host) and host != domain:
+            items.append(
+                _ent("maltego.DNSName", host, "observed_in_urlscan", urlscan__server=str(page.get("server", "")))
+            )
+        ip = str(page.get("ip", "")).strip()
+        if ip:
+            try:
+                addr = ipaddress.ip_address(ip)
+                items.append(
+                    _ent(
+                        "maltego.IPv4Address" if addr.version == 4 else "maltego.IPv6Address",
+                        addr.compressed,
+                        "resolves_to",
+                        urlscan__country=str(page.get("country", "")),
+                    )
+                )
+            except ValueError:
+                pass
+        url = str(page.get("url", "")).strip()
+        if url.startswith(("http://", "https://")):
+            items.append(_ent("maltego.URL", url, "observed_url", urlscan__status=str(page.get("status", ""))))
+    return _limit(items, n)
+
+
+async def _internetdb_ip(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    data = await _get_json(ctx, f"https://internetdb.shodan.io/{quote(value.strip())}", not_found_ok=True)
+    if not data:
+        return TransformResponse(messages=[("Inform", "InternetDB no tiene datos para esta IP.")])
+    items: list[ResultEntity] = []
+    for p in data.get("ports", []) or []:
+        items.append(_ent("maltego.Port", str(p), "open_port", port__source="shodan-internetdb"))
+    for cpe in (data.get("cpes", []) or [])[:15]:
+        items.append(_ent("maltego.Service", str(cpe), "runs_service"))
+    for host in data.get("hostnames", []) or []:
+        h = _host(str(host))
+        if _HOSTNAME_RE.match(h):
+            items.append(_ent("maltego.DNSName", h, "hostname"))
+    for vuln in (data.get("vulns", []) or [])[:20]:
+        items.append(_ent("maltego.Phrase", f"[CVE] {vuln}", "vulnerable_to"))
+    for tag in (data.get("tags", []) or [])[:10]:
+        items.append(_ent("maltego.Phrase", f"[InternetDB] {tag}", "tagged_as"))
+    return _limit(items, n)
+
+
+async def _ripestat_asn(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    asn = value.strip().upper().removeprefix("AS")
+    resource = f"AS{asn}"
+    overview, prefixes = await asyncio.gather(
+        _get_json(ctx, "https://stat.ripe.net/data/as-overview/data.json", params={"resource": resource}),
+        _get_json(ctx, "https://stat.ripe.net/data/announced-prefixes/data.json", params={"resource": resource}),
+    )
+    items: list[ResultEntity] = []
+    holder = str(((overview or {}).get("data") or {}).get("holder", "")).strip()
+    if holder:
+        items.append(_ent("maltego.Organization", holder, "operated_by", as__number=asn))
+    for row in ((prefixes or {}).get("data") or {}).get("prefixes", []) or []:
+        prefix = str(row.get("prefix", "")).strip()
+        if prefix:
+            try:
+                net = ipaddress.ip_network(prefix, strict=False).compressed
+                items.append(_ent("maltego.Netblock", net, "announces", netblock__asn=asn))
+            except ValueError:
+                pass
+    return _limit(items, n)
+
+
+async def _gravatar_email(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    email = value.strip().lower()
+    digest = hashlib.md5(email.encode("utf-8")).hexdigest()
+    data = await _get_json(ctx, f"https://en.gravatar.com/{digest}.json", not_found_ok=True)
+    entries = (data or {}).get("entry", []) if isinstance(data, dict) else []
+    if not entries:
+        return TransformResponse(messages=[("Inform", "Sin perfil público en Gravatar para este correo.")])
+    entry = entries[0] or {}
+    items: list[ResultEntity] = []
+    uname = str(entry.get("preferredUsername", "")).strip()
+    if uname and _ALIAS_RE.match(uname):
+        items.append(_ent("maltego.Alias", uname, "has_alias", gravatar__hash=digest))
+    disp = str(entry.get("displayName", "")).strip()
+    if disp and disp != uname:
+        items.append(_ent("maltego.Person", disp, "display_name"))
+    loc = str(entry.get("currentLocation", "")).strip()
+    if loc:
+        items.append(_ent("maltego.Location", loc, "located_in"))
+    for acc in entry.get("accounts", []) or []:
+        short = str(acc.get("shortname") or acc.get("domain") or "web").strip()
+        user = str(acc.get("username") or acc.get("display") or uname or email).strip()
+        url = str(acc.get("url", "")).strip()
+        items.append(
+            ResultEntity(
+                "maltego.Affiliation",
+                f"{user} ({short})",
+                70,
+                {"affiliation.network": short, "affiliation.uid": user, "affiliation.profile-url": url},
+                {"maltego.link.label": "has_profile"},
+            )
+        )
+    return _limit(items, n)
+
+
+async def _github_alias(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    alias = value.strip().lstrip("@")
+    if not _ALIAS_RE.match(alias):
+        return TransformResponse(messages=[("PartialError", "El alias tiene caracteres no válidos para GitHub.")])
+    data = await _get_json(ctx, f"https://api.github.com/users/{quote(alias)}", not_found_ok=True)
+    if not data or not isinstance(data, dict):
+        return TransformResponse(messages=[("Inform", f"GitHub no tiene usuario '{alias}'.")])
+    items: list[ResultEntity] = []
+    name = str(data.get("name") or "").strip()
+    if name:
+        items.append(_ent("maltego.Person", name, "real_name", github__login=alias))
+    company = str(data.get("company") or "").strip().lstrip("@")
+    if company:
+        items.append(_ent("maltego.Organization", company, "works_at"))
+    email = str(data.get("email") or "").strip().lower()
+    if email and "@" in email:
+        items.append(_ent("maltego.EmailAddress", email, "public_email"))
+    blog = str(data.get("blog") or "").strip()
+    if blog:
+        url = blog if blog.startswith(("http://", "https://")) else f"https://{blog}"
+        if urlsplit(url).hostname and "." in (urlsplit(url).hostname or ""):
+            items.append(_ent("maltego.URL", url, "website"))
+    loc = str(data.get("location") or "").strip()
+    if loc:
+        items.append(_ent("maltego.Location", loc, "located_in"))
+    return _limit(items, n)
+
+
+async def _otx_hash(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
+    h = value.strip().lower()
+    data = await _get_json(
+        ctx, f"https://otx.alienvault.com/api/v1/indicators/file/{quote(h)}/general", not_found_ok=True
+    )
+    if not data or not isinstance(data, dict):
+        return TransformResponse(messages=[("Inform", "AlienVault OTX no conoce este hash.")])
+    pulse_info = data.get("pulse_info", {}) or {}
+    pulses = pulse_info.get("pulses", []) or []
+    count = int(pulse_info.get("count") or len(pulses))
+    if count == 0 and not pulses:
+        return TransformResponse(messages=[("Inform", "Sin pulsos de amenazas en AlienVault OTX para este hash.")])
+    items: list[ResultEntity] = [
+        _ent("maltego.Phrase", f"[OTX] Presente en {count} pulso(s) de amenazas", "threat_intel")
+    ]
+    for p in pulses[:10]:
+        pname = str(p.get("name") or "").strip()
+        if pname:
+            items.append(_ent("maltego.Phrase", f"[OTX Pulse] {pname}", "observed_in"))
+        for mf in (p.get("malware_families") or [])[:5]:
+            mname = str(mf.get("display_name") if isinstance(mf, dict) else mf).strip()
+            if mname:
+                items.append(_ent("maltego.Phrase", f"[Malware] {mname}", "classified_as"))
+        for att in (p.get("attack_ids") or [])[:5]:
+            aid = str(att.get("id") if isinstance(att, dict) else att).strip()
+            if aid:
+                items.append(_ent("maltego.Phrase", f"[ATT&CK {aid}]", "uses_technique"))
+    return _limit(items, n)
 
 
 # ------------------------------------------------------------------------------------------ análisis local
@@ -780,9 +1032,49 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DomainToSubdomains",
         ("maltego.Domain",),
         ("maltego.DNSName",),
-        "Subdominios en certificados públicos (crt.sh).",
+        "Subdominios en certificados públicos (crt.sh con respaldo CertSpotter).",
         "certificados",
         _crtsh,
+    ),
+    _b(
+        "CertSpotterSubdomains",
+        ("maltego.Domain",),
+        ("maltego.DNSName",),
+        "Subdominios en logs de Certificate Transparency (CertSpotter).",
+        "certificados",
+        _certspotter,
+    ),
+    _b(
+        "HackerTargetSubdomains",
+        ("maltego.Domain",),
+        ("maltego.DNSName", "maltego.IPv4Address"),
+        "Subdominios e IPs asociadas (HackerTarget).",
+        "dns",
+        _hackertarget_subdomains,
+    ),
+    _b(
+        "URLScanDomainSearch",
+        ("maltego.Domain",),
+        ("maltego.DNSName", "maltego.IPv4Address", "maltego.URL"),
+        "Escaneos web públicos históricos del dominio (urlscan.io).",
+        "web",
+        _urlscan_domain,
+    ),
+    _b(
+        "InternetDBIPToServices",
+        IP_TYPES,
+        ("maltego.Port", "maltego.Service", "maltego.DNSName", "maltego.Phrase"),
+        "Puertos abiertos, CPEs, hostnames y CVEs sin clave (Shodan InternetDB).",
+        "red",
+        _internetdb_ip,
+    ),
+    _b(
+        "RIPEStatASNToNetblocks",
+        ("maltego.AS",),
+        ("maltego.Organization", "maltego.Netblock"),
+        "Titular y prefijos BGP anunciados por un sistema autónomo (RIPE Stat).",
+        "red",
+        _ripestat_asn,
     ),
     _b(
         "EmailToDomain",
@@ -831,6 +1123,30 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "Comprueba si el alias existe en GitHub, GitLab, Hacker News, Keybase y DEV.",
         "social",
         _alias_profiles,
+    ),
+    _b(
+        "GravatarEmailToProfile",
+        ("maltego.EmailAddress",),
+        ("maltego.Alias", "maltego.Person", "maltego.Location", "maltego.Affiliation"),
+        "Perfil público asociado al correo en Gravatar (alias, nombre, ubicación y cuentas).",
+        "social",
+        _gravatar_email,
+    ),
+    _b(
+        "GitHubAliasToDetails",
+        ("maltego.Alias",),
+        ("maltego.Person", "maltego.Organization", "maltego.EmailAddress", "maltego.URL", "maltego.Location"),
+        "Detalle del perfil público en GitHub (nombre, organización, blog, ubicación y correo público).",
+        "social",
+        _github_alias,
+    ),
+    _b(
+        "OTXHashToThreatPulses",
+        ("maltego.Hash",),
+        ("maltego.Phrase",),
+        "Pulsos de inteligencia de amenazas para un hash MD5/SHA1/SHA256 (AlienVault OTX).",
+        "amenazas",
+        _otx_hash,
     ),
     _b(
         "VTDomainToIP",

@@ -412,3 +412,22 @@ async def test_reimportar_no_duplica_memoria_y_presupuesto_minimo(svc: OsintServ
         },
     )
     assert r["stopped_by_budget"] is True and r["new_entities"] == 0
+
+
+async def test_coercion_auto_y_nuevas_machines(svc: OsintService) -> None:
+    tr = await js(
+        svc,
+        "osint_run_transform",
+        {"case_id": "co1", "transform": "AliasToProfiles", "entity_type": "auto", "value": "jdoe", "save": False},
+    )
+    assert tr["input"]["maltego_type"] == "maltego.Alias" and len(tr["results"]) == 3
+    mc = await js(
+        svc,
+        "osint_run_machine",
+        {"case_id": "co2", "entity_type": "auto", "value": "jdoe", "machine": "PersonalFootprint"},
+    )
+    assert mc["root"]["maltego_type"] == "maltego.Alias" and mc["new_entities"] >= 3
+    asn = await js(svc, "osint_investigate", {"value": "AS15133", "case_id": "co3"})
+    assert asn["strategy"] == "ASNToNetblocks" and asn["entity_count"] >= 3
+    threat = await js(svc, "osint_investigate", {"value": "ab" * 32, "case_id": "co4"})
+    assert threat["strategy"] == "ThreatSweep" and threat["entity_count"] >= 3

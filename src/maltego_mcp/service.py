@@ -329,6 +329,28 @@ class OsintService:
             servers[name] = await _probe_server(server) if check_servers else server.url
         return Inventory(self.list_transforms(entity_type, category), machines, providers, servers)
 
+    def _coerce_auto_entity(
+        self,
+        entity: EntityRecord,
+        entity_type: str,
+        value: str,
+        accepted_types: tuple[str, ...],
+        properties: dict[str, str] | None = None,
+    ) -> EntityRecord:
+        if (
+            entity_type.strip().lower() not in ("", "auto")
+            or entity.maltego_type != "maltego.Phrase"
+            or not accepted_types
+            or entity.maltego_type.lower() in {t.lower() for t in accepted_types}
+        ):
+            return entity
+        for candidate in accepted_types:
+            try:
+                return self.build_entity(entity.case_id, candidate, value, entity.confidence, "manual", properties)
+            except InvalidInput:
+                continue
+        return entity
+
     async def run_transform(
         self,
         case_id: str,
@@ -344,7 +366,14 @@ class OsintService:
         if save and not cid:
             raise InvalidInput("Para guardar resultados (save=true) indica case_id, o usa save=false.")
         spec = self.catalog.get(transform)
-        source_entity = self.build_entity(cid, entity_type, value, 1.0, "manual", parse_properties(properties))
+        props = parse_properties(properties)
+        source_entity = self._coerce_auto_entity(
+            self.build_entity(cid, entity_type, value, 1.0, "manual", props),
+            entity_type,
+            value,
+            spec.input_types,
+            props,
+        )
         if not spec.accepts(source_entity.maltego_type):
             raise InvalidInput(
                 f"El transform '{spec.name}' no acepta {source_entity.maltego_type}; "
@@ -580,7 +609,13 @@ class OsintService:
             for name in transforms:
                 self.catalog.get(name)  # valida nombres antes de empezar
         await self.store.ensure_case(cid)
-        root, _ = await self.store.upsert_entity(self.build_entity(cid, entity_type, value, 1.0, "manual"))
+        built = self._coerce_auto_entity(
+            self.build_entity(cid, entity_type, value, 1.0, "manual"),
+            entity_type,
+            value,
+            definition.input_types,
+        )
+        root, _ = await self.store.upsert_entity(built)
         if not definition.accepts(root.maltego_type):
             types = ", ".join(definition.input_types)
             raise InvalidInput(f"La machine '{definition.name}' no acepta {root.maltego_type}; acepta: {types}.")
