@@ -15,9 +15,8 @@ Este documento fija qué agente se usa para qué en este proyecto y cómo coordi
 | Investigación con fuentes web | Gemini CLI | Claude Code | |
 | Decisiones difíciles de diseño | **Varios en paralelo** (2-3 agentes, mismo prompt) | — | Comparar propuestas y quedarse con la mejor |
 
-Los 7 agentes del proyecto (`mcp-architect`, `transform-engineer`, `osint-graph-modeler`, `security-reviewer`,
-`test-engineer`, `release-manager`, `osint-analyst`) y las 7 skills existen para todas las herramientas (ver `AGENTS.md`,
-sección «Agentes y skills»). Las reglas comunes están en `AGENTS.md`.
+Los 10 agentes y las 15 skills del proyecto existen para todas las herramientas (ver `AGENTS.md`, sección «Agentes y
+skills»). Para investigar desde Orca usa `osint-analyst`, `cti-analyst`, `ioc-composer` o `recon-toolchain-integrator`.
 
 ## 2. Flujos de trabajo
 

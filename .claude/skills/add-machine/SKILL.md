@@ -10,7 +10,8 @@ license: MIT
   solo a lo del paso anterior.
 - **Predefinida**: añade `Machine(nombre, descripción, input_types, stages)` a `BUILTIN_MACHINES` en
   `src/maltego_mcp/machines.py` y, si es la natural para un tipo, a `DEFAULT_MACHINE_BY_TYPE`.
-- **Propia del usuario** (sin código), en `~/.maltego-mcp/transforms.toml`:
+- **Propia del usuario** (sin código; equivale a `register_machine` de otros MCP: semilla = `input_types`,
+  transforms por etapa = `stages`, límite de expansión = `rounds`), en `~/.maltego-mcp/transforms.toml`:
   ```toml
   [[machines]]
   name = "MiRecon"

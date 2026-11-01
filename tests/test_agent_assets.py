@@ -78,3 +78,26 @@ def test_no_escribe_a_traves_de_enlaces(tmp_path: Path, monkeypatch) -> None:  #
         assert outside.read_text(encoding="utf-8") == "no tocar"
     finally:
         link.unlink()
+
+
+def test_skills_y_agentes_solo_citan_elementos_reales() -> None:
+    import re
+
+    from maltego_mcp.machines import BUILTIN_MACHINES
+    from maltego_mcp.transforms.builtin import BUILTIN_TRANSFORMS
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from test_copilot import EXPECTED_TOOLS
+
+    machines = {m.name for m in BUILTIN_MACHINES}
+    transforms = {b.name for b in BUILTIN_TRANSFORMS}
+    texts = [p.read_text(encoding="utf-8") for p in (ROOT / ".agents").rglob("*.md")]
+    for text in texts:
+        for tool in re.findall(r"\bosint_[a-z_]+", text):
+            assert tool in EXPECTED_TOOLS, tool
+        for m in re.findall(r'machine="([A-Za-z]+)"', text):
+            assert m in machines, m
+        for name in re.findall(r"`([A-Z][A-Za-z0-9]+(?:To|Context|Subdomains|Services)[A-Za-z0-9]*)`", text):
+            assert name in transforms, name
+    for m in ("CompanyFootprint", "PersonalFootprint", "EmailRecon", "DomainRecon", "InfrastructureRecon"):
+        assert any(m in t for t in texts), m

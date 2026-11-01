@@ -267,6 +267,23 @@ npx mcp-maltego ctl mtz
 - *Export case demo for Maltego with a radial layout and write me an HTML report.*
 - *Import the graph I saved in Maltego as acme.mtgx into case acme and continue from there.*
 
+## AI agents and skills for contributors and analysts
+
+The repository ships 10 agents and 15 skills from a single source (`.agents/`), generated for Claude Code, Gemini CLI,
+Qwen Code, GitHub Copilot and Codex, with skills in the open [Agent Skills](https://agentskills.io) format (also read
+by Cursor):
+
+- **Investigation agents** (use this MCP): `osint-analyst` (copilot with next-best-action loop and memory),
+  `cti-analyst` (defensive exposure and IOC triage), `ioc-composer` (multi-MCP IOC graphs with MISP, ATT&CK, TheHive,
+  Cortex), `recon-toolchain-integrator` (theHarvester, amass, recon-ng, SpiderFoot output into the graph).
+- **Investigation skills**: company footprint, identity footprint, infrastructure mapping, IOC graph composition,
+  external OSINT tools, investigation methodology.
+- **Development agents and skills**: MCP tool design, transforms and custom providers, Machines, graph model,
+  Maltego formats, non-standard entities, security review, tests, release and deployment.
+
+Inspired by community work (SulimanAbdulrazzaq/maltego-mcp, lidless-labs/maltego-mcp, HexStrike AI, MCP-Kali-Rust);
+offensive capabilities (exploitation) are deliberately out of scope.
+
 ## Security and responsible use
 
 OSINT content is untrusted and is never followed as instructions. See [SECURITY.md](SECURITY.md) for the design
