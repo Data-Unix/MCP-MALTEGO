@@ -3,8 +3,11 @@ name: Release
 # Se ejecuta al publicar una release en GitHub (tag vX.Y.Z):
 #  1. verifica que la versión del tag coincide con package.json / pyproject.toml / server.json y pasa los tests
 #  2. publica el paquete en GitHub Packages como @data-unix/mcp-maltego (sección "Packages" del repo)
-#  3. publica en npmjs.com como mcp-maltego si existe el secreto NPM_TOKEN (con provenance si el repo es público)
-#  4. adjunta el .tgz del paquete npm y el wheel de Python a la release
+#  3. publica en npmjs.com como mcp-maltego: con el secreto NPM_TOKEN (primera vez) o con Trusted Publishing
+#     (variable de repo NPM_TRUSTED_PUBLISHING=true); provenance si el repo es público
+#  4. publica server.json en el registro oficial de MCP si la variable MCP_REGISTRY_PUBLISH=true
+#  5. adjunta el .tgz del paquete npm, el wheel y el sdist de Python a la release
+# Cada publicación se omite si esa versión ya existe, así que se puede relanzar sin errores.
 on:
   release:
     types: [published]
@@ -15,13 +18,17 @@ permissions:
 
 jobs:
   verify:
+    # Solo se publica desde main o desde un tag de versión, nunca desde otras ramas (workflow_dispatch).
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - id: version
@@ -43,46 +50,90 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           registry-url: https://npm.pkg.github.com
           scope: "@data-unix"
-      - name: Publish @data-unix/mcp-maltego
+      - name: Publish @data-unix/mcp-maltego (si la versión no existe ya)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           npm pkg set name="@data-unix/mcp-maltego"
           npm pkg set publishConfig.registry="https://npm.pkg.github.com"
           npm pkg delete publishConfig.access
+          if npm view "@data-unix/mcp-maltego@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::@data-unix/mcp-maltego@$VERSION ya está en GitHub Packages"; exit 0
+          fi
           npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   npmjs:
     needs: verify
     runs-on: ubuntu-latest
+    # Guarda NPM_TOKEN como secreto de este Environment (Settings → Environments → npm-publish) con regla de
+    # despliegue solo para tags v*: así otra rama no puede leerlo.
+    environment: npm-publish
     permissions:
       contents: read
-      id-token: write
+      id-token: write   # Trusted Publishing (OIDC) y provenance
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: npm 11.21.1 fijado (Trusted Publishing necesita >= 11.5.1)
+        run: npm install -g npm@11.21.1
       - name: Publish mcp-maltego to npmjs.com
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TRUSTED: ${{ vars.NPM_TRUSTED_PUBLISHING }}
           IS_PRIVATE: ${{ github.event.repository.private }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::notice::NPM_TOKEN no configurado: se omite la publicación en npmjs.com"; exit 0
+          if npm view "mcp-maltego@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::mcp-maltego@$VERSION ya está publicado en npmjs.com"; exit 0
           fi
-          if [ "$IS_PRIVATE" = "true" ]; then
-            npm publish --access public
-          else
-            npm publish --access public --provenance
+          if [ -z "$NODE_AUTH_TOKEN" ] && [ "$TRUSTED" != "true" ]; then
+            echo "::warning::Ni NPM_TOKEN ni NPM_TRUSTED_PUBLISHING=true: se omite npmjs.com"; exit 0
           fi
+          if [ "$TRUSTED" = "true" ]; then unset NODE_AUTH_TOKEN; fi   # OIDC: npm lo detecta solo
+          FLAGS="--access public"
+          if [ "$IS_PRIVATE" != "true" ]; then FLAGS="$FLAGS --provenance"; fi
+          npm publish $FLAGS
+
+  mcp-registry:
+    needs: npmjs
+    if: vars.MCP_REGISTRY_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # login github-oidc
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.1
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install mcp-publisher (versión fijada)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$MCP_PUBLISHER_VERSION" --repo modelcontextprotocol/registry \
+            --pattern "mcp-publisher_linux_amd64.tar.gz" --output publisher.tar.gz
+          echo "$MCP_PUBLISHER_SHA256  publisher.tar.gz" | sha256sum -c -   # integridad del binario
+          tar xzf publisher.tar.gz mcp-publisher
+      - name: Publish server.json to the MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
 
   assets:
     needs: verify
@@ -91,9 +142,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - run: npm pack

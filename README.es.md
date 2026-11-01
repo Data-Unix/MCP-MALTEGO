@@ -131,6 +131,14 @@ configuración del cliente o como variables de entorno de usuario.
 
 Para el puente, instala el paquete de forma global (`npm i -g mcp-maltego`). Detalles en [docs/MALTEGO.md](docs/MALTEGO.md).
 
+## Agentes y skills
+
+El repositorio incluye 10 agentes y 15 skills con una única fuente (`.agents/`) para Claude Code, Gemini CLI, Qwen
+Code, GitHub Copilot, Codex y Cursor: agentes de investigación (`osint-analyst`, `cti-analyst`, `ioc-composer`,
+`recon-toolchain-integrator`) y de desarrollo, y skills de huella corporativa, identidad digital, infraestructura,
+composición de IOC con otros MCP, herramientas OSINT externas, proveedores propios, entidades no estándar y
+despliegue. Sin capacidades ofensivas (explotación).
+
 ## Documentación
 
 - Uso y configuración: [docs/USO.md](docs/USO.md)

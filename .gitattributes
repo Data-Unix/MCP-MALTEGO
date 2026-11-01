@@ -1,0 +1,12 @@
+# Finales de línea normalizados (LF en el repo) y binarios marcados
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.mtgx binary
+*.mtz binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.tgz binary
+uv.lock linguist-generated=true

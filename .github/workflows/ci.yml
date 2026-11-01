@@ -22,8 +22,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -40,11 +42,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: npm test
       - name: Pack and install like a user
         shell: bash
@@ -55,3 +59,34 @@ jobs:
           npm install --no-audit --no-fund "$RUNNER_TEMP"/mcp-maltego-*.tgz
           npx mcp-maltego --version
           npx mcp-maltego doctor
+
+  security:
+    name: Security (secrets + dependencies)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks lee la lista de commits del PR
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0          # todo el historial: los secretos borrados siguen en git
+          persist-credentials: false
+      - name: Gitleaks (secretos en todo el historial)
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: pip-audit (vulnerabilidades conocidas en dependencias Python)
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt > requirements-audit.txt
+          uvx pip-audit --strict -r requirements-audit.txt
+      - name: npm package contents (sin ficheros sensibles)
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "
+            const files = require('./pack.json')[0].files.map(f => f.path);
+            const names = /(^|\/)(\.env|\.npmrc|\.pypirc|local\.settings\.json|transforms\.toml|graph\.json|__pycache__)/;
+            const exts = /\.(pem|key|p12|pfx|crt|mtgx|mtz|graphml|csv|log)$/;
+            const bad = files.filter(f => names.test(f) || exts.test(f));
+            if (bad.length) { console.error('Ficheros prohibidos en el paquete:', bad); process.exit(1); }
+            console.log(files.length + ' ficheros en el paquete, ninguno sensible');"

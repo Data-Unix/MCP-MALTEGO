@@ -1,5 +1,8 @@
 # PLAN — MCP Maltego
 
+> **Documento histórico** de la planificación inicial (v0.1). Estado actual: `docs/COBERTURA.md`. Agentes y skills
+> actuales: `.agents/` (ver `AGENTS.md`). Los agentes citados abajo eran genéricos y se retiraron en la v0.2.
+
 Estado: **v1 implementada** (14 tools, backends memory y gremlin, transforms TRX/iTDS y cadenas). Detalle y pendientes en `docs/USO.md`. Base metodológica: skill `mcp-builder` (Anthropic) — fases 1-4.
 
 ## 0. Decisiones clave
@@ -86,25 +89,10 @@ Medidas:
 
 Criterio de "hecho" v1: los 10 evals con ≥ 80 % de acierto en ambos proveedores y cero errores 400 de esquema en Gemini.
 
-## 6. Agentes y skills instalados (`.claude/`)
+## 6. Agentes y skills
 
-| Nombre | Origen | Por qué |
-|---|---|---|
-| mcp-builder (skill) | anthropics/skills | Metodología, buenas prácticas y evaluaciones |
-| mcp-developer | VoltAgent/awesome-claude-code-subagents | Construcción/depuración de servidores MCP |
-| python-pro | VoltAgent | Python tipado/async |
-| data-engineer | VoltAgent | Event Hubs, Service Bus, ETL |
-| azure-infra-engineer | VoltAgent | Bicep, Entra ID, red |
-| security-auditor | VoltAgent | Auditoría de solo lectura |
-| test-automator | VoltAgent | pytest/CI |
-| cloud-architect | wshobson/agents | Arquitectura Azure, coste |
-| threat-modeling-expert | wshobson/agents | STRIDE, prompt injection |
-| async-python-patterns, python-resilience, python-testing-patterns (skills) | wshobson/agents | Retries 429, timeouts, tests |
-| osint-graph-modeler | **creado para este proyecto** | No existe ninguno para OSINT/Gremlin/Maltego en los repos awesome |
-
-Descartados: `penetration-tester` (fuera de alcance), `protect-mcp` (hooks que descargan paquetes npm externos: riesgo de cadena de suministro), `code-reviewer`/`documentation-engineer` (ya cubiertos por `/code-review` y la skill).
-
-Nota multi-modelo (Orca): los agentes de `.claude/` solo los carga Claude Code. Las reglas comunes para todos los modelos están en `AGENTS.md` (importado por `CLAUDE.md`, `GEMINI.md` y `QWEN.md`). El reparto de roles por agente y el flujo de orquestación están en `docs/ORCA.md`.
+Sustituidos en la v0.2 por agentes y skills propios del proyecto con fuente única en `.agents/` y copias para
+cada herramienta (`scripts/sync_agents.py`). Ver `AGENTS.md`.
 
 ## 7. Fuentes: a verificar / añadir
 

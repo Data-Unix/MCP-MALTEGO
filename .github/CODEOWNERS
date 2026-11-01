@@ -1,0 +1,6 @@
+# Toda modificación requiere revisión del propietario (actívalo en la regla de protección de main).
+*                    @Data-Unix
+/.github/            @Data-Unix
+/SECURITY.md         @Data-Unix
+/package.json        @Data-Unix
+/pyproject.toml      @Data-Unix

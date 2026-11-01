@@ -10,6 +10,7 @@
  *
  * Requisito único: uv (https://docs.astral.sh/uv/). uv descarga Python 3.12 si hace falta e instala las
  * dependencias exactas de uv.lock en un entorno por versión dentro de ~/.maltego-mcp (no escribe en node_modules).
+ * MCP_MALTEGO_UV permite indicar la ruta de uv: ejecuta ese binario, así que solo debe apuntar a un uv de confianza.
  * stdout se reserva al protocolo MCP: todos los mensajes del lanzador van a stderr.
  */
 "use strict";
@@ -66,7 +67,8 @@ function buildInvocation(argv, env = process.env) {
     args = args.slice(1);
   }
   const venv = path.join(env.MALTEGO_MCP_HOME || home(), "runtime", `v${PKG.version}`);
-  const uvArgs = ["run", "--quiet", "--frozen", "--no-dev", "--project", PKG_ROOT, command, ...args];
+  // --no-config: ignora uv.toml/pyproject del directorio desde el que lanza el cliente MCP (aislamiento).
+  const uvArgs = ["run", "--quiet", "--no-config", "--frozen", "--no-dev", "--project", PKG_ROOT, command, ...args];
   if (command === "maltegoctl" && args[0] === "mtz" && !args.includes("--repo")) {
     uvArgs.push("--repo", PKG_ROOT);
   }
