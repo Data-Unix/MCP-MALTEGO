@@ -35,8 +35,8 @@ async def err(svc: OsintService, tool: str, args: dict[str, Any]) -> str:
 
 
 async def test_flujo_manual_completo(service: OsintService, tmp_path: Path) -> None:
-    assert "creado" in await ok(service, "osint_create_case", {"case_id": "Caso-1", "description": "prueba"})
-    assert "ya existía" in await ok(service, "osint_create_case", {"case_id": "caso-1"})
+    assert "creado" in await ok(service, "osint_manage_case", {"case_id": "Caso-1", "description": "prueba"})
+    assert "ya existía" in await ok(service, "osint_manage_case", {"case_id": "caso-1"})
     d = json.loads(
         await ok(
             service,
@@ -73,11 +73,12 @@ async def test_flujo_manual_completo(service: OsintService, tmp_path: Path) -> N
     assert "resolves_to" in text and "example.com" in text and "←" in text
     assert did in await ok(service, "osint_find_paths", {"case_id": "caso-1", "source_id": iid, "target_id": did})
     summary = json.loads(await ok(service, "osint_get_case_summary", {"case_id": "caso-1", "response_format": "json"}))
-    assert (summary["entity_count"], summary["edge_count"]) == (2, 1)
+    assert (summary["quality"]["entidades"], summary["quality"]["relaciones"]) == (2, 1)
     got = json.loads(
         await ok(service, "osint_get_entity", {"case_id": "caso-1", "entity_id": did, "response_format": "json"})
     )
-    assert got["properties"] == {"registrar": "ACME"}
+    assert got["entity"]["properties"] == {"registrar": "ACME"}
+    assert got["discovered_by"] == [] and got["score"]["degree"] == 1
     found = json.loads(await ok(service, "osint_search_entities", {"query": "EXAMPLE", "response_format": "json"}))
     assert found["total"] == 1 and found["has_more"] is False
     cases = json.loads(await ok(service, "osint_list_cases", {"response_format": "json"}))
@@ -92,7 +93,7 @@ async def test_flujo_manual_completo(service: OsintService, tmp_path: Path) -> N
 
 
 async def test_errores_de_entrada_son_accionables(service: OsintService) -> None:
-    assert "case_id" in await err(service, "osint_create_case", {"case_id": "mal id!"})
+    assert "case_id" in await err(service, "osint_manage_case", {"case_id": "mal id!"})
     assert "dominio" in await err(
         service,
         "osint_upsert_entity",
@@ -102,7 +103,7 @@ async def test_errores_de_entrada_son_accionables(service: OsintService) -> None
         service, "osint_upsert_entity", {"case_id": "c1", "entity_type": "Dominio", "value": "x"}
     )
     assert "osint_upsert_entity" in await err(service, "osint_get_entity", {"case_id": "c1", "entity_id": "123"})
-    assert "osint_create_case" in await err(service, "osint_get_case_summary", {"case_id": "nadie"})
+    assert "no existe" in await err(service, "osint_get_case_summary", {"case_id": "nadie"})
     # validación de esquema del SDK (fuera de rango / tipo incorrecto)
     assert "100" in await err(service, "osint_list_cases", {"limit": 1000})
     assert await err(service, "osint_find_paths", {"case_id": "c1", "source_id": "a", "target_id": "b", "max_depth": 9})
@@ -121,7 +122,7 @@ async def test_transform_real_guarda_resultados(service: OsintService) -> None:
     )
     assert "2 resultados (guardados)" in text and "www.example.org" in text and "has_website" in text
     s = json.loads(await ok(service, "osint_get_case_summary", {"case_id": "c1", "response_format": "json"}))
-    assert (s["entity_count"], s["edge_count"]) == (3, 2)
+    assert (s["quality"]["entidades"], s["quality"]["relaciones"]) == (3, 2)
     again = json.loads(
         await ok(
             service,
@@ -243,7 +244,7 @@ async def test_cadena_tipo_machine(service: OsintService) -> None:
     res = json.loads(
         await ok(
             service,
-            "osint_run_transform_chain",
+            "osint_run_machine",
             {
                 "case_id": "c2",
                 "entity_type": "maltego.EmailAddress",
@@ -256,7 +257,7 @@ async def test_cadena_tipo_machine(service: OsintService) -> None:
     steps = [(s["transform"], s["inputs"], s["new_entities"]) for s in res["steps"]]
     # URLToDomain devuelve example.net, que ya existía: 0 nuevas
     assert steps == [("EmailToDomain", 1, 1), ("DomainToWebsite", 1, 2), ("URLToDomain", 1, 0)]
-    assert res["steps"][2]["skipped_inputs"] == 1  # la Website no la acepta URLToDomain
+    assert res["steps"][2]["inputs"] == 1  # solo la URL (la Website no la acepta URLToDomain)
     s = await service.case_summary("c2", 5)
     assert s.entity_count == 4 and s.edge_count == 4
 
@@ -265,7 +266,7 @@ async def test_cadena_respeta_limites_y_errores_parciales(service: OsintService)
     res = json.loads(
         await ok(
             service,
-            "osint_run_transform_chain",
+            "osint_run_machine",
             {
                 "case_id": "c3",
                 "entity_type": "maltego.EmailAddress",
@@ -280,7 +281,7 @@ async def test_cadena_respeta_limites_y_errores_parciales(service: OsintService)
     stopped = json.loads(
         await ok(
             service,
-            "osint_run_transform_chain",
+            "osint_run_machine",
             {
                 "case_id": "c4",
                 "entity_type": "maltego.EmailAddress",
@@ -291,11 +292,11 @@ async def test_cadena_respeta_limites_y_errores_parciales(service: OsintService)
             },
         )
     )
-    assert stopped["stopped_by_limit"] is True and len(stopped["steps"]) == 1
+    assert stopped["stopped_by_budget"] is True and len(stopped["steps"]) == 1
     dead = json.loads(
         await ok(
             service,
-            "osint_run_transform_chain",
+            "osint_run_machine",
             {
                 "case_id": "c5",
                 "entity_type": "maltego.Domain",
@@ -308,7 +309,7 @@ async def test_cadena_respeta_limites_y_errores_parciales(service: OsintService)
     assert len(dead["steps"][0]["errors"]) == 1
     assert "transforms" in await err(
         service,
-        "osint_run_transform_chain",
+        "osint_run_machine",
         {"case_id": "c6", "entity_type": "maltego.Domain", "value": "a.com", "transforms": []},
     )
 
@@ -317,7 +318,8 @@ async def test_listado_de_transforms(service: OsintService) -> None:
     text = await ok(service, "osint_list_transforms", {"entity_type": "maltego.EmailAddress"})
     assert "EmailToDomain" in text and "DomainToWebsite" not in text
     data = json.loads(await ok(service, "osint_list_transforms", {"response_format": "json"}))
-    assert data["count"] == 10
+    assert len(data["transforms"]) == 10
+    assert {m["name"] for m in data["machines"]} >= {"DomainRecon", "EmailRecon"}
 
 
 @pytest.mark.parametrize("tool", ["osint_list_entity_types", "osint_list_transforms", "osint_list_cases"])
@@ -352,7 +354,7 @@ async def test_todas_las_tools_en_markdown(service: OsintService) -> None:
     await ok(service, "osint_link_entities", {"case_id": "md", "source_id": d, "target_id": i, "edge_label": "x"})
     assert "| maltego.Domain" in await ok(service, "osint_list_entity_types", {})
     assert "`md`" in await ok(service, "osint_list_cases", {})
-    assert "Más conectadas" in await ok(service, "osint_get_case_summary", {"case_id": "md"})
+    assert "Entidades prioritarias" in await ok(service, "osint_get_case_summary", {"case_id": "md"})
     assert "k: `v|x`" in await ok(service, "osint_get_entity", {"case_id": "md", "entity_id": d})
     assert "Casos: `md`" in await ok(service, "osint_search_entities", {"query": "a.com"})
     assert "Sin resultados" in await ok(service, "osint_search_entities", {"query": "zzz"})
@@ -363,7 +365,7 @@ async def test_todas_las_tools_en_markdown(service: OsintService) -> None:
     assert "1. " in await ok(service, "osint_find_paths", {"case_id": "md", "source_id": d, "target_id": i})
     text = await ok(
         service,
-        "osint_run_transform_chain",
+        "osint_run_machine",
         {
             "case_id": "md",
             "entity_type": "maltego.Domain",
@@ -381,7 +383,7 @@ async def test_cadena_no_supera_el_presupuesto(service: OsintService) -> None:
     res = json.loads(
         await ok(
             service,
-            "osint_run_transform_chain",
+            "osint_run_machine",
             {
                 "case_id": "budget",
                 "entity_type": "maltego.EmailAddress",
@@ -392,5 +394,132 @@ async def test_cadena_no_supera_el_presupuesto(service: OsintService) -> None:
             },
         )
     )
-    assert res["stopped_by_limit"] is True
+    assert res["stopped_by_budget"] is True
     assert (await service.case_summary("budget", 0)).entity_count == 3
+
+
+async def test_tipo_auto(service: OsintService) -> None:
+    res = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {"case_id": "auto", "entity_type": "auto", "value": "Ana@Example.com", "response_format": "json"},
+        )
+    )
+    assert (res["entity"]["maltego_type"], res["entity"]["value"]) == ("maltego.EmailAddress", "ana@example.com")
+    run = json.loads(
+        await ok(
+            service,
+            "osint_run_transform",
+            {
+                "transform": "EmailToDomain",
+                "entity_type": "auto",
+                "value": "x@y.org",
+                "save": False,
+                "response_format": "json",
+            },
+        )
+    )
+    assert run["results"][0]["entity"]["value"] == "y.org"
+
+
+async def test_expandir_entidad(service: OsintService) -> None:
+    d = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {"case_id": "exp", "entity_type": "maltego.Domain", "value": "example.org", "response_format": "json"},
+        )
+    )["entity"]["id"]
+    res = json.loads(
+        await ok(service, "osint_expand_entity", {"case_id": "exp", "entity_id": d, "response_format": "json"})
+    )
+    ran = {r["transform"] for r in res["runs"]}
+    # Acepta maltego.Domain: DomainToIP, DomainToWebsite y AlwaysFails (respuesta 200 sin entidades)
+    assert {"DomainToWebsite", "DomainToIP", "AlwaysFails"} <= ran
+    assert all(":" in e for e in res["errors"])
+    md = await ok(service, "osint_expand_entity", {"case_id": "exp", "entity_id": d, "max_transforms": 1})
+    assert "No ejecutados" in md
+    ip = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {
+                "case_id": "exp",
+                "entity_type": "maltego.Hash",
+                "value": "d41d8cd98f00b204e9800998ecf8427e",
+                "response_format": "json",
+            },
+        )
+    )["entity"]["id"]
+    assert "No hay transforms" in await err(service, "osint_expand_entity", {"case_id": "exp", "entity_id": ip})
+
+
+async def test_exportar_e_importar_mtgx_y_csv(service: OsintService, tmp_path: Path) -> None:
+    await ok(
+        service,
+        "osint_run_machine",
+        {
+            "case_id": "orig",
+            "entity_type": "maltego.EmailAddress",
+            "value": "ana@example.net",
+            "transforms": ["EmailToDomain", "DomainToWebsite"],
+        },
+    )
+    for fmt in ("mtgx", "csv"):
+        msg = await ok(service, "osint_export_case", {"case_id": "orig", "format": fmt})
+        assert "4 entidades y 3 relaciones" in msg
+        exported = next((tmp_path / "exports").glob(f"*.{fmt}"))
+        imports = tmp_path / "imports"
+        imports.mkdir(exist_ok=True)
+        (imports / f"desde-maltego.{fmt}").write_bytes(exported.read_bytes())
+        text = await ok(service, "osint_import_graph", {"case_id": f"copia-{fmt}", "file_name": f"desde-maltego.{fmt}"})
+        assert "4 entidades (4 nuevas), 3 relaciones" in text, text
+        s = await service.case_summary(f"copia-{fmt}", 0)
+        assert (s.entity_count, s.edge_count) == (4, 3)
+    # también desde la carpeta de exportación directamente
+    assert "Importado" in await ok(service, "osint_import_graph", {"case_id": "orig", "file_name": exported.name})
+
+
+async def test_importacion_no_permite_rutas_arbitrarias(service: OsintService, tmp_path: Path) -> None:
+    secret = tmp_path / "secreto.csv"
+    secret.write_text("source_type,source_value\nmaltego.Phrase,x\n", encoding="utf-8")
+    (tmp_path / "imports").mkdir()
+    for bad in (str(secret), "../secreto.csv", "..\\secreto.csv"):
+        assert "No encuentro" in await err(service, "osint_import_graph", {"case_id": "c1", "file_name": bad})
+    (tmp_path / "imports" / "malo.txt").write_text("x", encoding="utf-8")
+    assert "Formato no soportado" in await err(
+        service, "osint_import_graph", {"case_id": "c1", "file_name": "malo.txt"}
+    )
+    (tmp_path / "imports" / "cab.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    assert "Cabecera CSV" in await err(service, "osint_import_graph", {"case_id": "c1", "file_name": "cab.csv"})
+
+
+async def test_importacion_grande_y_confianza_en_csv(service: OsintService, tmp_path: Path) -> None:
+    import time
+
+    from maltego_mcp.domain.records import EdgeRecord, EntityRecord
+    from maltego_mcp.maltego.mtgx import write_mtgx
+
+    ents = [EntityRecord(f"n{i}", "x", "domain", "maltego.Domain", f"h{i}.example.com", 0.9) for i in range(3000)]
+    edges = [EdgeRecord(f"e{i}", "x", "rel", "n0", f"n{i}") for i in range(1, 3000)]
+    (tmp_path / "imports").mkdir()
+    (tmp_path / "imports" / "grande.mtgx").write_bytes(write_mtgx(ents, edges))
+    start = time.perf_counter()
+    text = await ok(service, "osint_import_graph", {"case_id": "grande", "file_name": "grande.mtgx"})
+    assert "3000 entidades (3000 nuevas), 2999 relaciones" in text
+    assert time.perf_counter() - start < 15  # una sola escritura del fichero, no 6000
+    one = (await service.search("grande", "h7.example.com", "", 1, 0)).items[0]
+    assert one.confidence == 0.9  # la confianza viaja en el .mtgx
+    csv_text = (
+        "source_type,source_value,relation,target_type,target_value,confidence\n"
+        "maltego.Domain,a.com,resolves_to,maltego.IPv4Address,1.1.1.1,0.9\nmaltego.Phrase,suelta,,,,0.3\n"
+    )
+    (tmp_path / "imports" / "conf.csv").write_text(csv_text, encoding="utf-8")
+    await ok(service, "osint_import_graph", {"case_id": "conf", "file_name": "conf.csv"})
+    s = await service.case_summary("conf", 5)
+    assert s.edge_count == 1
+    phrase = (await service.search("conf", "suelta", "", 1, 0)).items[0]
+    assert phrase.confidence == 0.3
+    nb = await service.neighbors("conf", (await service.search("conf", "a.com", "", 1, 0)).items[0].id, "", "out", 5)
+    assert nb[0].edge.confidence == 0.9

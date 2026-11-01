@@ -25,6 +25,7 @@ from maltego_mcp.domain.records import (
     CaseRecord,
     EdgeRecord,
     EntityRecord,
+    StepRecord,
     merge_edge,
     merge_entity,
     utc_now,
@@ -44,6 +45,7 @@ class MemoryGraphStore:
         self._cases: dict[str, CaseRecord] = {}
         self._entities: dict[str, dict[str, EntityRecord]] = {}
         self._edges: dict[str, dict[str, EdgeRecord]] = {}
+        self._steps: dict[str, list[StepRecord]] = {}
         self._loaded_mtime: tuple[int, int, int] | None = None
         # Protege el estado frente al hilo de escritura (asyncio.to_thread) y lecturas concurrentes.
         self._sync_lock = threading.RLock()
@@ -74,6 +76,7 @@ class MemoryGraphStore:
             cases = {c["case_id"]: CaseRecord(**c) for c in raw.get("cases", [])}
             entities = [EntityRecord(**e) for e in raw.get("entities", [])]
             edges = [EdgeRecord(**e) for e in raw.get("edges", [])]
+            steps = [StepRecord(**x) for x in raw.get("steps", [])]
         except (OSError, json.JSONDecodeError, TypeError, KeyError, AttributeError) as exc:
             raise BackendError(
                 f"No se pudo leer el fichero de datos {path.name} ({exc.__class__.__name__}). "
@@ -86,6 +89,9 @@ class MemoryGraphStore:
             self._entities.setdefault(ent.case_id, {})[ent.id] = ent
         for edge in edges:
             self._edges.setdefault(edge.case_id, {})[edge.id] = edge
+        self._steps = {}
+        for step in sorted(steps, key=lambda x: x.seq):
+            self._steps.setdefault(step.case_id, []).append(step)
         logger.info("Grafo cargado desde %s (%d casos)", path, len(self._cases))
 
     @contextlib.contextmanager
@@ -140,6 +146,7 @@ class MemoryGraphStore:
             "cases": [c.to_dict() for c in self._cases.values()],
             "entities": [e.to_dict() for d in self._entities.values() for e in d.values()],
             "edges": [e.to_dict() for d in self._edges.values() for e in d.values()],
+            "steps": [x.to_dict() for lst in self._steps.values() for x in lst],
         }
         self._data_file.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=self._data_file.parent, prefix=".graph-", suffix=".json")
@@ -242,6 +249,31 @@ class MemoryGraphStore:
 
         return await self._write(mutate)
 
+    async def upsert_many(self, entities: list[EntityRecord], edges: list[EdgeRecord]) -> tuple[int, int]:
+        """Una sola escritura del fichero para todo el lote."""
+
+        def mutate() -> tuple[int, int]:
+            created = saved = 0
+            for entity in entities:
+                self._require_case(entity.case_id)
+                bucket = self._entities[entity.case_id]
+                existing = bucket.get(entity.id)
+                bucket[entity.id] = merge_entity(existing, entity)
+                created += existing is None
+            for edge in edges:
+                ents = self._entities.get(edge.case_id, {})
+                if edge.out_id not in ents or edge.in_id not in ents:
+                    continue
+                bucket_e = self._edges[edge.case_id]
+                bucket_e[edge.id] = merge_edge(bucket_e.get(edge.id), edge)
+                saved += 1
+            for case_id in {e.case_id for e in entities} | {e.case_id for e in edges}:
+                if case_id in self._cases:
+                    self._touch_case(case_id)
+            return created, saved
+
+        return await self._write(mutate)
+
     async def neighbors(
         self, case_id: str, entity_id: str, edge_label: str, direction: Direction, limit: int
     ) -> list[Neighbor]:
@@ -314,6 +346,81 @@ class MemoryGraphStore:
     def _touch_case(self, case_id: str) -> None:
         case = self._cases[case_id]
         self._cases[case_id] = replace(case, updated=utc_now())
+
+    async def replace_entity(self, entity: EntityRecord) -> EntityRecord:
+        def mutate() -> EntityRecord:
+            self._require_case(entity.case_id)
+            if entity.id not in self._entities[entity.case_id]:
+                raise NotFound(f"La entidad '{entity.id}' no existe en el caso '{entity.case_id}'.")
+            self._entities[entity.case_id][entity.id] = entity
+            self._touch_case(entity.case_id)
+            return entity
+
+        return await self._write(mutate)
+
+    async def delete_entity(self, case_id: str, entity_id: str) -> int:
+        def mutate() -> int:
+            self._require_case(case_id)
+            if self._entities[case_id].pop(entity_id, None) is None:
+                raise NotFound(f"La entidad '{entity_id}' no existe en el caso '{case_id}'.")
+            edges = self._edges[case_id]
+            gone = [k for k, e in edges.items() if entity_id in (e.out_id, e.in_id)]
+            for k in gone:
+                del edges[k]
+            self._touch_case(case_id)
+            return len(gone)
+
+        return await self._write(mutate)
+
+    async def delete_edge(self, case_id: str, edge_id: str) -> bool:
+        def mutate() -> bool:
+            self._require_case(case_id)
+            removed = self._edges[case_id].pop(edge_id, None) is not None
+            if removed:
+                self._touch_case(case_id)
+            return removed
+
+        return await self._write(mutate)
+
+    async def delete_case(self, case_id: str) -> tuple[int, int]:
+        def mutate() -> tuple[int, int]:
+            self._require_case(case_id)
+            counts = (len(self._entities.pop(case_id, {})), len(self._edges.pop(case_id, {})))
+            self._steps.pop(case_id, None)
+            del self._cases[case_id]
+            return counts
+
+        return await self._write(mutate)
+
+    async def append_step(self, step: StepRecord) -> StepRecord:
+        def mutate() -> StepRecord:
+            steps = self._steps.setdefault(step.case_id, [])
+            stored = replace(step, seq=(steps[-1].seq + 1) if steps else 1)
+            steps.append(stored)
+            return stored
+
+        return await self._write(mutate)
+
+    async def append_steps(self, steps: list[StepRecord]) -> int:
+        if not steps:
+            return 0
+
+        def mutate() -> int:
+            for step in steps:
+                current = self._steps.setdefault(step.case_id, [])
+                current.append(replace(step, seq=(current[-1].seq + 1) if current else 1))
+            return len(steps)
+
+        return await self._write(mutate)
+
+    async def list_steps(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
+        self._read()
+        if case_id:
+            self._require_case(case_id)
+            pool = self._steps.get(case_id, [])
+        else:
+            pool = sorted((x for lst in self._steps.values() for x in lst), key=lambda x: (x.timestamp, x.seq))
+        return [x for x in pool if x.seq > since_seq or not case_id][:limit] if case_id else pool[-limit:]
 
     async def close(self) -> None:
         return None

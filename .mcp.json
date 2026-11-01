@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "maltego": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--quiet", "maltego-mcp"],
+      "env": {}
+    }
+  }
+}

@@ -14,6 +14,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from maltego_mcp.errors import ConfigError, InvalidInput
+from maltego_mcp.machines import MachineCatalog, load_machines
+from maltego_mcp.transforms.builtin import BUILTIN_TRANSFORMS, BuiltinTransform
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 
@@ -43,6 +45,19 @@ class TransformSpec:
     output_types: tuple[str, ...] = ()
     description: str = ""
     settings: dict[str, str] = field(default_factory=dict)
+    builtin: BuiltinTransform | None = None
+    category: str = "servidor"
+
+    @property
+    def requires(self) -> tuple[str, ...]:
+        return self.builtin.requires if self.builtin else ()
+
+    def available(self, env: dict[str, str]) -> bool:
+        return self.builtin.available(env) if self.builtin else True
+
+    @property
+    def origin(self) -> str:
+        return "integrado" if self.builtin else f"servidor {self.server.name}"
 
     def accepts(self, maltego_type: str) -> bool:
         return not self.input_types or maltego_type.lower() in {t.lower() for t in self.input_types}
@@ -52,9 +67,33 @@ class TransformSpec:
         return f"{self.server.url.rstrip('/')}/run/{self.path}/"
 
 
+BUILTIN_SERVER = TransformServer(name="integrado", url="builtin://maltego-mcp", timeout_s=30.0)
+
+
+def builtin_specs() -> dict[str, TransformSpec]:
+    return {
+        b.name.lower(): TransformSpec(
+            name=b.name,
+            server=BUILTIN_SERVER,
+            path=b.name.lower(),
+            input_types=b.input_types,
+            output_types=b.output_types,
+            description=b.description,
+            builtin=b,
+            category=b.category,
+        )
+        for b in BUILTIN_TRANSFORMS
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class TransformCatalog:
     transforms: dict[str, TransformSpec] = field(default_factory=dict)
+    machines: MachineCatalog = field(default_factory=lambda: load_machines([]))
+
+    def with_builtins(self) -> TransformCatalog:
+        """Integrados + los del fichero (si coinciden de nombre, gana el del fichero)."""
+        return TransformCatalog({**builtin_specs(), **self.transforms}, self.machines)
 
     def get(self, name: str) -> TransformSpec:
         spec = self.transforms.get(name.lower())
@@ -115,7 +154,7 @@ def load_catalog(path: Path | None) -> TransformCatalog:
             description=str(raw.get("description", ""))[:500],
             settings={str(k): str(v) for k, v in dict(raw.get("settings", {})).items()},
         )
-    return TransformCatalog(transforms)
+    return TransformCatalog(transforms, load_machines(list(data.get("machines", []))))
 
 
 def _to_path(name: str) -> str:

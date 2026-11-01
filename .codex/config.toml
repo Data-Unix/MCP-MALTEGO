@@ -1,0 +1,5 @@
+# Codex solo carga este fichero si el proyecto está marcado como de confianza.
+[mcp_servers.maltego]
+command = "uv"
+args = ["run", "--quiet", "maltego-mcp"]
+startup_timeout_sec = 120

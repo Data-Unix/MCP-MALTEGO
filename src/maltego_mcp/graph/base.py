@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from maltego_mcp.domain.records import CaseRecord, EdgeRecord, EntityRecord
+from maltego_mcp.domain.records import CaseRecord, EdgeRecord, EntityRecord, StepRecord
 
 Direction = Literal["out", "in", "both"]
 
@@ -61,6 +61,10 @@ class GraphStore(Protocol):
 
     async def upsert_edge(self, edge: EdgeRecord) -> tuple[EdgeRecord, bool]: ...
 
+    async def upsert_many(self, entities: list[EntityRecord], edges: list[EdgeRecord]) -> tuple[int, int]:
+        """Inserta/fusiona en bloque (importaciones). Devuelve (entidades nuevas, relaciones guardadas)."""
+        ...
+
     async def neighbors(
         self, case_id: str, entity_id: str, edge_label: str, direction: Direction, limit: int
     ) -> list[Neighbor]: ...
@@ -72,5 +76,31 @@ class GraphStore(Protocol):
     async def case_summary(self, case_id: str, top: int) -> CaseSummary: ...
 
     async def export_case(self, case_id: str, max_items: int) -> tuple[list[EntityRecord], list[EdgeRecord]]: ...
+
+    async def replace_entity(self, entity: EntityRecord) -> EntityRecord:
+        """Sustituye la entidad tal cual (edición explícita: propiedades, notas, confianza)."""
+        ...
+
+    async def delete_entity(self, case_id: str, entity_id: str) -> int:
+        """Borra la entidad y sus relaciones. Devuelve el número de relaciones borradas."""
+        ...
+
+    async def delete_edge(self, case_id: str, edge_id: str) -> bool: ...
+
+    async def delete_case(self, case_id: str) -> tuple[int, int]:
+        """Borra el caso con sus entidades, relaciones y pasos. Devuelve (entidades, relaciones)."""
+        ...
+
+    async def append_step(self, step: StepRecord) -> StepRecord:
+        """Añade un paso a la memoria del caso; asigna seq creciente."""
+        ...
+
+    async def append_steps(self, steps: list[StepRecord]) -> int:
+        """Añade varios pasos de una vez (importaciones y fusiones)."""
+        ...
+
+    async def list_steps(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
+        """Pasos del caso (case_id vacío = todos los casos) con seq > since_seq, en orden."""
+        ...
 
     async def close(self) -> None: ...

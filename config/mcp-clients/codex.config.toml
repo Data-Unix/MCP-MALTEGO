@@ -1,3 +1,0 @@
-[mcp_servers.maltego]
-command = "uv"
-args = ["run", "maltego-mcp"]

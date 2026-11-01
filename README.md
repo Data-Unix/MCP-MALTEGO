@@ -4,7 +4,7 @@ Servidor MCP (Python) para delegar en agentes LLM de cualquier proveedor (Gemini
 de Maltego: desde transforms individuales hasta cadenas tipo Machine, entidades y transforms personalizados y
 análisis de grafos OSINT persistidos en Azure Cosmos DB (Gremlin).
 
-Estado: 14 tools funcionales (casos, entidades, relaciones, análisis, transforms y cadenas tipo Machine, exportación). Arranque: `uv sync` y `uv run maltego-mcp` (stdio) o `uv run maltego-mcp --transport http`. Guía: [docs/USO.md](docs/USO.md).
+Estado: 20 tools (casos, entidades, relaciones, transforms integrados y de proveedores, Machines, copiloto con memoria y recomendaciones, informes, .mtgx con layouts), puente con Maltego Desktop y `maltegoctl`. Arranque: `uv sync` y `uv run maltego-mcp`. Guía: [docs/USO.md](docs/USO.md) · Cobertura: [docs/COBERTURA.md](docs/COBERTURA.md).
 
 | Documento | Contenido |
 |---|---|
@@ -13,5 +13,6 @@ Estado: 14 tools funcionales (casos, entidades, relaciones, análisis, transform
 | [docs/USO.md](docs/USO.md) | Tools, configuración, transforms, backends y pendientes |
 | [docs/ORCA.md](docs/ORCA.md) | Uso en el IDE Orca: roles por modelo, worktrees, orquestación |
 | [orca.yaml](orca.yaml), [.worktreeinclude](.worktreeinclude) | Preparación automática de cada worktree en Orca |
-| [config/mcp-clients/](config/mcp-clients/) | Plantillas para conectar el MCP a cada agente |
+| [docs/MALTEGO.md](docs/MALTEGO.md) | Integración con Maltego Desktop (transforms locales y .mtgx) |
+| `.mcp.json`, `.gemini/`, `.codex/`, `.cursor/`, `.qwen/`, `opencode.json` | Registro automático del MCP en cada agente |
 | [.claude/](.claude/) | Agentes y skills de apoyo (Claude Code) |

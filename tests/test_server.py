@@ -19,7 +19,7 @@ def _text(result) -> str:  # type: ignore[no-untyped-def]
 async def test_list_entity_types_markdown_por_defecto() -> None:
     async with Client(create_server()) as client:
         text = _text(await client.call_tool("osint_list_entity_types", {}))
-    assert text.startswith("| Tipo Maltego")
+    assert text.startswith("| categoría | tipo (entity_type)")
     for e in ENTITY_TYPES:
         assert e.maltego_type in text
 

@@ -989,6 +989,7 @@ source = { editable = "." }
 dependencies = [
     { name = "defusedxml" },
     { name = "httpx" },
+    { name = "maltego-trx" },
     { name = "mcp" },
     { name = "pydantic" },
     { name = "uvicorn" },
@@ -1001,7 +1002,6 @@ gremlin = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "maltego-trx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1014,6 +1014,7 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7" },
     { name = "gremlinpython", marker = "extra == 'gremlin'", specifier = ">=3.7" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "maltego-trx", specifier = ">=1.6" },
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "uvicorn", specifier = ">=0.30" },
@@ -1022,7 +1023,6 @@ provides-extras = ["gremlin"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "maltego-trx", specifier = ">=1.6" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
