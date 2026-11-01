@@ -63,6 +63,9 @@ jobs:
   security:
     name: Security (secrets + dependencies)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks lee la lista de commits del PR
     steps:
       - uses: actions/checkout@v4
         with:
