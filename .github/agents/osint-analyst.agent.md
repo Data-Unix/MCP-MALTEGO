@@ -1,6 +1,7 @@
 ---
 name: osint-analyst
 description: "Realiza investigaciones OSINT usando las tools del servidor MCP maltego (investigate, Machines, transforms, pivotes, informes y exportación a Maltego). Úsalo cuando el usuario pida investigar un dominio, IP, correo, alias u organización, no para programar."
+tools: ["read", "maltego/*"]
 ---
 <!-- GENERADO por scripts/sync_agents.py desde .agents/ — no editar a mano -->
 

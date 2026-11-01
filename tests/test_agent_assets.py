@@ -48,3 +48,33 @@ def test_no_quedan_agentes_genericos_iniciales() -> None:
         assert not (ROOT / ".claude/agents" / f"{old}.md").exists()
     for old in ("mcp-builder", "async-python-patterns", "python-resilience", "python-testing-patterns"):
         assert not (ROOT / ".claude/skills" / old).exists()
+
+
+def test_analista_osint_sin_shell_ni_edicion() -> None:
+    claude = _front(ROOT / ".claude/agents/osint-analyst.md")["tools"]
+    assert "Bash" not in claude and "Edit" not in claude and "mcp__maltego__osint_investigate" in claude
+    copilot = _front(ROOT / ".github/agents/osint-analyst.agent.md")["tools"]
+    assert "execute" not in copilot and "maltego/*" in copilot
+    gemini = _front(ROOT / ".gemini/agents/osint-analyst.md")["tools"]
+    assert "run_shell_command" not in gemini and "read_file" in gemini and "mcp_*" in gemini
+
+
+def test_no_escribe_a_traves_de_enlaces(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("sync_agents", ROOT / "scripts" / "sync_agents.py")
+    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    monkeypatch.setitem(sys.modules, "sync_agents", mod)  # necesario para sus dataclasses
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    outside = tmp_path / "fuera.md"
+    outside.write_text("no tocar", encoding="utf-8")
+    link = ROOT / ".claude" / "agents" / "zz-enlace.md"
+    link.symlink_to(outside)
+    try:
+        import pytest
+
+        with pytest.raises(SystemExit, match="fuera"):
+            mod.main([])
+        assert outside.read_text(encoding="utf-8") == "no tocar"
+    finally:
+        link.unlink()

@@ -14,14 +14,14 @@ const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
 
 test("servidor por defecto con entorno fijado por versión", () => {
   const { uvArgs, env } = buildInvocation(["--transport", "http"], { MALTEGO_MCP_HOME: "/tmp/h" });
-  assert.deepEqual(uvArgs, ["run", "--quiet", "--frozen", "--no-dev", "--project", ROOT, "maltego-mcp", "--transport", "http"]);
+  assert.deepEqual(uvArgs, ["run", "--quiet", "--no-config", "--frozen", "--no-dev", "--project", ROOT, "maltego-mcp", "--transport", "http"]);
   assert.equal(env.UV_PROJECT_ENVIRONMENT, path.join("/tmp/h", "runtime", `v${PKG.version}`));
   assert.equal(env.PYTHONUTF8, "1");
 });
 
 test("subcomandos ctl y bridge", () => {
-  assert.equal(buildInvocation(["ctl", "inspect", "a.mtgx"]).uvArgs.slice(6).join(" "), "maltegoctl inspect a.mtgx");
-  assert.equal(buildInvocation(["bridge", "local", "x"]).uvArgs[6], "maltego-mcp-bridge");
+  assert.equal(buildInvocation(["ctl", "inspect", "a.mtgx"]).uvArgs.slice(7).join(" "), "maltegoctl inspect a.mtgx");
+  assert.equal(buildInvocation(["bridge", "local", "x"]).uvArgs[7], "maltego-mcp-bridge");
   assert.deepEqual(Object.keys(COMMANDS).sort(), ["bridge", "ctl"]);
 });
 

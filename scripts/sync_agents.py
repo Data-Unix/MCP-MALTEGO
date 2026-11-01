@@ -32,6 +32,30 @@ NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 CLAUDE_TOOLS = {"read": ["Read"], "search": ["Grep", "Glob"], "edit": ["Edit", "Write"], "shell": ["Bash"]}
 COPILOT_TOOLS = {"read": ["read"], "search": ["search"], "edit": ["edit"], "shell": ["execute"]}
+# Gemini CLI: solo se restringen los agentes sin edición ni shell (nombres de tools de solo lectura de Gemini).
+GEMINI_READ_ONLY = ["read_file", "read_many_files", "grep_search", "glob", "list_directory"]
+MCP_TOOLS = [
+    "osint_list_entity_types",
+    "osint_list_transforms",
+    "osint_manage_case",
+    "osint_list_cases",
+    "osint_get_case_summary",
+    "osint_upsert_entity",
+    "osint_manage_entity",
+    "osint_get_entity",
+    "osint_search_entities",
+    "osint_link_entities",
+    "osint_get_neighbors",
+    "osint_find_paths",
+    "osint_run_transform",
+    "osint_expand_entity",
+    "osint_run_machine",
+    "osint_investigate",
+    "osint_suggest_next_steps",
+    "osint_get_timeline",
+    "osint_export_case",
+    "osint_import_graph",
+]
 
 
 @dataclass(frozen=True)
@@ -97,20 +121,26 @@ def render(agents: list[Agent]) -> dict[Path, str]:
     out: dict[Path, str] = {}
     for a in agents:
         desc = _yaml_str(a.description)
-        # Claude Code: sin `tools` hereda todas (incluidas las MCP), necesario para el analista.
-        claude = [f"name: {a.name}", f"description: {desc}"]
-        if "mcp" not in a.tools:
-            claude.append("tools: " + ", ".join(t for k in a.tools for t in CLAUDE_TOOLS[k]))
-        claude.append("model: inherit")
+        # Lista explícita de tools: el agente que procesa datos OSINT (mcp) no recibe shell ni edición.
+        claude_tools = [t for k in a.tools if k != "mcp" for t in CLAUDE_TOOLS[k]]
+        if "mcp" in a.tools:
+            claude_tools += [f"mcp__maltego__{t}" for t in MCP_TOOLS]
+        claude = [f"name: {a.name}", f"description: {desc}", "tools: " + ", ".join(claude_tools), "model: inherit"]
         out[ROOT / ".claude" / "agents" / f"{a.name}.md"] = _md(claude, a.body)
-        out[ROOT / ".gemini" / "agents" / f"{a.name}.md"] = _md(
-            [f"name: {a.name}", f"description: {desc}", "kind: local"], a.body
-        )
+        gemini = [f"name: {a.name}", f"description: {desc}", "kind: local"]
+        if not {"edit", "shell"} & set(a.tools):
+            names = GEMINI_READ_ONLY + (["mcp_*"] if "mcp" in a.tools else [])
+            gemini.append("tools: [" + ", ".join(_yaml_str(n) for n in names) + "]")
+        out[ROOT / ".gemini" / "agents" / f"{a.name}.md"] = _md(gemini, a.body)
         out[ROOT / ".qwen" / "agents" / f"{a.name}.md"] = _md([f"name: {a.name}", f"description: {desc}"], a.body)
-        copilot = [f"name: {a.name}", f"description: {desc}"]
-        if "mcp" not in a.tools:
-            names = [t for k in a.tools for t in COPILOT_TOOLS[k]]
-            copilot.append("tools: [" + ", ".join(_yaml_str(n) for n in names) + "]")
+        copilot_tools = [t for k in a.tools if k != "mcp" for t in COPILOT_TOOLS[k]]
+        if "mcp" in a.tools:
+            copilot_tools.append("maltego/*")
+        copilot = [
+            f"name: {a.name}",
+            f"description: {desc}",
+            "tools: [" + ", ".join(_yaml_str(n) for n in copilot_tools) + "]",
+        ]
         out[ROOT / ".github" / "agents" / f"{a.name}.agent.md"] = _md(copilot, a.body)
         instructions = a.body.replace("'''", "' ' '")
         out[ROOT / ".codex" / "agents" / f"{a.name}.toml"] = (
@@ -141,6 +171,25 @@ def generated_dirs() -> list[Path]:
     ]
 
 
+def ensure_safe(paths: list[Path]) -> None:
+    """Nunca se escribe ni borra a través de enlaces simbólicos ni fuera de los directorios generados."""
+    root = ROOT.resolve()
+    for d in generated_dirs():
+        node = d
+        while node != ROOT:
+            if node.is_symlink():
+                raise SystemExit(f"{node.relative_to(ROOT)} es un enlace simbólico: se aborta por seguridad")
+            node = node.parent
+    allowed = [d.resolve() for d in generated_dirs()]
+    for p in paths:
+        if (
+            p.is_symlink()
+            or not any(p.resolve().is_relative_to(a) for a in allowed)
+            or not p.resolve().is_relative_to(root)
+        ):
+            raise SystemExit(f"{p} apunta fuera de los directorios generados: se aborta por seguridad")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="Solo comprobar (para CI)")
@@ -148,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     texts = render(load_agents())
     blobs = skill_files(check_skills())
     expected: dict[Path, bytes] = {**{p: t.encode("utf-8") for p, t in texts.items()}, **blobs}
-    existing = {p for d in generated_dirs() if d.exists() for p in d.rglob("*") if p.is_file()}
+    ensure_safe([])
+    existing = {p for d in generated_dirs() if d.exists() for p in d.rglob("*") if p.is_file() or p.is_symlink()}
     stale = sorted(existing - set(expected))
     changed = sorted(p for p, data in expected.items() if not p.exists() or p.read_bytes() != data)
     if ns.check:
@@ -159,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"OK: {len(texts)} ficheros de agentes y {len(blobs)} de skills sincronizados")
         return 0
+    ensure_safe(stale + list(expected))
     for p in stale:
         p.unlink()
     for d in generated_dirs():

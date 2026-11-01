@@ -38,6 +38,11 @@ imports/
 *.mtz
 !tests/fixtures/**/*.mtgx
 !tests/fixtures/**/*.mtz
+*.graphml
+/*.csv
+/report*.md
+/report*.html
+/*-[0-9]*T[0-9]*.json
 graph.json
 graph.json.lock
 receipts/
