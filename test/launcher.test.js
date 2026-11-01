@@ -6,7 +6,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { buildInvocation, findUv, ensureEnvTemplate, COMMANDS } = require("../bin/mcp-maltego.js");
+const {
+  buildInvocation,
+  findUv,
+  ensureEnvTemplate,
+  installGlobalShims,
+  parseSetupOptions,
+  clientConfigSnippet,
+  COMMANDS,
+} = require("../bin/mcp-maltego.js");
 
 const ROOT = path.resolve(__dirname, "..");
 const BIN = path.join(ROOT, "bin", "mcp-maltego.js");
@@ -70,4 +78,26 @@ test("findUv localiza uv en MALTEGO_MCP_HOME/bin y ensureEnvTemplate no sobrescr
   const second = ensureEnvTemplate(tmp);
   assert.equal(second.created, false);
   assert.match(fs.readFileSync(first.path, "utf8"), /SHODAN_API_KEY=123/);
+});
+
+test("installGlobalShims genera lanzadores Windows y POSIX y parseSetupOptions soporta modos", () => {
+  const tmpWin = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-shims-win-"));
+  const winRes = installGlobalShims(tmpWin, true);
+  assert.equal(winRes.files.length, 8);
+  assert.ok(fs.existsSync(path.join(tmpWin, "maltegoctl.cmd")));
+  assert.ok(fs.existsSync(path.join(tmpWin, "maltegoctl.ps1")));
+  assert.ok(fs.existsSync(path.join(tmpWin, "mcp-maltego.cmd")));
+
+  const tmpPosix = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-shims-posix-"));
+  const posixRes = installGlobalShims(tmpPosix, false);
+  assert.equal(posixRes.files.length, 4);
+  assert.ok(fs.existsSync(path.join(tmpPosix, "maltegoctl")));
+  assert.ok(fs.existsSync(path.join(tmpPosix, "maltego-mcp")));
+
+  assert.deepEqual(parseSetupOptions(["--mode", "local", "--client", "claude"]), {
+    mode: "local",
+    client: "claude",
+    binDir: "",
+  });
+  assert.match(clientConfigSnippet("all", "global"), /maltegoctl transforms/);
 });

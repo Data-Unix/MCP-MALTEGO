@@ -163,7 +163,7 @@ async def test_core2_breach_semantic_router_sqlite_local_y_cli(
     assert "+34600112233" in out_values
 
 
-async def test_core3_dynamic_visual_layouts_y_mtgx_styles(service: OsintService, tmp_path: Path) -> None:
+async def test_core3_dynamic_visual_layouts_y_mtgx_styles(service: OsintService) -> None:
     """Core 3: osint_manage_entity(action='visual_style') e inyección de estilos/notas en .mtgx."""
     ent = json.loads(
         await ok(
@@ -246,8 +246,8 @@ async def test_core3_dynamic_visual_layouts_y_mtgx_styles(service: OsintService,
     assert imported.links[0].properties.get("humint.epistemic_status") == "hypothesis"
 
 
-async def test_humint1_y_2_ontologia_behavior_y_persona_machine(service: OsintService) -> None:
-    """HUMINT 1 & 2: Ontología HUMINT nativa, perfilado conductual con [Hipótesis] y Machine PersonaFootprint."""
+async def test_humint1_ontologia_humint_nativa(service: OsintService) -> None:
+    """HUMINT 1: Ontología HUMINT nativa empaquetada en el servidor y normalización de sus 4 tipos."""
     types_json = json.loads(
         await ok(
             service,
@@ -256,22 +256,46 @@ async def test_humint1_y_2_ontologia_behavior_y_persona_machine(service: OsintSe
         )
     )
     humint_types = {t["maltego_type"] for t in types_json["items"]}
-    assert {
+    assert humint_types == {
         "humint.Alias",
         "humint.Organization",
         "humint.LocationHistory",
         "humint.PsychologicalTrait",
-    } <= humint_types
+    }
 
-    # Crear sujeto con textos/bio y ejecutar action="analyze_behavior"
+    # Verificar creación e id determinista de los 4 tipos HUMINT
+    for mtype, val in [
+        ("humint.Alias", "@Ghost_Op"),
+        ("humint.Organization", "Colectivo Sigma"),
+        ("humint.LocationHistory", "Madrid (UTC+1)"),
+        ("humint.PsychologicalTrait", "[Hipótesis] Alta meticulosidad técnica"),
+    ]:
+        created = json.loads(
+            await ok(
+                service,
+                "osint_upsert_entity",
+                {
+                    "case_id": "caso-ontologia-humint",
+                    "entity_type": mtype,
+                    "value": val,
+                    "response_format": "json",
+                },
+            )
+        )
+        assert created["created"] is True
+        assert created["entity"]["maltego_type"] == mtype
+
+
+async def test_humint2_perfilado_conductual_y_persona_footprint_machine(service: OsintService) -> None:
+    """HUMINT 2: Perfilado conductual con salvaguarda [Hipótesis] y Machine PersonaFootprint."""
     subj = json.loads(
         await ok(
             service,
             "osint_upsert_entity",
             {
-                "case_id": "caso-humint",
+                "case_id": "caso-humint-beh",
                 "entity_type": "humint.Alias",
-                "value": "ana",
+                "value": "jdoe",
                 "properties": [
                     "bio=Security researcher & developer at @AcmeLabs in Madrid UTC+1. Building open source tools!",
                     "location=Madrid, Spain",
@@ -288,7 +312,7 @@ async def test_humint1_y_2_ontologia_behavior_y_persona_machine(service: OsintSe
             service,
             "osint_manage_entity",
             {
-                "case_id": "caso-humint",
+                "case_id": "caso-humint-beh",
                 "entity_id": sid,
                 "action": "analyze_behavior",
                 "response_format": "json",
@@ -300,9 +324,29 @@ async def test_humint1_y_2_ontologia_behavior_y_persona_machine(service: OsintSe
         e["value"].startswith("[Hipótesis]") for e in beh["emitted"] if e["maltego_type"] == "humint.PsychologicalTrait"
     )
 
-    # Verificar que PersonaFootprint está disponible en el catálogo de Machines
-    machines_txt = await ok(service, "osint_list_transforms", {"include_machines": True})
-    assert "PersonaFootprint" in machines_txt
+    # Ejecutar la Machine PersonaFootprint con HTTP simulado (sin red)
+    svc_builtin = OsintService(
+        service.store,
+        service.catalog.with_builtins(),
+        service.export_dir,
+    )
+    svc_builtin._http = new_http_client(transport=httpx.MockTransport(Router()))
+    m_res = json.loads(
+        await ok(
+            svc_builtin,
+            "osint_run_machine",
+            {
+                "case_id": "caso-persona-machine",
+                "machine": "PersonaFootprint",
+                "entity_type": "humint.Alias",
+                "value": "jdoe",
+                "max_rounds": 1,
+                "response_format": "json",
+            },
+        )
+    )
+    assert m_res["machine"] == "PersonaFootprint"
+    assert m_res["new_entities"] >= 3
 
 
 async def test_humint3_correlacion_identidades_pseudonym_linker(service: OsintService) -> None:
@@ -383,8 +427,8 @@ async def test_humint3_correlacion_identidades_pseudonym_linker(service: OsintSe
     assert auto_edges[0].properties.get("maltego.link.manual.type") == "humint.HighlyLikelySameIndividual"
 
 
-async def test_humint4_y_5_timeline_sujeto_anomalias_y_relaciones_ponderadas(service: OsintService) -> None:
-    """HUMINT 4 & 5: Línea temporal de sujeto con detección de paradojas/rotación post-brecha y enlaces ponderados."""
+async def test_humint4_timeline_conductual_sujeto_y_anomalias(service: OsintService) -> None:
+    """HUMINT 4: Línea temporal conductual de sujeto y detección de paradojas/rotación post-brecha."""
     # Dominio creado en 2024, pero perfil que afirma existir desde 2021 con ese dominio -> paradoja cronológica
     dom = json.loads(
         await ok(
@@ -429,47 +473,21 @@ async def test_humint4_y_5_timeline_sujeto_anomalias_y_relaciones_ponderadas(ser
             },
         )
     )["entity"]["id"]
-    json.loads(
-        await ok(
-            service,
-            "osint_upsert_entity",
-            {
-                "case_id": "caso-time",
-                "entity_type": "humint.Alias",
-                "value": "new_handle_2025",
-                "properties": [
-                    "github.created_at=2025-01-25T09:00:00Z",
-                    "timezone=UTC+3",
-                ],
-                "response_format": "json",
-            },
-        )
+    await ok(
+        service,
+        "osint_upsert_entity",
+        {
+            "case_id": "caso-time",
+            "entity_type": "humint.Alias",
+            "value": "new_handle_2025",
+            "properties": [
+                "github.created_at=2025-01-25T09:00:00Z",
+                "timezone=UTC+3",
+            ],
+            "response_format": "json",
+        },
     )
-
-    # Enlace ponderado y anotado con inferencia de rol/sentimiento (HUMINT 5)
-    link_res = json.loads(
-        await ok(
-            service,
-            "osint_link_entities",
-            {
-                "case_id": "caso-time",
-                "source_id": alias_old,
-                "target_id": dom,
-                "edge_label": "operates_infrastructure",
-                "action": "analyze",
-                "role": "operador",
-                "sentiment": "profesional",
-                "weight": 90,
-                "properties": ["channel=ssh"],
-                "response_format": "json",
-            },
-        )
-    )
-    assert link_res["edge"]["properties"]["humint.role"] == "operador"
-    assert link_res["edge"]["properties"]["humint.sentiment"] == "profesional"
-    assert link_res["edge"]["properties"]["humint.weight"] == "90"
-    assert link_res["edge"]["properties"]["channel"] == "ssh"
-
+    await ok(service, "osint_link_entities", {"case_id": "caso-time", "source_id": alias_old, "target_id": dom})
     await ok(service, "osint_link_entities", {"case_id": "caso-time", "source_id": alias_old, "target_id": breach})
 
     tl = json.loads(
@@ -485,3 +503,90 @@ async def test_humint4_y_5_timeline_sujeto_anomalias_y_relaciones_ponderadas(ser
     assert "timezone_conflict" in anomaly_kinds
     assert "chronology_paradox" in anomaly_kinds
     assert "post_breach_pivot" in anomaly_kinds
+
+
+async def test_humint5_relaciones_ponderadas_y_anotadas(service: OsintService) -> None:
+    """HUMINT 5: Relaciones ponderadas y anotadas (explícitas e inferidas topológicamente)."""
+    lead = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {
+                "case_id": "caso-rel",
+                "entity_type": "humint.Alias",
+                "value": "coordinator_alpha",
+                "notes": "Coordina operaciones y mantiene actitud hostil frente a grupos rivales.",
+                "response_format": "json",
+            },
+        )
+    )["entity"]["id"]
+    org = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {
+                "case_id": "caso-rel",
+                "entity_type": "humint.Organization",
+                "value": "Grupo Eclipse",
+                "response_format": "json",
+            },
+        )
+    )["entity"]["id"]
+
+    # 1. Enlace con rol, sentimiento y peso explícitos
+    link_explicit = json.loads(
+        await ok(
+            service,
+            "osint_link_entities",
+            {
+                "case_id": "caso-rel",
+                "source_id": lead,
+                "target_id": org,
+                "edge_label": "directs_group",
+                "action": "analyze",
+                "role": "lider",
+                "sentiment": "estrecho",
+                "weight": 92,
+                "properties": ["channel=matrix"],
+                "response_format": "json",
+            },
+        )
+    )
+    props = link_explicit["edge"]["properties"]
+    assert props["humint.role"] == "lider"
+    assert props["humint.sentiment"] == "estrecho"
+    assert props["humint.weight"] == "92"
+    assert props["channel"] == "matrix"
+    assert props["humint.epistemic_status"] == "observed"
+
+    # 2. Inferencia automática (sin indicar role ni sentiment)
+    rival = json.loads(
+        await ok(
+            service,
+            "osint_upsert_entity",
+            {
+                "case_id": "caso-rel",
+                "entity_type": "humint.Alias",
+                "value": "rival_node",
+                "notes": "Conflicto directo y rival de coordinator_alpha.",
+                "response_format": "json",
+            },
+        )
+    )["entity"]["id"]
+    link_inferred = json.loads(
+        await ok(
+            service,
+            "osint_link_entities",
+            {
+                "case_id": "caso-rel",
+                "source_id": lead,
+                "target_id": rival,
+                "edge_label": "disputes_with",
+                "action": "analyze",
+                "response_format": "json",
+            },
+        )
+    )
+    inf_props = link_inferred["edge"]["properties"]
+    assert inf_props["humint.sentiment"] == "hostil"
+    assert inf_props["humint.epistemic_status"] == "hypothesis"
