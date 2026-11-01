@@ -26,13 +26,15 @@ exports everything to Maltego Desktop. One graph is shared by every agent you us
 
 - **20 tools, portable to every model.** Flat JSON schemas validated against Gemini's strict function-calling
   subset; variants grouped with an `action` parameter so agents are not flooded with tools.
-- **30 real transforms out of the box.** 18 without API keys (DNS over HTTPS, RDAP/WHOIS, certificate transparency,
-  ASN, profile lookup, parsing) and 12 provider transforms that switch on when you set a key: VirusTotal, Shodan,
-  SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
+- **38 real transforms out of the box.** 26 without API keys (DNS over HTTPS, RDAP/WHOIS, certificate transparency via
+  crt.sh and CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar,
+  GitHub profile details, AlienVault OTX threat pulses, multi-network profile lookup, parsing) and 12 provider
+  transforms that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been
+  Pwned, GreyNoise and Tatum.
 - **Your Maltego transforms too.** Speaks the Maltego TRX/iTDS XML protocol, so an agent can run the same transforms
   you use in Maltego.
-- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon and your
-  own in TOML, with recursive rounds and cost budgets.
+- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon,
+  ThreatSweep, ASNToNetblocks and your own in TOML, with recursive rounds and cost budgets.
 - **An investigation copilot.** `osint_investigate` does detection, case creation, the right Machine, scoring and
   recommendations in one call. Every step is remembered (what, on what, why, result), every entity has explainable
   provenance and a priority score, and next-best-action learns from how each transform performed.
@@ -199,11 +201,12 @@ The server binds to localhost only. It has no authentication yet, so do not expo
 
 | Category | Transforms | API key |
 |---|---|---|
-| DNS (over HTTPS) | DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS | — |
-| WHOIS (RDAP) | DomainToWhois, IPToWhois | — |
-| Network | IPToAS, IPToNetblock (Team Cymru) | — |
-| Certificates | DomainToSubdomains (crt.sh) | — |
-| Identity | AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), EmailToAlias | — |
+| DNS (over HTTPS + passive) | DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS, HackerTargetSubdomains | — |
+| WHOIS (RDAP with ARIN fallback) | DomainToWhois, IPToWhois | — |
+| Network & Exposure | IPToAS, IPToNetblock (Team Cymru), RIPEStatASNToNetblocks, InternetDBIPToServices (ports, CPEs, CVEs) | — |
+| Certificates & Web | DomainToSubdomains (crt.sh + CertSpotter fallback), CertSpotterSubdomains, URLScanDomainSearch | — |
+| Identity & Social | AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), GitHubAliasToDetails, GravatarEmailToProfile, EmailToAlias | — |
+| Threat Intel (keyless) | OTXHashToThreatPulses (AlienVault OTX pulses, malware families, ATT&CK IDs) | — |
 | Parsing | EmailToDomain, URLToDomain, WebsiteToDomain, DomainToWebsite | — |
 | VirusTotal | VTDomainToIP, VTIPToDomain, VTDomainToSubdomains, VTHashToDetection | `VIRUSTOTAL_API_KEY` |
 | Shodan | ShodanIPToServices, ShodanDomainToSubdomains | `SHODAN_API_KEY` |

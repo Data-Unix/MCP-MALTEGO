@@ -716,8 +716,8 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         title="Ejecutar Machine",
         description=(
             "Ejecuta una Machine (DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, "
-            "PersonalFootprint, URLRecon o las de tu catálogo) o una cadena propia (transforms en orden). "
-            "max_rounds repite la expansión sobre lo nuevo; los presupuestos limitan coste."
+            "PersonalFootprint, URLRecon, ThreatSweep, ASNToNetblocks o las de tu catálogo) o una cadena propia "
+            "(transforms en orden). max_rounds repite la expansión sobre lo nuevo; los presupuestos limitan coste."
         ),
         annotations=OPEN_WORLD,
         structured_output=False,

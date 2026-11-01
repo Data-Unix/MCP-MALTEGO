@@ -29,7 +29,7 @@ los modelos; las variantes van en un parámetro `action`).
 | Requisito | Implementación | Verificación |
 |---|---|---|
 | Inventario filtrable | `osint_list_transforms` (tipo, categoría, disponibilidad) | T |
-| Transforms sin API key | 18 integrados: DNS sobre HTTPS (A, AAAA, MX, NS, TXT, CNAME, PTR), RDAP de dominio e IP, crt.sh, ASN y prefijo (Team Cymru), perfiles por alias, análisis de correo/URL/web | T, V |
+| Transforms sin API key | 26 integrados: DNS sobre HTTPS (A, AAAA, MX, NS, TXT, CNAME, PTR), HackerTarget, RDAP de dominio e IP (con respaldo ARIN), crt.sh y CertSpotter, urlscan.io, Shodan InternetDB, ASN y prefijos (Team Cymru y RIPE Stat), Gravatar, detalle en GitHub, pulsos OTX para hashes, perfiles por alias y análisis de correo/URL/web | T, V |
 | Proveedores con API key (se activan solos) | VirusTotal (4), Shodan (2), SecurityTrails, Censys, Hunter.io, HIBP, GreyNoise, Tatum | T, S |
 | Servidores TRX / iTDS / TDS | Catálogo TOML + protocolo XML de Maltego (compatible con maltego-trx) | T |
 | Estado de credenciales y servidores | `osint_list_transforms` muestra proveedores configurados y, con `check_servers=true`, la conexión de cada servidor | T |
@@ -41,7 +41,7 @@ de la comunidad inventan rutas `/transforms` que no existen o simulan los result
 | Requisito | Implementación | Verificación |
 |---|---|---|
 | Secuencias con profundidad y rondas | `osint_run_machine` (`max_rounds`, presupuestos por paso y total) | T, V |
-| CompanyFootprint, PersonalFootprint, DomainRecon, InfrastructureRecon, EmailRecon | Predefinidas, más URLRecon; las propias van en `[[machines]]` del catálogo | T, V |
+| CompanyFootprint, PersonalFootprint, DomainRecon, InfrastructureRecon, EmailRecon, URLRecon, ThreatSweep, ASNToNetblocks | 8 predefinidas; las propias van en `[[machines]]` del catálogo | T, V |
 
 ## 5. Layout
 | Requisito | Implementación | Verificación |

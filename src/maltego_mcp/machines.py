@@ -65,7 +65,7 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
     Machine(
         "InfrastructureRecon",
         "Topología de red a partir de una IP: DNS inverso, AS, bloque, WHOIS y servicios expuestos "
-        "(Shodan/Censys/GreyNoise si hay clave).",
+        "(InternetDB sin clave y Shodan/Censys/GreyNoise si hay clave).",
         ("maltego.IPv4Address", "maltego.IPv6Address"),
         (
             (
@@ -73,6 +73,7 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
                 "IPToAS",
                 "IPToNetblock",
                 "IPToWhois",
+                "InternetDBIPToServices",
                 "ShodanIPToServices",
                 "CensysIPToServices",
                 "GreyNoiseIPContext",
@@ -83,18 +84,18 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
     ),
     Machine(
         "EmailRecon",
-        "Correo: dominio, alias, filtraciones (HIBP si hay clave) y servidores de correo/nombres del dominio; "
-        "perfiles públicos del alias.",
+        "Correo: dominio, alias, Gravatar, filtraciones (HIBP si hay clave) y servidores MX/NS del dominio; "
+        "perfiles públicos y GitHub del alias.",
         ("maltego.EmailAddress",),
         (
-            ("EmailToDomain", "EmailToAlias", "HIBPEmailToBreaches"),
-            ("DomainToMX", "DomainToNS", "DomainToWhois", "AliasToProfiles"),
+            ("EmailToDomain", "EmailToAlias", "GravatarEmailToProfile", "HIBPEmailToBreaches"),
+            ("DomainToMX", "DomainToNS", "DomainToWhois", "AliasToProfiles", "GitHubAliasToDetails"),
         ),
     ),
     Machine(
         "CompanyFootprint",
-        "Huella corporativa desde su dominio: DomainRecon ampliado con correos corporativos (Hunter si hay clave), "
-        "perfiles de los alias y ubicación de toda la infraestructura.",
+        "Huella corporativa desde su dominio: DomainRecon ampliado con HackerTarget, urlscan.io, correos corporativos "
+        "(Hunter si hay clave), perfiles de los alias y ubicación y servicios de toda la infraestructura.",
         ("maltego.Domain",),
         (
             (
@@ -104,23 +105,39 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
                 "DomainToTXT",
                 "DomainToWhois",
                 "DomainToSubdomains",
+                "HackerTargetSubdomains",
+                "URLScanDomainSearch",
                 "HunterDomainToEmails",
                 "VTDomainToSubdomains",
                 "SecurityTrailsSubdomains",
             ),
             ("DNSToIP", "EmailToAlias"),
-            ("IPToAS", "IPToNetblock", "IPToWhois", "AliasToProfiles"),
+            (
+                "IPToAS",
+                "IPToNetblock",
+                "IPToWhois",
+                "InternetDBIPToServices",
+                "AliasToProfiles",
+                "GitHubAliasToDetails",
+            ),
         ),
         default_rounds=1,
     ),
     Machine(
         "PersonalFootprint",
-        "Presencia digital de una persona desde su correo o alias: alias, perfiles públicos, filtraciones y "
-        "dominio asociado.",
+        "Presencia digital desde correo o alias: alias, Gravatar, perfiles públicos, detalle en GitHub, "
+        "filtraciones y dominio asociado.",
         ("maltego.EmailAddress", "maltego.Alias"),
         (
-            ("EmailToAlias", "EmailToDomain", "HIBPEmailToBreaches", "AliasToProfiles"),
-            ("AliasToProfiles", "DomainToWhois"),
+            (
+                "EmailToAlias",
+                "EmailToDomain",
+                "GravatarEmailToProfile",
+                "HIBPEmailToBreaches",
+                "AliasToProfiles",
+                "GitHubAliasToDetails",
+            ),
+            ("AliasToProfiles", "GitHubAliasToDetails", "DomainToWhois"),
         ),
     ),
     Machine(
@@ -128,6 +145,30 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
         "URL: web y dominio que la alojan, y DomainRecon ligero del dominio.",
         ("maltego.URL",),
         (("URLToDomain",), ("DNSToIP", "DomainToWhois", "DomainToNS"), ("IPToAS",)),
+    ),
+    Machine(
+        "ThreatSweep",
+        "Triaje defensivo de un indicador (hash, IP o dominio): pulsos OTX y VirusTotal para hashes, "
+        "puertos/CVEs (InternetDB/Shodan/GreyNoise) para IPs, y WHOIS + urlscan.io para dominios.",
+        ("maltego.Hash", "maltego.IPv4Address", "maltego.Domain"),
+        (
+            (
+                "OTXHashToThreatPulses",
+                "VTHashToDetection",
+                "InternetDBIPToServices",
+                "GreyNoiseIPContext",
+                "ShodanIPToServices",
+                "DomainToWhois",
+                "URLScanDomainSearch",
+            ),
+            ("IPToAS", "IPToWhois"),
+        ),
+    ),
+    Machine(
+        "ASNToNetblocks",
+        "Mapeo de un sistema autónomo (ASN): organización titular y prefijos BGP anunciados (RIPE Stat).",
+        ("maltego.AS",),
+        (("RIPEStatASNToNetblocks",),),
     ),
 )
 
@@ -140,6 +181,8 @@ DEFAULT_MACHINE_BY_TYPE = {
     "maltego.emailaddress": "EmailRecon",
     "maltego.alias": "PersonalFootprint",
     "maltego.url": "URLRecon",
+    "maltego.hash": "ThreatSweep",
+    "maltego.as": "ASNToNetblocks",
 }
 
 
