@@ -1,18 +1,299 @@
-# MCP Maltego
+<h1 align="center">mcp-maltego</h1>
 
-Servidor MCP (Python) para delegar en agentes LLM de cualquier proveedor (Gemini, Claude, Codex, OpenCode...) flujos
-de Maltego: desde transforms individuales hasta cadenas tipo Machine, entidades y transforms personalizados y
-análisis de grafos OSINT persistidos en Azure Cosmos DB (Gremlin).
+<p align="center">
+  <strong>Maltego OSINT for AI agents.</strong><br>
+  Run transforms and Machines, build and analyse link graphs, and hand the result back to Maltego as a native
+  <code>.mtgx</code>, from Claude, Gemini, Codex, Copilot, Cursor or any MCP client.
+</p>
 
-Estado: 20 tools (casos, entidades, relaciones, transforms integrados y de proveedores, Machines, copiloto con memoria y recomendaciones, informes, .mtgx con layouts), puente con Maltego Desktop y `maltegoctl`. Arranque: `uv sync` y `uv run maltego-mcp`. Guía: [docs/USO.md](docs/USO.md) · Cobertura: [docs/COBERTURA.md](docs/COBERTURA.md).
+<p align="center">
+  <a href="https://www.npmjs.com/package/mcp-maltego"><img alt="npm" src="https://img.shields.io/npm/v/mcp-maltego?logo=npm"></a>
+  <a href="https://github.com/Data-Unix/MCP-MALTEGO/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Data-Unix/MCP-MALTEGO/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-server-8A2BE2">
+  <img alt="Tools" src="https://img.shields.io/badge/tools-20-blue">
+  <a href="README.es.md"><img alt="Español" src="https://img.shields.io/badge/docs-español-red"></a>
+</p>
 
-| Documento | Contenido |
+---
+
+**mcp-maltego** is a [Model Context Protocol](https://modelcontextprotocol.io) server that turns an AI agent into a
+Maltego operator. It runs real transforms (built-in, commercial providers or your own TRX/iTDS servers), chains them
+into Machines, keeps a persistent investigation graph with memory of every step, recommends the next pivot, and
+exports everything to Maltego Desktop. One graph is shared by every agent you use.
+
+## Key features
+
+- **20 tools, portable to every model.** Flat JSON schemas validated against Gemini's strict function-calling
+  subset; variants grouped with an `action` parameter so agents are not flooded with tools.
+- **30 real transforms out of the box.** 18 without API keys (DNS over HTTPS, RDAP/WHOIS, certificate transparency,
+  ASN, profile lookup, parsing) and 12 provider transforms that switch on when you set a key: VirusTotal, Shodan,
+  SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
+- **Your Maltego transforms too.** Speaks the Maltego TRX/iTDS XML protocol, so an agent can run the same transforms
+  you use in Maltego.
+- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon and your
+  own in TOML, with recursive rounds and cost budgets.
+- **An investigation copilot.** `osint_investigate` does detection, case creation, the right Machine, scoring and
+  recommendations in one call. Every step is remembered (what, on what, why, result), every entity has explainable
+  provenance and a priority score, and next-best-action learns from how each transform performed.
+- **Native Maltego round-trip.** `.mtgx` export with hierarchical, radial or force-directed layout and the
+  investigation memory embedded; `.mtgx` import; local transforms inside Maltego Desktop to open a case, expand
+  neighbours and send entities back to the agents; import of your exact Maltego entity ontology.
+- **Reports and CLI.** Executive reports in Markdown or self-contained HTML, and `maltegoctl` for terminals and CI.
+- **Safe by default.** OSINT content is treated as untrusted data, XML is parsed with defusedxml, archives are read
+  with bounds, agents cannot supply arbitrary URLs, and API keys are never logged.
+
+## Requirements
+
+- [Node.js](https://nodejs.org) 18 or newer (for `npx`).
+- [uv](https://docs.astral.sh/uv/) — manages the Python runtime; it downloads Python 3.12 if needed.
+  - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+  - macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+Check everything with:
+
+```bash
+npx -y mcp-maltego doctor
+```
+
+## Getting started
+
+Standard configuration, valid for most MCP clients:
+
+```json
+{
+  "mcpServers": {
+    "maltego": {
+      "command": "npx",
+      "args": ["-y", "mcp-maltego"]
+    }
+  }
+}
+```
+
+Then ask your agent:
+
+> Investigate example.com, give me the summary of the case and export it for Maltego.
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add maltego -- npx -y mcp-maltego
+```
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+Edit `claude_desktop_config.json` (Settings → Developer → Edit Config) and add the standard configuration above.
+</details>
+
+<details>
+<summary><b>Gemini CLI</b></summary>
+
+Add the standard configuration to `~/.gemini/settings.json` (all projects) or `.gemini/settings.json` (one project).
+</details>
+
+<details>
+<summary><b>Codex</b></summary>
+
+```bash
+codex mcp add maltego -- npx -y mcp-maltego
+```
+
+or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.maltego]
+command = "npx"
+args = ["-y", "mcp-maltego"]
+```
+</details>
+
+<details>
+<summary><b>GitHub Copilot CLI</b></summary>
+
+Add the standard configuration to `~/.copilot/mcp-config.json`, or to `.mcp.json` / `.github/mcp.json` in a repository.
+</details>
+
+<details>
+<summary><b>VS Code</b></summary>
+
+`.vscode/mcp.json`:
+
+```json
+{ "servers": { "maltego": { "command": "npx", "args": ["-y", "mcp-maltego"] } } }
+```
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+Add the standard configuration to `~/.cursor/mcp.json` or `.cursor/mcp.json`.
+</details>
+
+<details>
+<summary><b>OpenCode</b></summary>
+
+`opencode.json`:
+
+```json
+{ "mcp": { "maltego": { "type": "local", "command": ["npx", "-y", "mcp-maltego"], "enabled": true } } }
+```
+</details>
+
+<details>
+<summary><b>Qwen Code</b></summary>
+
+Add the standard configuration to `~/.qwen/settings.json` or `.qwen/settings.json`.
+</details>
+
+<details>
+<summary><b>Orca IDE and other multi-agent setups</b></summary>
+
+Clone this repository and open it in Orca: it ships the project file each agent reads (`.mcp.json`,
+`.gemini/settings.json`, `.codex/config.toml`, `.cursor/mcp.json`, `.qwen/settings.json`, `opencode.json`), so every
+worktree gets the server without manual registration. All agents share one graph in `~/.maltego-mcp`. See
+[docs/ORCA.md](docs/ORCA.md).
+</details>
+
+<details>
+<summary><b>Remote (Streamable HTTP)</b></summary>
+
+```bash
+npx -y mcp-maltego --transport http --port 8000   # http://127.0.0.1:8000/mcp
+```
+
+The server binds to localhost only. It has no authentication yet, so do not expose it to a network.
+</details>
+
+## Tools
+
+| Group | Tool | What it does |
+|---|---|---|
+| Catalog | `osint_list_entity_types` | Entity ontology by category (standard + imported from your Maltego) |
+| | `osint_list_transforms` | Transforms, Machines, provider keys and server status |
+| Cases | `osint_manage_case` | Create, merge or delete (with confirmation) a case |
+| | `osint_list_cases` | Paginated list |
+| | `osint_get_case_summary` | Counts, priority entities and quality indicators |
+| Entities | `osint_upsert_entity` | Create or merge an entity (normalised value, deterministic id, notes) |
+| | `osint_manage_entity` | Edit confidence, notes or properties; delete |
+| | `osint_get_entity` | Details, explained score, provenance, pending transforms |
+| | `osint_search_entities` | Search a case or across cases; sort by priority |
+| Links | `osint_link_entities` | Link or unlink two entities |
+| | `osint_get_neighbors` | Related entities with direction and link type |
+| | `osint_find_paths` | Paths between two entities |
+| Transforms | `osint_run_transform` | One transform on one entity |
+| | `osint_expand_entity` | Every applicable transform ("Run All") |
+| | `osint_run_machine` | A Machine or an ad-hoc chain, with rounds and budgets |
+| Copilot | `osint_investigate` | Everything in one call: detect, case, Machine, score, recommend, report |
+| | `osint_suggest_next_steps` | Deterministic next-best-action with transform performance history |
+| | `osint_get_timeline` | Investigation memory; poll for new findings with `since_seq` |
+| Exchange | `osint_export_case` | `mtgx` (with layout and memory), `json`, `graphml`, `csv`, `report_md`, `report_html` |
+| | `osint_import_graph` | Import a `.mtgx` saved in Maltego (with its memory) or a CSV |
+
+`entity_type` accepts any Maltego type, your own `prefix.Name`, or `"auto"` to detect it from the value.
+
+## Transforms
+
+| Category | Transforms | API key |
+|---|---|---|
+| DNS (over HTTPS) | DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS | — |
+| WHOIS (RDAP) | DomainToWhois, IPToWhois | — |
+| Network | IPToAS, IPToNetblock (Team Cymru) | — |
+| Certificates | DomainToSubdomains (crt.sh) | — |
+| Identity | AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), EmailToAlias | — |
+| Parsing | EmailToDomain, URLToDomain, WebsiteToDomain, DomainToWebsite | — |
+| VirusTotal | VTDomainToIP, VTIPToDomain, VTDomainToSubdomains, VTHashToDetection | `VIRUSTOTAL_API_KEY` |
+| Shodan | ShodanIPToServices, ShodanDomainToSubdomains | `SHODAN_API_KEY` |
+| SecurityTrails | SecurityTrailsSubdomains | `SECURITYTRAILS_API_KEY` |
+| Censys | CensysIPToServices | `CENSYS_API_ID`, `CENSYS_API_SECRET` |
+| Hunter.io | HunterDomainToEmails | `HUNTER_API_KEY` |
+| Have I Been Pwned | HIBPEmailToBreaches | `HIBP_API_KEY` |
+| GreyNoise | GreyNoiseIPContext | `GREYNOISE_API_KEY` |
+| Tatum | TatumBTCAddressToTx | `TATUM_API_KEY` |
+
+Pass keys through your client's configuration:
+
+```json
+{ "mcpServers": { "maltego": { "command": "npx", "args": ["-y", "mcp-maltego"],
+  "env": { "SHODAN_API_KEY": "...", "VIRUSTOTAL_API_KEY": "..." } } } }
+```
+
+Your own Maltego transform servers (TRX / iTDS) are declared in `~/.maltego-mcp/transforms.toml`; see
+[config/transforms.example.toml](config/transforms.example.toml). Custom Machines go in the same file.
+
+## Maltego Desktop integration
+
+| Direction | How |
 |---|---|
-| [PLAN.md](PLAN.md) | Arquitectura, tools, fases, fuentes |
-| [AGENTS.md](AGENTS.md) | Reglas para todos los agentes (`CLAUDE.md`, `GEMINI.md`, `QWEN.md` lo importan) |
-| [docs/USO.md](docs/USO.md) | Tools, configuración, transforms, backends y pendientes |
-| [docs/ORCA.md](docs/ORCA.md) | Uso en el IDE Orca: roles por modelo, worktrees, orquestación |
-| [orca.yaml](orca.yaml), [.worktreeinclude](.worktreeinclude) | Preparación automática de cada worktree en Orca |
-| [docs/MALTEGO.md](docs/MALTEGO.md) | Integración con Maltego Desktop (transforms locales y .mtgx) |
-| `.mcp.json`, `.gemini/`, `.codex/`, `.cursor/`, `.qwen/`, `opencode.json` | Registro automático del MCP en cada agente |
-| [.claude/](.claude/) | Agentes y skills de apoyo (Claude Code) |
+| Agent → Maltego | `osint_export_case` writes a `.mtgx`; open it with **File → Open** |
+| Maltego → agent | Save as `.mtgx` in `~/.maltego-mcp/imports/` and ask the agent to import it |
+| Live, inside Maltego | `npx mcp-maltego ctl mtz` generates local transforms (**MCP · Abrir caso**, **MCP · Vecinos en el caso**, **MCP · Guardar en el caso**); import the file with **Import \| Export → Import Config** |
+| Your ontology | Export your config from Maltego and run `npx mcp-maltego ctl import-entities config.mtz` |
+
+Local transforms work in Maltego CE and the commercial editions, with no transform server. For the bridge, install
+the package globally (`npm i -g mcp-maltego`) so the command path stays stable. Details in
+[docs/MALTEGO.md](docs/MALTEGO.md).
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MALTEGO_MCP_HOME` | `~/.maltego-mcp` | Shared state: graph, catalog, imports, exports, runtime |
+| `MALTEGO_MCP_TRANSFORMS_FILE` | `<home>/transforms.toml` | Catalog of your transform servers and Machines |
+| `MALTEGO_MCP_BACKEND` | `memory` | `memory` (local JSON, multi-process safe) or `gremlin` (Azure Cosmos DB, experimental) |
+| `MCP_MALTEGO_UV` | auto-detected | Full path to `uv` if it is not on `PATH` |
+
+More in [docs/USO.md](docs/USO.md) (Spanish).
+
+## CLI
+
+```bash
+npx mcp-maltego ctl inspect case.mtgx           # validate a .mtgx
+npx mcp-maltego ctl lookup DomainToMX gmail.com  # quick lookup, nothing saved
+npx mcp-maltego ctl transforms --type maltego.Domain
+npx mcp-maltego ctl export demo --format report_html
+npx mcp-maltego ctl import-entities config.mtz
+npx mcp-maltego ctl mtz
+```
+
+## Example prompts
+
+- *Investigate ana@example.com and tell me which pivots are worth running next.*
+- *Run DomainRecon on example.com with two rounds and a budget of 200 entities.*
+- *Find every path between the IP 93.184.216.34 and the email in case demo.*
+- *Export case demo for Maltego with a radial layout and write me an HTML report.*
+- *Import the graph I saved in Maltego as acme.mtgx into case acme and continue from there.*
+
+## Security and responsible use
+
+OSINT content is untrusted and is never followed as instructions. See [SECURITY.md](SECURITY.md) for the design
+and for how to report vulnerabilities. You are responsible for complying with the law, each provider's terms of
+service and data-protection rules (for example GDPR) in your jurisdiction.
+
+## Development
+
+```bash
+git clone https://github.com/Data-Unix/MCP-MALTEGO.git && cd MCP-MALTEGO
+uv sync
+uv run pytest -q && uv run ruff check . && uv run mypy src   # Python
+npm test                                                       # npm launcher
+npx @modelcontextprotocol/inspector uv run maltego-mcp        # inspect the server
+```
+
+Architecture, conventions for contributors and AI agents: [AGENTS.md](AGENTS.md). Coverage of the functional
+specification: [docs/COBERTURA.md](docs/COBERTURA.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+
+## Roadmap
+
+- Validate the Azure Cosmos DB (Gremlin) backend against a live account.
+- Authentication (Entra ID / OAuth) for the remote HTTP transport.
+- Censys Platform API; more providers.
+- Publication in the official MCP Registry (`server.json` included).
+
+## License
+
+[MIT](LICENSE). Maltego is a trademark of Maltego Technologies GmbH. This project is independent and not affiliated
+with or endorsed by Maltego Technologies.

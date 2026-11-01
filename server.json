@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Data-Unix/mcp-maltego",
+  "description": "Maltego OSINT for AI agents: transforms, Machines, link-graph analysis and native .mtgx.",
+  "repository": {
+    "url": "https://github.com/Data-Unix/MCP-MALTEGO",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "mcp-maltego",
+      "version": "0.2.0",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
