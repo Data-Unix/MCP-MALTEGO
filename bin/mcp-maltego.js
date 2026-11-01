@@ -4,10 +4,13 @@
  *
  *   npx mcp-maltego                    servidor MCP por stdio (lo que configuran los agentes)
  *   npx mcp-maltego --transport http   servidor Streamable HTTP en 127.0.0.1:8000/mcp
- *   npx mcp-maltego ctl <comando>      maltegoctl (inspect, lookup, transforms, import-entities, export, mtz)
+ *   npx mcp-maltego ctl <comando>      maltegoctl (inspect, lookup, transforms, import-entities, index-breaches, export, mtz)
  *   npx mcp-maltego bridge <comando>   puente de transforms locales para Maltego Desktop
  *   npx mcp-maltego doctor             comprueba requisitos, auto-instala uv si falta y prepara el entorno
- *   npx mcp-maltego setup              prepara entorno Python, plantilla ~/.maltego-mcp/.env y .mtz para Maltego
+ *   npx mcp-maltego setup [opciones]   despliegue autónomo (runtime, ~/.maltego-mcp/.env, .mtz y comandos globales en PATH)
+ *     --mode global|local|npx|http     modo de despliegue (por defecto: global, ejecutable desde cualquier ruta)
+ *     --client all|claude|gemini|codex|copilot|cursor  muestra configuración lista para el cliente elegido
+ *     --bin-dir <ruta>                 directorio donde instalar los shims globales (por defecto: ~/.local/bin)
  *
  * Requisito único: uv (https://docs.astral.sh/uv/). Si no está instalado, mcp-maltego intenta instalarlo de forma
  * autónoma en ~/.maltego-mcp/bin. uv descarga Python 3.12 si hace falta e instala las dependencias exactas de
@@ -23,13 +26,25 @@ const os = require("node:os");
 const path = require("node:path");
 
 const PKG_ROOT = path.resolve(__dirname, "..");
+const BIN_SCRIPT = path.join(PKG_ROOT, "bin", "mcp-maltego.js");
 const PKG = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, "package.json"), "utf8"));
 const IS_WIN = process.platform === "win32";
 
 const COMMANDS = { ctl: "maltegoctl", bridge: "maltego-mcp-bridge" };
+const SHIM_ENTRIES = [
+  { name: "mcp-maltego", subargs: "" },
+  { name: "maltego-mcp", subargs: "" },
+  { name: "maltegoctl", subargs: "ctl" },
+  { name: "maltego-mcp-bridge", subargs: "bridge" },
+];
 
 function home(env = process.env) {
   return env.MALTEGO_MCP_HOME || path.join(os.homedir(), ".maltego-mcp");
+}
+
+function defaultGlobalBinDir(env = process.env) {
+  const h = env.USERPROFILE || env.HOME || os.homedir();
+  return path.join(h, ".local", "bin");
 }
 
 function isFile(p) {
@@ -137,8 +152,159 @@ function ensureEnvTemplate(homeDir) {
   return { path: envFile, created: true };
 }
 
-function doctor(runSetup = false) {
+/**
+ * Crea lanzadores globales multiplataforma (mcp-maltego, maltego-mcp, maltegoctl, maltego-mcp-bridge)
+ * en `binDir` (~/.local/bin) para poder ejecutar el MCP y su CLI desde cualquier ruta o terminal.
+ */
+function installGlobalShims(binDir = defaultGlobalBinDir(), isWin = IS_WIN) {
+  fs.mkdirSync(binDir, { recursive: true });
+  const created = [];
+  for (const entry of SHIM_ENTRIES) {
+    const sub = entry.subargs ? ` ${entry.subargs}` : "";
+    if (isWin) {
+      const cmdPath = path.join(binDir, `${entry.name}.cmd`);
+      const cmdContent = `@echo off\r\nnode "${BIN_SCRIPT}"${sub} %*\r\n`;
+      fs.writeFileSync(cmdPath, cmdContent, "utf8");
+      const ps1Path = path.join(binDir, `${entry.name}.ps1`);
+      const psSub = entry.subargs ? `"${entry.subargs}" ` : "";
+      const ps1Content = `& node "${BIN_SCRIPT}" ${psSub}@args\r\nexit $LASTEXITCODE\r\n`;
+      fs.writeFileSync(ps1Path, ps1Content, "utf8");
+      created.push(cmdPath, ps1Path);
+    } else {
+      const shPath = path.join(binDir, entry.name);
+      const shContent = `#!/usr/bin/env sh\nexec node "${BIN_SCRIPT}"${sub} "$@"\n`;
+      fs.writeFileSync(shPath, shContent, { encoding: "utf8", mode: 0o755 });
+      try {
+        fs.chmodSync(shPath, 0o755);
+      } catch {
+        // Ignorar en sistemas de ficheros sin permisos POSIX
+      }
+      created.push(shPath);
+    }
+  }
+  return { binDir, files: created };
+}
+
+/** Asegura que `binDir` esté en el PATH de usuario (Windows User PATH + perfiles PowerShell o POSIX rc). */
+function ensureUserPath(binDir = defaultGlobalBinDir(), env = process.env, isWin = IS_WIN) {
+  const pathList = (env.PATH || "").split(path.delimiter).map((p) => p.trim().toLowerCase());
+  const alreadyInProcess = pathList.includes(binDir.toLowerCase());
+  const updated = [];
+
+  if (isWin) {
+    if (hasInPath("powershell.exe", env) && env.MCP_MALTEGO_SKIP_WIN_USER_PATH !== "1") {
+      const psCmd = [
+        `$target = '${binDir.replace(/'/g, "''")}'`,
+        "$u = [Environment]::GetEnvironmentVariable('Path', 'User')",
+        "$parts = if ($u) { $u -split ';' } else { @() }",
+        "if (-not ($parts | Where-Object { $_.TrimEnd('\\') -ieq $target.TrimEnd('\\') })) {",
+        "  $newPath = (($parts + $target) | Where-Object { $_ }) -join ';'",
+        "  [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')",
+        "}",
+      ].join("; ");
+      spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "ByPass", "-Command", psCmd], {
+        stdio: "ignore",
+        timeout: 15000,
+      });
+      updated.push("User PATH (Windows Registry)");
+    }
+    const homeUser = env.USERPROFILE || os.homedir();
+    const psProfiles = [
+      path.join(homeUser, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"),
+      path.join(homeUser, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1"),
+    ];
+    const marker = "# mcp-maltego global bin";
+    const snippet = `\r\n${marker}\r\nif ($env:PATH -notlike "*${binDir}*") { $env:PATH = "${binDir};$env:PATH" }\r\n`;
+    for (const prof of psProfiles) {
+      try {
+        fs.mkdirSync(path.dirname(prof), { recursive: true });
+        const existing = isFile(prof) ? fs.readFileSync(prof, "utf8") : "";
+        if (!existing.includes(marker) && !existing.includes(binDir)) {
+          fs.writeFileSync(prof, existing + snippet, "utf8");
+          updated.push(prof);
+        }
+      } catch {
+        // Ignorar si Documents está protegido por Controlled Folder Access
+      }
+    }
+  } else {
+    const homeUser = env.HOME || os.homedir();
+    const rcFiles = [path.join(homeUser, ".bashrc"), path.join(homeUser, ".zshrc"), path.join(homeUser, ".profile")];
+    const marker = "# mcp-maltego global bin";
+    const line = `\n${marker}\nexport PATH="${binDir}:$PATH"\n`;
+    for (const rc of rcFiles) {
+      try {
+        if (isFile(rc) || rc.endsWith(".profile")) {
+          const existing = isFile(rc) ? fs.readFileSync(rc, "utf8") : "";
+          if (!existing.includes(marker) && !existing.includes(binDir)) {
+            fs.writeFileSync(rc, existing + line, "utf8");
+            updated.push(rc);
+          }
+        }
+      } catch {
+        // Ignorar errores de escritura en perfiles opcionales
+      }
+    }
+  }
+  return { binDir, alreadyInProcess, updated };
+}
+
+function parseSetupOptions(argv) {
+  let mode = "global";
+  let client = "all";
+  let binDir = "";
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === "--no-global" || a === "--local") mode = "local";
+    else if (a === "--global") mode = "global";
+    else if (a === "--http") mode = "http";
+    else if (a === "--mode" && argv[i + 1]) {
+      mode = argv[i + 1].toLowerCase();
+      i += 1;
+    } else if (a.startsWith("--mode=")) {
+      mode = a.split("=", 2)[1].toLowerCase();
+    } else if (a === "--client" && argv[i + 1]) {
+      client = argv[i + 1].toLowerCase();
+      i += 1;
+    } else if (a.startsWith("--client=")) {
+      client = a.split("=", 2)[1].toLowerCase();
+    } else if (a === "--bin-dir" && argv[i + 1]) {
+      binDir = argv[i + 1];
+      i += 1;
+    } else if (a.startsWith("--bin-dir=")) {
+      binDir = a.split("=", 2)[1];
+    }
+  }
+  if (!["global", "local", "npx", "http"].includes(mode)) mode = "global";
+  return { mode, client, binDir };
+}
+
+function clientConfigSnippet(client = "all", mode = "global") {
+  const cmdBlock =
+    mode === "global"
+      ? `{ "mcpServers": { "maltego": { "command": "mcp-maltego" } } }`
+      : `{ "mcpServers": { "maltego": { "command": "npx", "args": ["-y", "mcp-maltego"] } } }`;
+  const lines = [
+    "Opciones de despliegue y uso desde cualquier ruta (Windows PowerShell, macOS y Linux):",
+    "  [1] CLI global (cualquier directorio):   maltegoctl transforms | maltego-mcp | mcp-maltego doctor",
+    "  [2] Lanzador autónomo npm (sin instalar): npx -y mcp-maltego",
+    "  [3] Servidor remoto Streamable HTTP:      mcp-maltego --transport http --port 8000",
+  ];
+  if (client === "all" || client === "claude") {
+    lines.push("  • Claude Code:   claude mcp add maltego -- npx -y mcp-maltego");
+  }
+  if (client === "all" || client === "codex") {
+    lines.push("  • Codex CLI:     codex mcp add maltego -- npx -y mcp-maltego");
+  }
+  if (client === "all" || client === "gemini" || client === "cursor" || client === "copilot") {
+    lines.push(`  • JSON estándar: ${cmdBlock}`);
+  }
+  return lines.join("\n");
+}
+
+function doctor(runSetup = false, setupArgv = []) {
   const out = (msg) => process.stderr.write(msg + "\n");
+  const opts = parseSetupOptions(setupArgv);
   const homeDir = home();
   out(`mcp-maltego ${PKG.version}`);
   out(`  paquete:  ${PKG_ROOT}`);
@@ -170,8 +336,20 @@ function doctor(runSetup = false) {
     if (mtzRes.status === 0) {
       out(`  Maltego:  ${path.join(homeDir, "maltego-mcp-local.mtz")} listo para importar`);
     }
+    if (opts.mode === "global" || opts.mode === "http") {
+      const targetBin = opts.binDir || defaultGlobalBinDir();
+      const shims = installGlobalShims(targetBin);
+      const pathStatus = ensureUserPath(targetBin);
+      out(`  CLI PATH: ${shims.binDir} (comandos: mcp-maltego, maltego-mcp, maltegoctl, maltego-mcp-bridge)`);
+      if (IS_WIN && !pathStatus.alreadyInProcess) {
+        out(
+          `  PowerShell (sesión actual): $env:PATH = "${targetBin};$env:PATH" (en nuevas terminales ya está activo)`,
+        );
+      }
+    }
+    out("\n" + clientConfigSnippet(opts.client, opts.mode));
   }
-  out("Todo listo. Configura tu agente con: npx -y mcp-maltego");
+  out("\nTodo listo. Configura tu agente con: npx -y mcp-maltego (o ejecuta 'maltegoctl transforms' desde cualquier ruta)");
   return 0;
 }
 
@@ -182,7 +360,7 @@ function main() {
     return;
   }
   if (argv[0] === "doctor" || argv[0] === "setup") {
-    process.exitCode = doctor(argv[0] === "setup");
+    process.exitCode = doctor(argv[0] === "setup", argv.slice(1));
     return;
   }
   const uv = ensureUv();
@@ -207,4 +385,14 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildInvocation, findUv, ensureUv, ensureEnvTemplate, COMMANDS };
+module.exports = {
+  buildInvocation,
+  findUv,
+  ensureUv,
+  ensureEnvTemplate,
+  installGlobalShims,
+  ensureUserPath,
+  parseSetupOptions,
+  clientConfigSnippet,
+  COMMANDS,
+};

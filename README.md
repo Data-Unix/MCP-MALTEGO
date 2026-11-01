@@ -60,10 +60,22 @@ exports everything to Maltego Desktop. One graph is shared by every agent you us
 - [uv](https://docs.astral.sh/uv/) — manages the Python 3.12 runtime automatically (if `uv` is not installed yet,
   `mcp-maltego` installs it automatically into `~/.maltego-mcp/bin` on first run).
 
-Prepare the runtime, `~/.maltego-mcp/.env` template and Maltego Desktop bridge `.mtz` in one command:
+Prepare the runtime, `~/.maltego-mcp/.env` template, Maltego Desktop bridge `.mtz`, and global CLI launchers
+(`mcp-maltego`, `maltego-mcp`, `maltegoctl`, `maltego-mcp-bridge` in `~/.local/bin` / `%USERPROFILE%\.local\bin` added to
+your `PATH`) in one command:
 
 ```bash
 npx -y mcp-maltego setup
+```
+
+You can also choose a specific deployment mode or client target on any OS / distribution (Windows PowerShell/CMD, macOS,
+Ubuntu/Debian, Kali, Fedora/RHEL, Arch, Alpine):
+
+```bash
+npx -y mcp-maltego setup --mode global              # (Default) Global CLI in ~/.local/bin + PATH (run from any directory)
+npx -y mcp-maltego setup --mode local               # Isolated inside ~/.maltego-mcp without modifying PATH
+npx -y mcp-maltego setup --mode http                # Prepare + print Streamable HTTP server startup
+npx -y mcp-maltego setup --client claude            # Print ready-to-use config for a specific client (claude|gemini|codex|copilot|cursor|all)
 ```
 
 ## Getting started
