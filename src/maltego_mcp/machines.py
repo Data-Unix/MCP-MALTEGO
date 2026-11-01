@@ -170,6 +170,23 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
         ("maltego.AS",),
         (("RIPEStatASNToNetblocks",),),
     ),
+    Machine(
+        "PersonaFootprint",
+        "Reconocimiento HUMINT/SOCMINT de personas y pseudónimos: alias, Gravatar, perfiles públicos, GitHub, "
+        "enrutador semántico de filtraciones (BreachSemanticPivot) y perfilado conductual (AnalyzeSubjectBehavior).",
+        ("maltego.EmailAddress", "maltego.Alias", "humint.Alias", "maltego.Person"),
+        (
+            (
+                "EmailToAlias",
+                "EmailToDomain",
+                "GravatarEmailToProfile",
+                "BreachSemanticPivot",
+                "AliasToProfiles",
+                "GitHubAliasToDetails",
+            ),
+            ("AliasToProfiles", "GitHubAliasToDetails", "AnalyzeSubjectBehavior"),
+        ),
+    ),
 )
 
 DEFAULT_MACHINE_BY_TYPE = {
@@ -180,6 +197,8 @@ DEFAULT_MACHINE_BY_TYPE = {
     "maltego.ipv6address": "InfrastructureRecon",
     "maltego.emailaddress": "EmailRecon",
     "maltego.alias": "PersonalFootprint",
+    "humint.alias": "PersonaFootprint",
+    "maltego.person": "PersonaFootprint",
     "maltego.url": "URLRecon",
     "maltego.hash": "ThreatSweep",
     "maltego.as": "ASNToNetblocks",

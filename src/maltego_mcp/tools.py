@@ -272,8 +272,9 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         name="osint_manage_case",
         title="Gestionar caso",
         description=(
-            "Crea o actualiza un caso (action=create), fusiona otro caso dentro de este (action=merge, "
-            "source_case) o lo borra con todo su contenido (action=delete, confirm=<case_id>; irreversible)."
+            "Crea o actualiza un caso (action=create), divide un caso en sub-casos por rol para enjambres "
+            "multi-agente (action=fork o delegate, sub_roles), fusiona otro caso o todos los sub-casos con bloqueo "
+            "optimista (action=merge, source_case o 'all', expected_version) o lo borra (action=delete, confirm)."
         ),
         annotations=DESTRUCTIVE,
         structured_output=False,
@@ -281,27 +282,74 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
     @tool_errors
     async def osint_manage_case(
         case_id: CaseId,
+        sub_roles: Annotated[
+            list[str],
+            Field(
+                default_factory=list,
+                max_length=10,
+                description="Roles para dividir en sub-casos en fork/delegate (ej.: ['infra', 'humint']).",
+            ),
+        ],
         action: Annotated[
-            Literal["create", "merge", "delete"], Field(description="create, merge o delete.")
+            Literal["create", "merge", "delete", "fork", "delegate"],
+            Field(description="create, merge, delete, fork o delegate."),
         ] = "create",
-        description: Annotated[str, Field(max_length=500, description="Objetivo del caso (create).")] = "",
-        source_case: Annotated[str, Field(description="Caso a fusionar en case_id (merge).")] = "",
+        description: Annotated[str, Field(max_length=500, description="Objetivo del caso (create/fork).")] = "",
+        source_case: Annotated[
+            str, Field(description="Caso a fusionar en case_id, o 'all' para todos los sub-casos (merge).")
+        ] = "",
+        expected_version: Annotated[
+            int, Field(ge=0, le=1_000_000, description="Versión esperada para bloqueo optimista en merge (0=omitir).")
+        ] = 0,
         confirm: Annotated[str, Field(description="Repite el case_id para confirmar delete.")] = "",
+        response_format: Fmt = "markdown",
     ) -> str:
         if action == "delete":
             ents, edges = await svc.delete_case(case_id, confirm)
             return f"Caso `{case_id.strip().lower()}` borrado ({ents} entidades, {edges} relaciones)."
+        if action in ("fork", "delegate"):
+            delegated = await svc.fork_case(case_id, sub_roles, description)
+            if response_format == "json":
+                return to_json({"parent_case_id": case_id.strip().lower(), "sub_cases": delegated})
+            rows = [
+                f"Enjambre multi-agente creado desde `{case_id.strip().lower()}` ({len(delegated)} sub-casos):",
+                "| sub_case_id | rol | semillas | relaciones | versión padre |",
+                "|---|---|---|---|---|",
+            ]
+            rows += [
+                f"| `{d['sub_case_id']}` | {d['role']} | {d['seeded_entities']} | {d['seeded_edges']} | "
+                f"{d['parent_version']} |"
+                for d in delegated
+            ]
+            rows.append(
+                "\nCuando los subagentes terminen, consolida con: "
+                f'`osint_manage_case(case_id="{case_id.strip().lower()}", action="merge", source_case="all")`.'
+            )
+            return "\n".join(rows)
         if action == "merge":
             if not source_case.strip():
-                raise InvalidInput("Indica source_case para fusionar.")
-            created, linked = await svc.merge_cases(case_id, source_case)
+                raise InvalidInput("Indica source_case para fusionar (o source_case='all' para los sub-casos).")
+            created, linked = await svc.merge_cases(case_id, source_case, expected_version)
+            if response_format == "json":
+                updated_case = await svc.store.get_case(case_id.strip().lower())
+                return to_json(
+                    {
+                        "case_id": case_id.strip().lower(),
+                        "source_case": source_case.strip().lower(),
+                        "new_entities": created,
+                        "linked_edges": linked,
+                        "version": updated_case.version if updated_case else 1,
+                    }
+                )
             return (
                 f"Fusionado `{source_case.strip().lower()}` en `{case_id.strip().lower()}`: {created} entidades "
                 f"nuevas, {linked} relaciones. El caso origen se conserva."
             )
         case, created = await svc.create_case(case_id, description)
+        if response_format == "json":
+            return to_json({"created": created, "case": case.to_dict()})
         state = "creado" if created else "ya existía"
-        return f"Caso `{case.case_id}` {state}. Descripción: {safe(case.description) or '—'}"
+        return f"Caso `{case.case_id}` {state} (v{case.version}). Descripción: {safe(case.description) or '—'}"
 
     @mcp.tool(
         name="osint_list_cases",
@@ -394,10 +442,11 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
 
     @mcp.tool(
         name="osint_manage_entity",
-        title="Editar o borrar entidad",
+        title="Editar, estilizar, perfilar o borrar entidad",
         description=(
-            "action=update cambia confianza (confidence>=0), notas, propiedades (properties clave=valor) o quita "
-            "propiedades (remove_properties). action=delete borra la entidad y sus relaciones (irreversible)."
+            "action=update cambia confianza, notas o propiedades. action=visual_style fija peso/color/tamaño visual "
+            "para .mtgx. action=analyze_behavior ejecuta perfilado conductual HUMINT sobre el sujeto y su vecindario. "
+            "action=delete borra la entidad y sus relaciones."
         ),
         annotations=DESTRUCTIVE,
         structured_output=False,
@@ -410,15 +459,69 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         remove_properties: Annotated[
             list[str], Field(default_factory=list, max_length=50, description="Nombres de propiedades a quitar.")
         ],
-        action: Annotated[Literal["update", "delete"], Field(description="update o delete.")] = "update",
+        action: Annotated[
+            Literal["update", "delete", "visual_style", "analyze_behavior"],
+            Field(description="update, delete, visual_style o analyze_behavior."),
+        ] = "update",
         confidence: Annotated[float, Field(ge=-1, le=1, description="Nueva confianza 0-1; -1 = no cambiar.")] = -1,
         notes: Annotated[str, Field(max_length=4000, description="Notas (sustituyen a las actuales).")] = "",
+        visual_weight: Annotated[
+            int, Field(ge=-1, le=100, description="Peso visual 1-100 en .mtgx (-1 = automático por criticidad).")
+        ] = -1,
+        visual_color: Annotated[
+            str, Field(max_length=20, description="Color hex del nodo en .mtgx (ej.: #e11d48).")
+        ] = "",
+        visual_size: Annotated[
+            Literal["", "small", "normal", "large", "xl"], Field(description="Tamaño visual del nodo en .mtgx.")
+        ] = "",
         reason: Reason = "",
+        response_format: Fmt = "markdown",
     ) -> str:
         if action == "delete":
             removed = await svc.delete_entity(case_id, entity_id, reason)
             return f"Entidad `{entity_id}` borrada junto con {removed} relaciones."
-        ent = await svc.update_entity(case_id, entity_id, confidence, notes, properties, remove_properties, reason)
+        if action == "visual_style":
+            ent = await svc.set_visual_style(case_id, entity_id, visual_weight, visual_color, visual_size, reason)
+            if response_format == "json":
+                return to_json({"entity": ent.to_dict()})
+            return (
+                f"Estilo visual aplicado a {entity_line(ent)}: peso={ent.properties.get('visual.weight')}, "
+                f"color={ent.properties.get('visual.color')}, tamaño={ent.properties.get('visual.size')}."
+            )
+        if action == "analyze_behavior":
+            ent, analysis, emitted = await svc.analyze_entity_behavior(case_id, entity_id, reason)
+            if response_format == "json":
+                return to_json(
+                    {
+                        "entity": ent.to_dict(),
+                        "sentiment": analysis.sentiment,
+                        "communication_style": analysis.communication_style,
+                        "opsec_level": analysis.opsec_level,
+                        "ocean_summary": analysis.ocean_summary,
+                        "active_window": analysis.active_window,
+                        "summary_note": analysis.summary_note,
+                        "emitted": [x.to_dict() for x in emitted],
+                    }
+                )
+            lines = [
+                f"## Perfil conductual HUMINT de {code(ent.value)}",
+                f"- {safe(analysis.summary_note, 400)}",
+                f"- Rasgos y entidades HUMINT generadas: {len(emitted)}",
+            ]
+            if emitted:
+                lines.append(entities_table(emitted))
+            lines.append(UNTRUSTED_NOTE)
+            return "\n\n".join(lines)
+        extra_props = list(properties)
+        if visual_weight >= 0:
+            extra_props.append(f"visual.weight={visual_weight}")
+        if visual_color.strip():
+            extra_props.append(f"visual.color={visual_color.strip()}")
+        if visual_size.strip():
+            extra_props.append(f"visual.size={visual_size.strip()}")
+        ent = await svc.update_entity(case_id, entity_id, confidence, notes, extra_props, remove_properties, reason)
+        if response_format == "json":
+            return to_json({"entity": ent.to_dict()})
         return f"Entidad actualizada: {entity_line(ent)}; {len(ent.properties)} propiedades."
 
     @mcp.tool(
@@ -507,8 +610,12 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
     # =============================================================================== relaciones
     @mcp.tool(
         name="osint_link_entities",
-        title="Relacionar o desrelacionar entidades",
-        description="action=link crea/refuerza la relación dirigida source -> target; action=unlink la elimina.",
+        title="Relacionar, analizar vínculo o correlacionar identidades",
+        description=(
+            "action=link crea/refuerza la relación dirigida source -> target (con rol, sentimiento y peso HUMINT "
+            "opcionales); action=analyze infiere rol/sentimiento/peso; action=correlate calcula la probabilidad de "
+            "solapamiento de identidad entre alias/perfiles y enlaza si >=0.85; action=unlink elimina la relación."
+        ),
         annotations=WRITE_IDEMPOTENT,
         structured_output=False,
     )
@@ -516,16 +623,70 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
     async def osint_link_entities(
         case_id: CaseId,
         source_id: EntityId,
-        target_id: EntityId,
-        edge_label: Annotated[str, Field(max_length=63, description="Tipo de relación (ej.: resolves_to, owns).")],
-        action: Annotated[Literal["link", "unlink"], Field(description="link o unlink.")] = "link",
+        properties: Props,
+        target_id: Annotated[
+            str, Field(description="Id de entidad destino (vacío en action=correlate para comparar con todo el caso).")
+        ] = "",
+        edge_label: Annotated[
+            str, Field(max_length=63, description="Tipo de relación (ej.: resolves_to, owns).")
+        ] = "related_to",
+        action: Annotated[
+            Literal["link", "unlink", "correlate", "analyze"],
+            Field(description="link, unlink, correlate o analyze."),
+        ] = "link",
         confidence: Confidence = 0.5,
         source: Annotated[str, Field(max_length=120, description="Origen de la relación.")] = "manual",
+        role: Annotated[
+            Literal["", "lider", "reclutador", "seguidor", "intermediario", "operador", "colaborador"],
+            Field(description="Rol relacional HUMINT opcional."),
+        ] = "",
+        sentiment: Annotated[
+            Literal["", "hostil", "estrecho", "profesional", "familiar", "transaccional"],
+            Field(description="Sentimiento o naturaleza del vínculo HUMINT."),
+        ] = "",
+        weight: Annotated[int, Field(ge=1, le=100, description="Peso o frecuencia de interacción (1-100).")] = 1,
+        response_format: Fmt = "markdown",
     ) -> str:
         if action == "unlink":
             ok = await svc.unlink(case_id, source_id, target_id, edge_label)
             return "Relación eliminada." if ok else "No existía esa relación (revisa edge_label y la dirección)."
-        edge, created = await svc.link(case_id, source_id, target_id, edge_label, source, confidence)
+        if action == "correlate":
+            threshold = confidence if 0.5 < confidence < 1.0 and confidence != 0.5 else 0.85
+            overlaps = await svc.correlate_identities(case_id, source_id, target_id, threshold=threshold)
+            if response_format == "json":
+                return to_json(
+                    {"count": len(overlaps), "threshold": threshold, "matches": [o.to_dict() for o in overlaps]}
+                )
+            if not overlaps:
+                return "No hay otras entidades en el caso para correlacionar."
+            rows = [
+                f"Correlación de identidades para `{source_id}` (umbral auto-enlace: {threshold:.0%}):",
+                "| candidato | id | probabilidad | handle | metadatos | estilometría | grafo | mismo individuo |",
+                "|---|---|---|---|---|---|---|---|",
+            ]
+            rows += [
+                f"| {code_cell(o.target_value)} | `{o.target_id}` | **{o.probability:.1%}** | "
+                f"{o.handle_similarity:.2f} | {o.metadata_similarity:.2f} | {o.stylometry_similarity:.2f} | "
+                f"{o.graph_jaccard:.2f} | {'SÍ (enlazado)' if o.same_individual else 'no'} |"
+                for o in overlaps[:25]
+            ]
+            return "\n".join(rows)
+        if action == "analyze":
+            edge, created = await svc.analyze_relationship(
+                case_id, source_id, target_id, edge_label, source, confidence, role, sentiment, weight, properties
+            )
+            if response_format == "json":
+                return to_json({"created": created, "edge": edge.to_dict()})
+            return (
+                f"Relación HUMINT {'creada' if created else 'actualizada'}: `{edge.out_id}` -[{edge.label}]-> "
+                f"`{edge.in_id}` (rol={edge.properties.get('humint.role')}, "
+                f"sentimiento={edge.properties.get('humint.sentiment')}, peso={edge.properties.get('humint.weight')})"
+            )
+        edge, created = await svc.link(
+            case_id, source_id, target_id, edge_label, source, confidence, properties, role, sentiment, weight
+        )
+        if response_format == "json":
+            return to_json({"created": created, "edge": edge.to_dict()})
         return (
             f"Relación {'creada' if created else 'actualizada'}: `{edge.out_id}` -[{edge.label}]-> `{edge.in_id}` "
             f"(confianza {edge.confidence})"
@@ -856,10 +1017,11 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
 
     @mcp.tool(
         name="osint_get_timeline",
-        title="Memoria y cronología del caso",
+        title="Memoria y cronología del caso o del sujeto",
         description=(
-            "Memoria procedimental del caso: cada paso (qué, sobre qué, por qué, resultado, duración, errores) en "
-            "orden. Para seguir hallazgos en vivo, consulta periódicamente con since_seq = último seq recibido."
+            "mode=investigation devuelve la memoria procedimental del caso (pasos ejecutados, con since_seq). "
+            "mode=subject construye la cronología vital/conductual del sujeto a partir de fechas de entidades "
+            "(whois.created, breach.date, github.created_at...) y detecta anomalías temporales (de-confliction)."
         ),
         annotations=READ_ONLY,
         structured_output=False,
@@ -867,12 +1029,41 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
     @tool_errors
     async def osint_get_timeline(
         case_id: CaseId,
+        mode: Annotated[
+            Literal["investigation", "subject"],
+            Field(description="investigation (pasos del MCP) o subject (cronología del sujeto y de-confliction)."),
+        ] = "investigation",
+        entity_id: Annotated[
+            str, Field(description="Opcional en mode=subject: filtrar por una entidad y su vecindario.")
+        ] = "",
         since_seq: Annotated[
             int, Field(ge=0, description="Solo pasos posteriores a este seq (sondeo incremental).")
         ] = 0,
-        limit: Annotated[int, Field(ge=1, le=500, description="Máximo de pasos.")] = 100,
+        limit: Annotated[int, Field(ge=1, le=500, description="Máximo de pasos o eventos.")] = 100,
         response_format: Fmt = "markdown",
     ) -> str:
+        if mode == "subject":
+            tl = await svc.subject_timeline(case_id, entity_id, limit)
+            if response_format == "json":
+                return to_json(tl.to_dict())
+            if not tl.events:
+                return "No hay fechas o metadatos temporales en las entidades del caso."
+            rows = [
+                f"## Cronología conductual y técnica del sujeto (`{tl.case_id}`)",
+                "| fecha (ISO) | categoría | evento | entidad | tipo | propiedad |",
+                "|---|---|---|---|---|---|",
+            ]
+            rows += [
+                f"| {ev.timestamp} | {ev.category} | {cell(ev.event, 90)} | {code_cell(ev.entity_value, 60)} | "
+                f"{ev.entity_type} | `{ev.source_property}` |"
+                for ev in tl.events
+            ]
+            if tl.anomalies:
+                rows.append("\n### ⚠ Anomalías temporales detectadas (De-confliction)")
+                for a in tl.anomalies:
+                    rows.append(f"- **[{a.severity.upper()} · {a.kind}]** {safe(a.description, 300)}")
+            rows.append(UNTRUSTED_NOTE)
+            return "\n".join(rows)
         steps = await svc.timeline(case_id, since_seq, limit)
         last = steps[-1].seq if steps else since_seq
         if response_format == "json":

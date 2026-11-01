@@ -77,12 +77,17 @@ class FakeGraph:
                 "in_id": b["in_id"],
                 "confidence": b["confidence"],
                 "sources_json": b["sources_json"],
+                "props_json": b.get("props_json", "{}"),
                 "first_seen": b["first_seen"],
                 "last_seen": b["last_seen"],
             }
             return []
         if q == G.Q_UPDATE_EDGE:
-            self.e[b["eid"]].update(confidence=b["confidence"], sources_json=b["sources_json"])
+            self.e[b["eid"]].update(
+                confidence=b["confidence"],
+                sources_json=b["sources_json"],
+                props_json=b.get("props_json", "{}"),
+            )
             return []
         if q.startswith("g.V()") and q.endswith(".count()") and "value_lc" in q:
             return [len(self._search(q, b))]

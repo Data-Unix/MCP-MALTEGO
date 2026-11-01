@@ -8,12 +8,18 @@ license: MIT
 **Antes de empezar**: confirma base legítima (investigación autorizada, propia, o protección de la propia
 organización) y minimiza datos: no recojas más de lo necesario (RGPD).
 
-1. Correo → `osint_run_machine(machine="EmailRecon")`: dominio, alias, filtraciones (`HIBPEmailToBreaches` con
-   `HIBP_API_KEY`), MX/NS/WHOIS del dominio y perfiles del alias.
-2. Alias o usuario → `osint_run_machine(machine="PersonalFootprint", max_rounds=2)`: `AliasToProfiles` (GitHub,
-   GitLab, Hacker News, Keybase, DEV).
-3. Coincidencia de alias ≠ misma persona: marca la confianza baja (`osint_manage_entity confidence=0.3`) hasta
+1. Correo → `osint_run_machine(machine="EmailRecon")`: dominio, alias, filtraciones (`BreachSemanticPivot` y
+   `HIBPEmailToBreaches`), MX/NS/WHOIS del dominio y perfiles del alias.
+2. Alias, persona o perfil HUMINT → `osint_run_machine(machine="PersonaFootprint", max_rounds=2)` o
+   `PersonalFootprint`: `AliasToProfiles`, `GitHubAliasToDetails`, `GravatarEmailToProfile`, `BreachSemanticPivot` y
+   `AnalyzeSubjectBehavior` (genera rasgos `humint.PsychologicalTrait` etiquetados como `[Hipótesis]`,
+   `humint.LocationHistory` y `humint.Organization`).
+3. Correlación matemática de identidades → `osint_link_entities(action="correlate")` evalúa similitud de handle,
+   metadatos, estilometría (3-gramas) y solapamiento de vecindario Jaccard; enlaza automáticamente si >= 85 %.
+4. Línea temporal del sujeto y desconflicción → `osint_get_timeline(mode="subject")` consolida fechas de creación,
+   filtraciones y actividad detectando paradojas cronológicas, saltos de huso horario y rotación post-brecha.
+5. Coincidencia de alias ≠ misma persona: marca la confianza baja (`osint_manage_entity confidence=0.3`) hasta
    corroborarla con otra evidencia y anótalo en `notes`.
-4. Correlación entre casos: `osint_search_entities` con `case_id` vacío.
-5. Entrega: informe con hechos, hipótesis y fuentes; `.mtgx` con layout `radial` alrededor de la persona.
+6. Correlación entre casos: `osint_search_entities` con `case_id` vacío.
+7. Entrega: informe con hechos, hipótesis y fuentes; `.mtgx` con layout `radial` alrededor de la persona.
 No publiques ni compartas datos personales fuera del caso.

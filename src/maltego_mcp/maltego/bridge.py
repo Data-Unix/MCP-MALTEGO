@@ -56,6 +56,8 @@ class BridgeTransform:
 
 
 def _type_suffix(maltego_type: str) -> str:
+    if maltego_type.lower().startswith("humint."):
+        return "Humint" + maltego_type.split(".", 1)[-1].replace(".", "")
     return maltego_type.split(".", 1)[-1].replace(".", "")
 
 

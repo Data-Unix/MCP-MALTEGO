@@ -186,6 +186,99 @@ def compute_layout(
     return _hierarchical(adj)
 
 
+def entity_visual_profile(entity: EntityRecord, degree: int = 0) -> tuple[int, str, str, str]:
+    """Calcula (weight 1-100, color hex, size tier, bookmark) para renderizado visual en .mtgx."""
+    props = entity.properties
+    raw_w = props.get("visual.weight") or props.get("mcp.visual.weight") or ""
+    try:
+        weight = max(1, min(100, int(float(raw_w)))) if raw_w else 0
+    except ValueError:
+        weight = 0
+    if not weight:
+        threat_bonus = 0
+        if (
+            int(props.get("vt.malicious", "0") or "0") > 0
+            or int(props.get("otx.pulse_count", "0") or "0") > 0
+            or props.get("breach.name")
+            or props.get("breach.count")
+            or props.get("humint.risk") == "high"
+            or entity.value.startswith(("[CVE]", "[Malware]", "[Breach]", "[PwnedPassword]"))
+        ):
+            threat_bonus = 35
+        weight = max(1, min(100, round(entity.confidence * 55 + min(degree, 6) * 5 + threat_bonus)))
+
+    color = props.get("visual.color") or props.get("mcp.visual.color") or ""
+    size = props.get("visual.size") or props.get("mcp.visual.size") or ""
+    bookmark = props.get("visual.bookmark") or props.get("mcp.visual.bookmark") or ""
+    is_threat = (
+        int(props.get("vt.malicious", "0") or "0") > 0
+        or int(props.get("otx.pulse_count", "0") or "0") > 0
+        or bool(props.get("breach.name") or props.get("breach.count"))
+        or props.get("humint.risk") == "high"
+        or entity.value.startswith(("[CVE]", "[Malware]", "[Breach]", "[PwnedPassword]"))
+    )
+    if not color:
+        if is_threat:
+            color = "#e11d48"
+        elif weight >= 75:
+            color = "#f59e0b"
+        elif entity.maltego_type.lower().startswith("humint.") or props.get("humint.epistemic_status") == "hypothesis":
+            color = "#8b5cf6"
+        elif weight >= 50:
+            color = "#10b981"
+        else:
+            color = "#64748b"
+    if not size:
+        if is_threat or weight >= 85:
+            size = "xl"
+        elif weight >= 65:
+            size = "large"
+        elif weight >= 35:
+            size = "normal"
+        else:
+            size = "small"
+    if not bookmark:
+        bookmark = "red" if is_threat else ("orange" if weight >= 75 else ("purple" if color == "#8b5cf6" else "none"))
+    return weight, color, size, bookmark
+
+
+def edge_visual_profile(edge: EdgeRecord) -> tuple[str, int, str]:
+    """Calcula (color hex, grosor 1-5, estilo '0' sólido / '1' discontinuo) para MaltegoLink."""
+    props = edge.properties
+    color = props.get("maltego.link.color") or props.get("mcp.link.color") or ""
+    raw_thick = (
+        props.get("maltego.link.thickness") or props.get("mcp.link.thickness") or props.get("humint.weight") or ""
+    )
+    sentiment = props.get("humint.sentiment", "")
+    role = props.get("humint.role", "")
+    if not color:
+        if edge.label == "humint_highly_likely_same_individual" or sentiment == "hostil":
+            color = "#e11d48"
+        elif sentiment in ("estrecho", "familiar") or role in ("lider", "reclutador"):
+            color = "#f59e0b"
+        elif role in ("intermediario", "operador") or sentiment == "profesional":
+            color = "#3b82f6"
+        elif edge.confidence >= 0.85:
+            color = "#10b981"
+        else:
+            color = "#64748b"
+    try:
+        val = int(float(raw_thick))
+        thickness = max(1, min(5, val if val <= 5 else (2 + min(3, val // 25))))
+    except ValueError:
+        thickness = (
+            4
+            if edge.label == "humint_highly_likely_same_individual"
+            else (3 if edge.confidence >= 0.8 else (2 if edge.confidence >= 0.5 else 1))
+        )
+    style = props.get("maltego.link.style") or (
+        "1"
+        if props.get("humint.epistemic_status") == "hypothesis" or edge.label == "humint_highly_likely_same_individual"
+        else "0"
+    )
+    return color, thickness, style
+
+
 def write_mtgx(
     entities: list[EntityRecord],
     edges: list[EdgeRecord],
@@ -211,9 +304,11 @@ def write_mtgx(
     ):
         SubElement(root, "key", attrs)
     graph = SubElement(root, "graph", id="G", edgedefault="directed")
+    adj = _adjacency(entities, edges)
     positions = compute_layout(entities, edges, layout)
     ids = {e.id for e in entities}
     for e in entities:
+        weight, vcolor, vsize, vbookmark = entity_visual_profile(e, len(adj.get(e.id, ())))
         node = SubElement(graph, "node", id=e.id)
         data = SubElement(node, "data", key="d4")
         ment = SubElement(data, _q(MTG_NS, "MaltegoEntity"), type=e.maltego_type)
@@ -226,22 +321,52 @@ def write_mtgx(
         for k, v in e.properties.items():
             if k not in (main, display):
                 _prop(props, k, k, v)
+        _prop(props, "maltego.calculated.weight", "Weight", str(weight), "int")
         _prop(props, "mcp.confidence", "Confianza (MCP)", str(e.confidence))
         _prop(props, "mcp.sources", "Fuentes (MCP)", "; ".join(e.sources))
+        _prop(props, "mcp.visual.weight", "Peso visual (MCP)", str(weight), "int")
+        _prop(props, "mcp.visual.color", "Color visual (MCP)", vcolor)
+        _prop(props, "mcp.visual.size", "Tamaño visual (MCP)", vsize)
+        _prop(props, "mcp.visual.bookmark", "Marcador visual (MCP)", vbookmark)
+        if e.notes:
+            SubElement(ment, _q(MTG_NS, "Notes")).text = e.notes
         g = SubElement(node, "data", key="d5")
         renderer = SubElement(g, _q(MTG_NS, "EntityRenderer"))
         x, y = positions.get(e.id, (0.0, 0.0))
         SubElement(renderer, _q(MTG_NS, "Position"), x=f"{x:.1f}", y=f"{y:.1f}")
+        SubElement(
+            renderer,
+            _q(MTG_NS, "Style"),
+            color=vcolor,
+            size=vsize,
+            weight=str(weight),
+            bookmark=vbookmark,
+        )
     for ed in edges:
         if ed.out_id not in ids or ed.in_id not in ids:
             continue
+        lcolor, lthick, lstyle = edge_visual_profile(ed)
         edge = SubElement(graph, "edge", id=ed.id, source=ed.out_id, target=ed.in_id)
         data = SubElement(edge, "data", key="d6")
         link = SubElement(data, _q(MTG_NS, "MaltegoLink"), type="maltego.link.manual-link")
         props = SubElement(link, _q(MTG_NS, "Properties"))
         _prop(props, "maltego.link.show-label", "Show Label", "1", "int")
         _prop(props, LINK_LABEL_PROP, "Label", ed.label)
-        SubElement(SubElement(edge, "data", key="d7"), _q(MTG_NS, "LinkRenderer"))
+        _prop(props, "maltego.link.color", "Color", lcolor)
+        _prop(props, "maltego.link.thickness", "Thickness", str(lthick), "int")
+        _prop(props, "maltego.link.style", "Style", lstyle, "int")
+        _prop(props, "mcp.confidence", "Confianza (MCP)", str(ed.confidence))
+        for k, v in ed.properties.items():
+            if k not in (
+                "maltego.link.show-label",
+                LINK_LABEL_PROP,
+                "maltego.link.color",
+                "maltego.link.thickness",
+                "maltego.link.style",
+            ):
+                _prop(props, k, k, v)
+        lrend = SubElement(SubElement(edge, "data", key="d7"), _q(MTG_NS, "LinkRenderer"))
+        SubElement(lrend, _q(MTG_NS, "Style"), color=lcolor, thickness=str(lthick), style=lstyle)
     SubElement(root, "data", key="d0")
     xml = tostring(root, encoding="utf-8", xml_declaration=True)
     buf = io.BytesIO()
@@ -262,12 +387,13 @@ class ImportedEntity:
     confidence: float = 0.5
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class ImportedLink:
     source: str
     target: str
     label: str
     confidence: float = 0.5
+    properties: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -339,7 +465,7 @@ def parse_graphml(xml: bytes) -> ImportedGraph:
             confidence = float(props.get("mcp.confidence", 0.5))
         except ValueError:
             confidence = 0.5
-        props = {k: v for k, v in props.items() if not k.startswith("mcp.")}
+        props = {k: v for k, v in props.items() if not k.startswith("mcp.") and k != "maltego.calculated.weight"}
         if not value:
             out.skipped += 1
             continue
@@ -352,11 +478,32 @@ def parse_graphml(xml: bytes) -> ImportedGraph:
         if len(out.links) >= MAX_LINKS:
             raise InvalidInput(f"El grafo supera {MAX_LINKS} enlaces.")
         label = ""
+        edge_props: dict[str, str] = {}
         for p in edge.iter(_q(MTG_NS, "Property")):
-            if p.get("name") in LINK_LABEL_FALLBACKS:
-                val = p.find(_q(MTG_NS, "Value"))
-                if val is not None and val.text and val.text.strip():
-                    label = val.text.strip()
-                    break
-        out.links.append(ImportedLink(src, dst, label))
+            pname = (p.get("name") or "").strip()
+            val = p.find(_q(MTG_NS, "Value"))
+            if val is not None and val.text and val.text.strip():
+                text_val = val.text.strip()
+                if pname in LINK_LABEL_FALLBACKS and not label:
+                    label = text_val
+                elif pname:
+                    edge_props[pname] = text_val
+        try:
+            e_conf = float(edge_props.pop("mcp.confidence", 0.5))
+        except ValueError:
+            e_conf = 0.5
+        edge_props = {
+            k: v
+            for k, v in edge_props.items()
+            if not k.startswith("mcp.")
+            and k
+            not in (
+                "maltego.link.show-label",
+                "maltego.link.color",
+                "maltego.link.thickness",
+                "maltego.link.style",
+                *LINK_LABEL_FALLBACKS,
+            )
+        }
+        out.links.append(ImportedLink(src, dst, label, e_conf, edge_props))
     return out

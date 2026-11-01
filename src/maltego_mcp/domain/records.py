@@ -70,6 +70,7 @@ class EdgeRecord:
     sources: list[str] = field(default_factory=list)
     first_seen: str = ""
     last_seen: str = ""
+    properties: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +83,7 @@ class EdgeRecord:
             "sources": list(self.sources),
             "first_seen": self.first_seen,
             "last_seen": self.last_seen,
+            "properties": dict(self.properties),
         }
 
 
@@ -129,6 +131,8 @@ class CaseRecord:
     description: str = ""
     created: str = ""
     updated: str = ""
+    version: int = 1
+    parent_case_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -136,6 +140,8 @@ class CaseRecord:
             "description": self.description,
             "created": self.created,
             "updated": self.updated,
+            "version": self.version,
+            "parent_case_id": self.parent_case_id,
         }
 
 
@@ -162,9 +168,11 @@ def merge_entity(existing: EntityRecord | None, incoming: EntityRecord) -> Entit
 def merge_edge(existing: EdgeRecord | None, incoming: EdgeRecord) -> EdgeRecord:
     if existing is None:
         return incoming
+    props = {**existing.properties, **incoming.properties}
     return replace(
         existing,
         confidence=max(existing.confidence, incoming.confidence),
         sources=_merge_sources(existing.sources, incoming.sources),
         last_seen=incoming.last_seen or existing.last_seen,
+        properties=clean_properties(props),
     )
