@@ -7,6 +7,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/assets/banner.jpg" alt="MCP-MALTEGO — Model Context Protocol Intelligence Graph Integration" width="100%">
+</p>
+
+<p align="center">
   <a href="https://www.npmjs.com/package/mcp-maltego"><img alt="npm" src="https://img.shields.io/npm/v/mcp-maltego?logo=npm"></a>
   <a href="https://github.com/Data-Unix/MCP-MALTEGO/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Data-Unix/MCP-MALTEGO/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
