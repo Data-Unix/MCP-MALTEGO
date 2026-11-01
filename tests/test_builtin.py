@@ -174,6 +174,14 @@ class Router:
                     },
                 },
             )
+        if host == "api.pwnedpasswords.com":
+            if path.endswith("/5BAA6"):
+                return httpx.Response(200, text="1E4C9B93F3F0682250B6CF8331B7EE68FD8:3861493\nABCDEF:1\n")
+            return httpx.Response(200, text="00000000000000000000000000000000000:1\n")
+        if host == "api.xposedornot.com":
+            if "nobody@" in path:
+                return httpx.Response(404)
+            return httpx.Response(200, json={"breaches": [["Adobe", "Dropbox"]]})
         profiles = {
             "api.github.com": (
                 path == "/users/jdoe",
@@ -579,3 +587,30 @@ async def test_txt_con_varias_cadenas(ctx: BuiltinContext) -> None:
     assert await run(ctx, "DomainToTXT", "split.example") == [
         ("maltego.Phrase", "[TXT] v=DKIM1; k=rsa; p=AAABBB", "txt_record")
     ]
+
+
+async def test_breach_semantic_pivot_email_y_hash(ctx: BuiltinContext) -> None:
+    email_res = await run(ctx, "BreachSemanticPivot", "ana@example.com")
+    assert ("maltego.Phrase", "[Breach] Adobe", "exposed_in") in email_res
+    assert ("maltego.Phrase", "[Breach] Dropbox", "exposed_in") in email_res
+    hash_res = await run(ctx, "BreachSemanticPivot", "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8")
+    assert any(val.startswith("[PwnedPassword] Hash SHA-1 expuesto") for _, val, _ in hash_res)
+
+
+async def test_analyze_subject_behavior_transform(ctx: BuiltinContext) -> None:
+    props = {
+        "bio": "Researcher & developer working on security architecture at @AcmeSec in Madrid UTC+1",
+        "company": "@AcmeSec",
+        "location": "Madrid, Spain",
+    }
+    res = await T("AnalyzeSubjectBehavior").handler(ctx, "maltego.Alias", "ana", props, 10)
+    types_rels = [(e.entity_type, e.link_label) for e in res.entities]
+    assert ("humint.PsychologicalTrait", "exhibits_trait") in types_rels
+    assert ("humint.Organization", "affiliated_with") in types_rels
+    assert ("humint.LocationHistory", "frequented_location") in types_rels
+    assert all(
+        e.properties.get("humint.epistemic_status") == "hypothesis"
+        for e in res.entities
+        if e.entity_type == "humint.PsychologicalTrait"
+    )
+

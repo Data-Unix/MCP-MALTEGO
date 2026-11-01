@@ -71,11 +71,11 @@ Q_ADD_EDGE = (
     "g.V(out_id).has('pk', pk).addE(elabel).to(g.V(in_id).has('pk', pk)).property('id', eid)"
     ".property('case_id', pk).property('out_id', out_id).property('in_id', in_id)"
     ".property('confidence', confidence).property('sources_json', sources_json)"
-    ".property('first_seen', first_seen).property('last_seen', last_seen)"
+    ".property('props_json', props_json).property('first_seen', first_seen).property('last_seen', last_seen)"
 )
 Q_UPDATE_EDGE = (
     "g.V(out_id).has('pk', pk).outE(elabel).hasId(eid).property('confidence', confidence)"
-    ".property('sources_json', sources_json).property('last_seen', last_seen)"
+    ".property('sources_json', sources_json).property('props_json', props_json).property('last_seen', last_seen)"
 )
 Q_NEIGHBORS = {
     (
@@ -217,6 +217,7 @@ def edge_from_vm(vm: dict[Any, Any]) -> EdgeRecord:
         sources=_json_list(d.get("sources_json")),
         first_seen=str(d.get("first_seen", "")),
         last_seen=str(d.get("last_seen", "")),
+        properties=_json_dict(d.get("props_json")),
     )
 
 
@@ -227,6 +228,8 @@ def case_from_vm(vm: dict[Any, Any]) -> CaseRecord:
         description=str(d.get("description", "")),
         created=str(d.get("created", "")),
         updated=str(d.get("updated", "")),
+        version=int(d.get("version", 1)),
+        parent_case_id=str(d.get("parent_case_id", "")),
     )
 
 
@@ -240,13 +243,15 @@ class GremlinGraphStore:
         rows = await self._run(Q_GET_VERTEX, {"vid": case_vertex_id(case_id), "pk": case_id})
         return case_from_vm(rows[0]) if rows else None
 
-    async def ensure_case(self, case_id: str, description: str = "") -> tuple[CaseRecord, bool]:
+    async def ensure_case(
+        self, case_id: str, description: str = "", parent_case_id: str = ""
+    ) -> tuple[CaseRecord, bool]:
         existing = await self.get_case(case_id)
         now = utc_now()
         b = {"vid": case_vertex_id(case_id), "pk": case_id, "description": description, "now": now}
         if existing is None:
             await self._run(Q_ADD_CASE, b)
-            return CaseRecord(case_id, description, now, now), True
+            return CaseRecord(case_id, description, now, now, 1, parent_case_id), True
         if description and description != existing.description:
             await self._run(Q_UPDATE_CASE, b)
             existing.description, existing.updated = description, now
@@ -344,6 +349,7 @@ class GremlinGraphStore:
             "in_id": merged.in_id,
             "confidence": merged.confidence,
             "sources_json": json.dumps(merged.sources, ensure_ascii=False),
+            "props_json": json.dumps(merged.properties, ensure_ascii=False),
             "first_seen": merged.first_seen,
             "last_seen": merged.last_seen,
         }
@@ -357,7 +363,10 @@ class GremlinGraphStore:
         else:
             await self._run(
                 Q_UPDATE_EDGE,
-                {k: b[k] for k in ("out_id", "pk", "elabel", "eid", "confidence", "sources_json", "last_seen")},
+                {
+                    k: b[k]
+                    for k in ("out_id", "pk", "elabel", "eid", "confidence", "sources_json", "props_json", "last_seen")
+                },
             )
         await self._touch_case(edge.case_id)
         return merged, existing is None

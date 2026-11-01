@@ -37,8 +37,13 @@ exports everything to Maltego Desktop. One graph is shared by every agent you us
   Pwned, GreyNoise and Tatum.
 - **Your Maltego transforms too.** Speaks the Maltego TRX/iTDS XML protocol, so an agent can run the same transforms
   you use in Maltego.
-- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon,
-  ThreatSweep, ASNToNetblocks and your own in TOML, with recursive rounds and cost budgets.
+- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, PersonaFootprint,
+  URLRecon, ThreatSweep, ASNToNetblocks and your own in TOML, with recursive rounds and cost budgets.
+- **HUMINT, Breach Router & Multi-Agent Swarms.** Native `humint.*` entity ontology (`humint.Alias`,
+  `humint.Organization`, `humint.LocationHistory`, `humint.PsychologicalTrait`), cross-platform pseudonym correlation,
+  subject behavioral profiling (`[Hipótesis]`), chronological anomaly detection, weighted relationships, a local SQLite
+  + k-Anonymity/XposedOrNot breach router (`BreachSemanticPivot`), and multi-agent case `fork`/`delegate`/`merge` with
+  optimistic locking.
 - **An investigation copilot.** `osint_investigate` does detection, case creation, the right Machine, scoring and
   recommendations in one call. Every step is remembered (what, on what, why, result), every entity has explainable
   provenance and a priority score, and next-best-action learns from how each transform performed.
@@ -177,16 +182,16 @@ The server binds to localhost only. It has no authentication yet, so do not expo
 
 | Group | Tool | What it does |
 |---|---|---|
-| Catalog | `osint_list_entity_types` | Entity ontology by category (standard + imported from your Maltego) |
+| Catalog | `osint_list_entity_types` | Entity ontology by category (standard + native `humint.*` + imported from your Maltego) |
 | | `osint_list_transforms` | Transforms, Machines, provider keys and server status |
-| Cases | `osint_manage_case` | Create, merge or delete (with confirmation) a case |
+| Cases | `osint_manage_case` | Create, fork/delegate sub-cases for multi-agent swarms, merge (with optimistic locking) or delete |
 | | `osint_list_cases` | Paginated list |
 | | `osint_get_case_summary` | Counts, priority entities and quality indicators |
 | Entities | `osint_upsert_entity` | Create or merge an entity (normalised value, deterministic id, notes) |
-| | `osint_manage_entity` | Edit confidence, notes or properties; delete |
+| | `osint_manage_entity` | Edit confidence/notes/properties, set `.mtgx` `visual_style`, run HUMINT `analyze_behavior`, or delete |
 | | `osint_get_entity` | Details, explained score, provenance, pending transforms |
 | | `osint_search_entities` | Search a case or across cases; sort by priority |
-| Links | `osint_link_entities` | Link or unlink two entities |
+| Links | `osint_link_entities` | Link/unlink entities, `analyze` HUMINT role/sentiment/weight, or `correlate` cross-platform identities |
 | | `osint_get_neighbors` | Related entities with direction and link type |
 | | `osint_find_paths` | Paths between two entities |
 | Transforms | `osint_run_transform` | One transform on one entity |
@@ -194,7 +199,7 @@ The server binds to localhost only. It has no authentication yet, so do not expo
 | | `osint_run_machine` | A Machine or an ad-hoc chain, with rounds and budgets |
 | Copilot | `osint_investigate` | Everything in one call: detect, case, Machine, score, recommend, report |
 | | `osint_suggest_next_steps` | Deterministic next-best-action with transform performance history |
-| | `osint_get_timeline` | Investigation memory; poll for new findings with `since_seq` |
+| | `osint_get_timeline` | Investigation procedural memory (`steps`) or subject chronological timeline & anomalies (`subject`) |
 | Exchange | `osint_export_case` | `mtgx` (with layout and memory), `json`, `graphml`, `csv`, `report_md`, `report_html` |
 | | `osint_import_graph` | Import a `.mtgx` saved in Maltego (with its memory) or a CSV |
 
@@ -208,8 +213,8 @@ The server binds to localhost only. It has no authentication yet, so do not expo
 | WHOIS (RDAP with ARIN fallback) | DomainToWhois, IPToWhois | — |
 | Network & Exposure | IPToAS, IPToNetblock (Team Cymru), RIPEStatASNToNetblocks, InternetDBIPToServices (ports, CPEs, CVEs) | — |
 | Certificates & Web | DomainToSubdomains (crt.sh + CertSpotter fallback), CertSpotterSubdomains, URLScanDomainSearch | — |
-| Identity & Social | AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), GitHubAliasToDetails, GravatarEmailToProfile, EmailToAlias | — |
-| Threat Intel (keyless) | OTXHashToThreatPulses (AlienVault OTX pulses, malware families, ATT&CK IDs) | — |
+| Identity, Social & HUMINT | AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), GitHubAliasToDetails, GravatarEmailToProfile, EmailToAlias, AnalyzeSubjectBehavior | — |
+| Breach & Threat Intel (keyless) | BreachSemanticPivot (local SQLite + HIBP Pwned Passwords k-Anonymity + XposedOrNot), OTXHashToThreatPulses | — |
 | Parsing | EmailToDomain, URLToDomain, WebsiteToDomain, DomainToWebsite | — |
 | VirusTotal | VTDomainToIP, VTIPToDomain, VTDomainToSubdomains, VTHashToDetection | `VIRUSTOTAL_API_KEY` |
 | Shodan | ShodanIPToServices, ShodanDomainToSubdomains | `SHODAN_API_KEY` |

@@ -54,8 +54,26 @@ from maltego_mcp.domain.records import (
 )
 from maltego_mcp.errors import InvalidInput, MaltegoMcpError, NotFound, TransformError
 from maltego_mcp.graph.base import CaseSummary, Direction, GraphStore, Neighbor, Page
+from maltego_mcp.humint import (
+    IDENTITY_TYPES,
+    BehaviorAnalysis,
+    IdentityOverlap,
+    SubjectTimeline,
+    analyze_subject_behavior,
+    build_subject_timeline,
+    calculate_identity_overlap,
+    infer_relationship_attributes,
+)
 from maltego_mcp.machines import Machine, custom_machine
-from maltego_mcp.maltego.mtgx import ImportedEntity, ImportedGraph, ImportedLink, Layout, read_mtgx, write_mtgx
+from maltego_mcp.maltego.mtgx import (
+    ImportedEntity,
+    ImportedGraph,
+    ImportedLink,
+    Layout,
+    entity_visual_profile,
+    read_mtgx,
+    write_mtgx,
+)
 from maltego_mcp.report import ReportData, to_html, to_markdown
 from maltego_mcp.transforms.builtin import PROVIDER_KEYS, BuiltinContext, new_http_client
 from maltego_mcp.transforms.catalog import TransformCatalog, TransformServer, TransformSpec
@@ -274,13 +292,30 @@ class OsintService:
 
     # ---------- relaciones ----------
     async def link(
-        self, case_id: str, source_id: str, target_id: str, label: str, source: str, confidence: float
+        self,
+        case_id: str,
+        source_id: str,
+        target_id: str,
+        label: str,
+        source: str,
+        confidence: float,
+        properties: list[str] | None = None,
+        role: str = "",
+        sentiment: str = "",
+        weight: int = 1,
     ) -> tuple[EdgeRecord, bool]:
         cid = validate_case_id(case_id)
         out_id, in_id = validate_entity_id(source_id), validate_entity_id(target_id)
         if out_id == in_id:
             raise InvalidInput("source_id y target_id son la misma entidad; no se crean bucles.")
         lbl = normalize_edge_label(label)
+        props = parse_properties(properties or [])
+        if role.strip():
+            props["humint.role"] = role.strip()
+        if sentiment.strip():
+            props["humint.sentiment"] = sentiment.strip()
+        if weight > 1:
+            props["humint.weight"] = str(weight)
         now = utc_now()
         edge = EdgeRecord(
             id=edge_id(cid, out_id, lbl, in_id),
@@ -292,8 +327,95 @@ class OsintService:
             sources=[source.strip()[:120] or "manual"],
             first_seen=now,
             last_seen=now,
+            properties=clean_properties(props),
         )
         return await self.store.upsert_edge(edge)
+
+    async def analyze_relationship(
+        self,
+        case_id: str,
+        source_id: str,
+        target_id: str,
+        label: str = "related_to",
+        source: str = "humint",
+        confidence: float = 0.7,
+        role: str = "",
+        sentiment: str = "",
+        weight: int = 1,
+        properties: list[str] | None = None,
+    ) -> tuple[EdgeRecord, bool]:
+        cid = validate_case_id(case_id)
+        src_ent = await self.get_entity(cid, source_id)
+        dst_ent = await self.get_entity(cid, target_id)
+        if src_ent.id == dst_ent.id:
+            raise InvalidInput("source_id y target_id son la misma entidad; no se crean bucles.")
+        _, edges = await self.store.export_case(cid, MAX_EXPORT_ITEMS)
+        inferred = infer_relationship_attributes(src_ent, dst_ent, edges, role.strip(), sentiment.strip(), weight)
+        extra = [f"{k}={v}" for k, v in inferred.items()] + list(properties or [])
+        lbl = normalize_edge_label(label or f"humint_{inferred['humint.role']}")
+        edge, created = await self.link(cid, src_ent.id, dst_ent.id, lbl, source, confidence, extra)
+        await self.record_step(cid, "manual", f"analyze_relationship:{lbl}", src_ent, outputs=[dst_ent.id])
+        return edge, created
+
+    async def correlate_identities(
+        self,
+        case_id: str,
+        source_id: str,
+        target_id: str = "",
+        threshold: float = 0.85,
+        auto_link: bool = True,
+    ) -> list[IdentityOverlap]:
+        cid = validate_case_id(case_id)
+        src_ent = await self.get_entity(cid, source_id)
+        entities, edges = await self.store.export_case(cid, MAX_EXPORT_ITEMS)
+        by_id = {e.id: e for e in entities}
+        if target_id.strip():
+            dst_ent = await self.get_entity(cid, target_id)
+            if dst_ent.id == src_ent.id:
+                raise InvalidInput("source_id y target_id son la misma entidad.")
+            candidates = [dst_ent]
+        else:
+            candidates = [
+                e
+                for e in entities
+                if e.id != src_ent.id and (e.maltego_type.lower() in IDENTITY_TYPES or e.label in ("alias", "person"))
+            ]
+            if not candidates:
+                candidates = [e for e in entities if e.id != src_ent.id]
+
+        results: list[IdentityOverlap] = []
+        for cand in candidates:
+            ov = calculate_identity_overlap(src_ent, cand, by_id, edges, threshold=threshold)
+            if ov.same_individual and auto_link:
+                props = [
+                    f"humint.overlap_score={ov.probability}",
+                    f"humint.handle_similarity={ov.handle_similarity}",
+                    f"humint.metadata_similarity={ov.metadata_similarity}",
+                    f"humint.stylometry_similarity={ov.stylometry_similarity}",
+                    f"humint.graph_jaccard={ov.graph_jaccard}",
+                    "humint.epistemic_status=hypothesis",
+                    "maltego.link.manual.type=humint.HighlyLikelySameIndividual",
+                ]
+                await self.link(
+                    cid,
+                    src_ent.id,
+                    cand.id,
+                    "humint_highly_likely_same_individual",
+                    "humint:correlate",
+                    ov.probability,
+                    props,
+                )
+                ov.edge_created = True
+            results.append(ov)
+        results.sort(key=lambda x: (-x.probability, x.target_value))
+        await self.record_step(
+            cid,
+            "manual",
+            "correlate_identities",
+            src_ent,
+            outputs=[r.target_id for r in results if r.same_individual],
+        )
+        return results
 
     async def neighbors(
         self, case_id: str, eid: str, edge_label: str, direction: Direction, limit: int
@@ -693,24 +815,105 @@ class OsintService:
             raise InvalidInput(f"Para borrar el caso escribe su id en confirm (confirm='{cid}'). No se puede deshacer.")
         return await self.store.delete_case(cid)
 
-    async def merge_cases(self, target_case: str, source_case: str) -> tuple[int, int]:
-        """Copia (fusiona) las entidades, relaciones y memoria de source_case en target_case."""
-        tgt, src = validate_case_id(target_case), validate_case_id(source_case)
-        if tgt == src:
-            raise InvalidInput("Los casos origen y destino son el mismo.")
-        entities, edges = await self.store.export_case(src, MAX_EXPORT_ITEMS)
+    async def merge_cases(
+        self, target_case: str, source_case: str, expected_version: int = 0
+    ) -> tuple[int, int]:
+        """Fusiona las entidades, relaciones y memoria de source_case (o 'all' para sub-casos) en target_case."""
+        tgt = validate_case_id(target_case)
         await self.store.ensure_case(tgt)
-        moved_e = [replace(e, case_id=tgt) for e in entities]
-        moved_l = [replace(e, case_id=tgt, id=edge_id(tgt, e.out_id, e.label, e.in_id)) for e in edges]
-        created, linked = await self.store.upsert_many(moved_e, moved_l)
-        await self.store.append_steps(
-            [
-                replace(step, case_id=tgt, reason=f"[fusionado de {src}] {step.reason}"[:500])
-                for step in await self.store.list_steps(src, 0, MAX_SIDECAR_STEPS)
+        tgt_case = await self.store.get_case(tgt)
+        if expected_version > 0 and tgt_case is not None and tgt_case.version != expected_version:
+            raise InvalidInput(
+                f"Conflicto de versión optimista en '{tgt}': la versión actual es {tgt_case.version} "
+                f"(esperada {expected_version}). Recarga el estado del caso antes de fusionar."
+            )
+        if source_case.strip().lower() in ("*", "all"):
+            all_cases = (await self.store.list_cases(500, 0)).items
+            sources = [
+                c.case_id
+                for c in all_cases
+                if c.case_id != tgt and (c.parent_case_id == tgt or c.case_id.startswith(f"{tgt}--"))
             ]
-        )
-        await self.record_step(tgt, "manual", f"merge:{src}", new_entities=created)
-        return created, linked
+            if not sources:
+                raise InvalidInput(f"No hay sub-casos derivados de '{tgt}' para fusionar.")
+        else:
+            src = validate_case_id(source_case)
+            if tgt == src:
+                raise InvalidInput("Los casos origen y destino son el mismo.")
+            sources = [src]
+
+        total_created = total_linked = 0
+        existing_steps = await self.store.list_steps(tgt, 0, MAX_SIDECAR_STEPS)
+        seen_step_keys = {(s.kind, s.action, s.input_id, s.reason) for s in existing_steps}
+        for src in sources:
+            entities, edges = await self.store.export_case(src, MAX_EXPORT_ITEMS)
+            moved_e = [replace(e, case_id=tgt) for e in entities]
+            moved_l = [replace(e, case_id=tgt, id=edge_id(tgt, e.out_id, e.label, e.in_id)) for e in edges]
+            created, linked = await self.store.upsert_many(moved_e, moved_l)
+            total_created += created
+            total_linked += linked
+            new_steps: list[StepRecord] = []
+            for step in await self.store.list_steps(src, 0, MAX_SIDECAR_STEPS):
+                tagged_reason = f"[fusionado de {src}] {step.reason}"[:500]
+                key = (step.kind, step.action, step.input_id, tagged_reason)
+                if key not in seen_step_keys:
+                    seen_step_keys.add(key)
+                    new_steps.append(replace(step, case_id=tgt, reason=tagged_reason))
+            if new_steps:
+                await self.store.append_steps(new_steps)
+            await self.record_step(tgt, "manual", f"merge:{src}", new_entities=created)
+        return total_created, total_linked
+
+    async def fork_case(
+        self, case_id: str, sub_roles: list[str] | None = None, description: str = ""
+    ) -> list[dict[str, object]]:
+        """Divide/delega un caso principal en sub-casos virtuales por rol para enjambres multi-agente."""
+        cid = validate_case_id(case_id)
+        parent, _ = await self.store.ensure_case(cid, description.strip()[:500])
+        entities, edges = await self.store.export_case(cid, MAX_EXPORT_ITEMS)
+        roles = [r.strip().lower() for r in (sub_roles or ["infra", "humint"]) if r.strip()]
+        if not roles:
+            roles = ["infra", "humint"]
+
+        infra_cats = {"infraestructura", "artefacto", "cripto"}
+        humint_cats = {"identidad", "social", "humint", "organizacion"}
+        delegated: list[dict[str, object]] = []
+
+        for raw_role in roles[:10]:
+            slug = re.sub(r"[^a-z0-9_-]+", "-", raw_role).strip("-")[:18] or "sub"
+            sub_id = validate_case_id(f"{cid[:42]}--{slug}")
+            role_desc = f"Sub-caso [{slug}] delegado de {cid}" + (f": {description[:200]}" if description else "")
+            sub_case, _ = await self.store.ensure_case(sub_id, role_desc, parent_case_id=cid)
+
+            if slug in ("infra", "net", "red", "network", "cti"):
+                filtered = [e for e in entities if resolve_entity_type(e.maltego_type).category in infra_cats]
+            elif slug in ("humint", "socmint", "id", "identity", "identidad", "persona", "social"):
+                filtered = [e for e in entities if resolve_entity_type(e.maltego_type).category in humint_cats]
+            else:
+                filtered = list(entities)
+            seeds = filtered or list(entities)
+            seed_ids = {e.id for e in seeds}
+            sub_ents = [replace(e, case_id=sub_id) for e in seeds]
+            sub_edges = [
+                replace(ed, case_id=sub_id, id=edge_id(sub_id, ed.out_id, ed.label, ed.in_id))
+                for ed in edges
+                if ed.out_id in seed_ids and ed.in_id in seed_ids
+            ]
+            created, linked = await self.store.upsert_many(sub_ents, sub_edges) if sub_ents else (0, 0)
+            await self.record_step(
+                cid, "manual", f"fork:{sub_id}", reason=f"delegación multi-agente ({slug})", new_entities=created
+            )
+            delegated.append(
+                {
+                    "sub_case_id": sub_case.case_id,
+                    "parent_case_id": cid,
+                    "parent_version": parent.version,
+                    "role": slug,
+                    "seeded_entities": len(sub_ents),
+                    "seeded_edges": linked,
+                }
+            )
+        return delegated
 
     async def update_entity(
         self,
@@ -735,6 +938,74 @@ class OsintService:
         stored = await self.store.replace_entity(updated)
         await self.record_step(stored.case_id, "manual", "update_entity", stored, reason)
         return stored
+
+    async def set_visual_style(
+        self,
+        case_id: str,
+        eid: str,
+        visual_weight: int = -1,
+        visual_color: str = "",
+        visual_size: str = "",
+        reason: str = "",
+    ) -> EntityRecord:
+        """Configura o calcula automáticamente las propiedades visuales de un nodo para .mtgx."""
+        entity = await self.get_entity(case_id, eid)
+        nbs = await self.neighbors(entity.case_id, entity.id, "", "both", 100)
+        auto_w, auto_c, auto_s, auto_b = entity_visual_profile(entity, len(nbs))
+        w = visual_weight if visual_weight >= 0 else auto_w
+        c = visual_color.strip() or auto_c
+        s = visual_size.strip() or auto_s
+        props = [
+            f"visual.weight={w}",
+            f"visual.color={c}",
+            f"visual.size={s}",
+            f"visual.bookmark={auto_b}",
+        ]
+        return await self.update_entity(case_id, eid, -1, "", props, [], reason or "set_visual_style")
+
+    async def analyze_entity_behavior(
+        self, case_id: str, eid: str, reason: str = ""
+    ) -> tuple[EntityRecord, BehaviorAnalysis, list[EntityRecord]]:
+        """Ejecuta el análisis conductual HUMINT enriquecido con el vecindario de la entidad en el caso."""
+        entity = await self.get_entity(case_id, eid)
+        nbs = await self.neighbors(entity.case_id, entity.id, "", "both", 50)
+        nb_tuples = [(n.entity.maltego_type, n.entity.value, n.entity.properties) for n in nbs]
+        analysis = analyze_subject_behavior(entity.value, entity.properties, entity.notes, nb_tuples)
+        merged_notes = (
+            f"{entity.notes}\n{analysis.summary_note}".strip()
+            if entity.notes and analysis.summary_note not in entity.notes
+            else (entity.notes or analysis.summary_note)
+        )
+        updated = await self.update_entity(
+            entity.case_id,
+            entity.id,
+            -1,
+            merged_notes,
+            [f"{k}={v}" for k, v in analysis.subject_properties.items()],
+            [],
+            reason or "humint_analyze_behavior",
+        )
+        emitted: list[EntityRecord] = []
+        for t in analysis.traits:
+            child, _ = await self.upsert_entity(
+                entity.case_id,
+                t.maltego_type,
+                t.value,
+                t.weight / 100,
+                "humint:AnalyzeSubjectBehavior",
+                [f"{k}={v}" for k, v in t.properties.items()],
+            )
+            await self.link(
+                entity.case_id,
+                entity.id,
+                child.id,
+                t.edge_label.strip(),
+                "humint:AnalyzeSubjectBehavior",
+                t.weight / 100,
+                ["humint.epistemic_status=hypothesis"],
+            )
+            emitted.append(child)
+        return updated, analysis, emitted
 
     async def delete_entity(self, case_id: str, eid: str, reason: str = "") -> int:
         entity = await self.get_entity(case_id, eid)
@@ -778,6 +1049,14 @@ class OsintService:
 
     async def timeline(self, case_id: str, since_seq: int, limit: int) -> list[StepRecord]:
         return await self.store.list_steps(validate_case_id(case_id), since_seq, limit)
+
+    async def subject_timeline(self, case_id: str, entity_id: str = "", limit: int = 100) -> SubjectTimeline:
+        cid = validate_case_id(case_id)
+        eid = validate_entity_id(entity_id) if entity_id.strip() else ""
+        if eid:
+            await self.get_entity(cid, eid)
+        entities, edges = await self.store.export_case(cid, MAX_EXPORT_ITEMS)
+        return build_subject_timeline(cid, entities, edges, subject_id=eid, limit=limit)
 
     async def report_data(self, case_id: str, include_actions: bool = True) -> ReportData:
         cid = validate_case_id(case_id)
@@ -929,7 +1208,18 @@ class OsintService:
             except InvalidInput:
                 lbl = "related_to"
             eid = edge_id(cid, out_id, lbl, in_id)
-            edges[eid] = EdgeRecord(eid, cid, lbl, out_id, in_id, clamp_confidence(link.confidence), [origin], now, now)
+            edges[eid] = EdgeRecord(
+                eid,
+                cid,
+                lbl,
+                out_id,
+                in_id,
+                clamp_confidence(link.confidence),
+                [origin],
+                now,
+                now,
+                clean_properties(link.properties),
+            )
         result.new_entities, result.links = await self.store.upsert_many(list(records.values()), list(edges.values()))
         result.entities = len(records)
         # La memoria del .mtgx solo se añade la primera vez que se importa ese mismo fichero en el caso.

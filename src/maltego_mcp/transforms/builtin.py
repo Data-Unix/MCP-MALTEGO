@@ -24,7 +24,9 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from maltego_mcp import __version__
+from maltego_mcp.breaches import classify_breach_indicator, query_local_breaches
 from maltego_mcp.errors import TransformError
+from maltego_mcp.humint import analyze_subject_behavior
 from maltego_mcp.transforms.protocol import ResultEntity, TransformResponse
 
 USER_AGENT = f"maltego-mcp/{__version__} (+https://github.com/Data-Unix/MCP-MALTEGO)"
@@ -538,7 +540,22 @@ async def _github_alias(
     items: list[ResultEntity] = []
     name = str(data.get("name") or "").strip()
     if name:
-        items.append(_ent("maltego.Person", name, "real_name", github__login=alias))
+        items.append(
+            _ent(
+                "maltego.Person",
+                name,
+                "real_name",
+                github__login=alias,
+                github__name=name,
+                github__bio=str(data.get("bio") or ""),
+                github__location=str(data.get("location") or ""),
+                github__company=str(data.get("company") or "").lstrip("@"),
+                github__created_at=str(data.get("created_at") or ""),
+                github__updated_at=str(data.get("updated_at") or ""),
+                github__public_repos=str(data.get("public_repos") or ""),
+                github__followers=str(data.get("followers") or ""),
+            )
+        )
     company = str(data.get("company") or "").strip().lstrip("@")
     if company:
         items.append(_ent("maltego.Organization", company, "works_at"))
@@ -584,6 +601,135 @@ async def _otx_hash(ctx: BuiltinContext, etype: str, value: str, props: dict[str
             if aid:
                 items.append(_ent("maltego.Phrase", f"[ATT&CK {aid}]", "uses_technique"))
     return _limit(items, n)
+
+
+async def _breach_semantic_pivot(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Enrutador semántico de filtraciones: índice local SQLite + k-Anonymity HIBP (hashes) + XposedOrNot (emails)."""
+    from pathlib import Path
+
+    kind, norm_val = classify_breach_indicator(etype, value)
+    home_raw = (ctx.env.get("MALTEGO_MCP_HOME") or os.environ.get("MALTEGO_MCP_HOME") or "").strip()
+    home_dir = Path(home_raw) if home_raw else (Path.home() / ".maltego-mcp")
+    items: list[ResultEntity] = []
+
+    # 1. Consulta en base de datos local embebida (~/.maltego-mcp/breaches.sqlite)
+    for hit in query_local_breaches(home_dir, kind, norm_val, limit=n):
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[Breach] {hit.breach_name}",
+                "exposed_in",
+                weight=85,
+                breach__name=hit.breach_name,
+                breach__date=hit.breach_date,
+                breach__source=hit.source,
+            )
+        )
+        if kind != "email" and hit.email:
+            items.append(
+                _ent(
+                    "maltego.EmailAddress",
+                    hit.email,
+                    "leaked_email",
+                    weight=80,
+                    breach__name=hit.breach_name,
+                    breach__date=hit.breach_date,
+                )
+            )
+        if kind != "alias" and hit.alias:
+            items.append(
+                _ent("maltego.Alias", hit.alias, "leaked_alias", weight=75, breach__name=hit.breach_name)
+            )
+        if kind != "phone" and hit.phone:
+            items.append(
+                _ent("maltego.PhoneNumber", hit.phone, "leaked_phone", weight=75, breach__name=hit.breach_name)
+            )
+        if kind != "hash" and hit.password_hash:
+            items.append(
+                _ent("maltego.Hash", hit.password_hash, "leaked_hash", weight=80, breach__name=hit.breach_name)
+            )
+
+    # 2. Enrutamiento gratuito sin API key según tipo semántico
+    if kind == "hash" and len(norm_val) == 40 and all(c in "0123456789abcdef" for c in norm_val):
+        prefix, suffix = norm_val[:5].upper(), norm_val[5:].upper()
+        try:
+            resp = await ctx.http.get(f"https://api.pwnedpasswords.com/range/{prefix}")
+            if resp.status_code == 200:
+                for line in resp.text.splitlines():
+                    h_suf, _, count_str = line.strip().partition(":")
+                    if h_suf.upper() == suffix and count_str.isdigit() and int(count_str) > 0:
+                        items.append(
+                            _ent(
+                                "maltego.Phrase",
+                                f"[PwnedPassword] Hash SHA-1 expuesto ({count_str} veces)",
+                                "exposed_in",
+                                weight=90,
+                                breach__count=count_str,
+                                breach__source="hibp_pwnedpasswords_kanon",
+                            )
+                        )
+                        break
+        except httpx.HTTPError:
+            pass
+    elif kind == "email":
+        try:
+            xon = await _get_json(
+                ctx, f"https://api.xposedornot.com/v1/check-email/{quote(norm_val)}", not_found_ok=True
+            )
+        except TransformError:
+            xon = None
+        if isinstance(xon, dict):
+            raw_b = xon.get("breaches") or []
+            flat_b: list[str] = []
+            for entry in raw_b:
+                if isinstance(entry, list):
+                    flat_b.extend(str(x).strip() for x in entry if str(x).strip())
+                elif isinstance(entry, str) and entry.strip():
+                    flat_b.append(entry.strip())
+            for bname in flat_b[:n]:
+                items.append(
+                    _ent(
+                        "maltego.Phrase",
+                        f"[Breach] {bname}",
+                        "exposed_in",
+                        weight=80,
+                        breach__name=bname,
+                        breach__source="xposedornot",
+                    )
+                )
+        if ctx.env.get("HIBP_API_KEY", "").strip():
+            try:
+                hibp_res = await _hibp(ctx, etype, norm_val, props, n)
+                items.extend(hibp_res.entities)
+            except TransformError:
+                pass
+
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"Sin filtraciones detectadas para {kind} '{norm_val}'."))
+    return out
+
+
+async def _analyze_subject_behavior_tx(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Extrae rasgos conductuales, afiliaciones e historial de ubicación HUMINT a partir del sujeto y sus atributos."""
+    analysis = analyze_subject_behavior(value, props, props.get("notes", ""))
+    items = [
+        ResultEntity(
+            t.maltego_type,
+            t.value,
+            t.weight,
+            t.properties,
+            {"maltego.link.label": t.edge_label.strip()},
+        )
+        for t in analysis.traits
+    ]
+    out = _limit(items, n)
+    out.messages.append(("Inform", analysis.summary_note))
+    return out
 
 
 # ------------------------------------------------------------------------------------------ análisis local
@@ -1118,7 +1264,7 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
     ),
     _b(
         "AliasToProfiles",
-        ("maltego.Alias",),
+        ("maltego.Alias", "humint.Alias"),
         ("maltego.Affiliation",),
         "Comprueba si el alias existe en GitHub, GitLab, Hacker News, Keybase y DEV.",
         "social",
@@ -1134,11 +1280,34 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
     ),
     _b(
         "GitHubAliasToDetails",
-        ("maltego.Alias",),
+        ("maltego.Alias", "humint.Alias"),
         ("maltego.Person", "maltego.Organization", "maltego.EmailAddress", "maltego.URL", "maltego.Location"),
         "Detalle del perfil público en GitHub (nombre, organización, blog, ubicación y correo público).",
         "social",
         _github_alias,
+    ),
+    _b(
+        "BreachSemanticPivot",
+        (
+            "maltego.EmailAddress",
+            "maltego.Alias",
+            "humint.Alias",
+            "maltego.PhoneNumber",
+            "maltego.Domain",
+            "maltego.Hash",
+        ),
+        ("maltego.Phrase", "maltego.EmailAddress", "maltego.Alias", "maltego.Hash"),
+        "Enrutador semántico de filtraciones: índice SQLite local + HIBP Pwned Passwords (k-Anonymity) + XposedOrNot.",
+        "filtraciones",
+        _breach_semantic_pivot,
+    ),
+    _b(
+        "AnalyzeSubjectBehavior",
+        ("maltego.Person", "maltego.Alias", "humint.Alias", "maltego.EmailAddress", "maltego.Affiliation"),
+        ("humint.PsychologicalTrait", "humint.LocationHistory", "humint.Organization"),
+        "Análisis conductual y estilométrico HUMINT: infiere rasgos [Hipótesis], ventana horaria y filiaciones.",
+        "humint",
+        _analyze_subject_behavior_tx,
     ),
     _b(
         "OTXHashToThreatPulses",

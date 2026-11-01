@@ -160,21 +160,42 @@ class MemoryGraphStore:
             raise BackendError(f"No se pudo guardar el grafo: {exc.__class__.__name__}.") from exc
 
     # ---------- casos ----------
-    async def ensure_case(self, case_id: str, description: str = "") -> tuple[CaseRecord, bool]:
+    async def ensure_case(
+        self, case_id: str, description: str = "", parent_case_id: str = ""
+    ) -> tuple[CaseRecord, bool]:
         self._read()
         existing = self._cases.get(case_id)
-        if existing and (not description or description == existing.description):
+        if (
+            existing
+            and (not description or description == existing.description)
+            and (not parent_case_id or parent_case_id == existing.parent_case_id)
+        ):
             return existing, False  # sin cambios: no se escribe
 
         def mutate() -> tuple[CaseRecord, bool]:
             now = utc_now()
             current = self._cases.get(case_id)
             if current:
-                if description and description != current.description:
-                    current = replace(current, description=description, updated=now)
+                new_desc = description if description else current.description
+                new_parent = parent_case_id if parent_case_id else current.parent_case_id
+                if new_desc != current.description or new_parent != current.parent_case_id:
+                    current = replace(
+                        current,
+                        description=new_desc,
+                        parent_case_id=new_parent,
+                        updated=now,
+                        version=current.version + 1,
+                    )
                     self._cases[case_id] = current
                 return current, False
-            case = CaseRecord(case_id=case_id, description=description, created=now, updated=now)
+            case = CaseRecord(
+                case_id=case_id,
+                description=description,
+                created=now,
+                updated=now,
+                version=1,
+                parent_case_id=parent_case_id,
+            )
             self._cases[case_id] = case
             self._entities.setdefault(case_id, {})
             self._edges.setdefault(case_id, {})
@@ -345,7 +366,7 @@ class MemoryGraphStore:
 
     def _touch_case(self, case_id: str) -> None:
         case = self._cases[case_id]
-        self._cases[case_id] = replace(case, updated=utc_now())
+        self._cases[case_id] = replace(case, updated=utc_now(), version=case.version + 1)
 
     async def replace_entity(self, entity: EntityRecord) -> EntityRecord:
         def mutate() -> EntityRecord:

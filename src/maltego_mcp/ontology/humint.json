@@ -1,0 +1,48 @@
+{
+  "format": "maltego-mcp-entities/1",
+  "namespace": "humint",
+  "description": "Ontología nativa HUMINT/SOCMINT de MCP Maltego para análisis conductual, filiaciones, historial de ubicaciones y pseudónimos.",
+  "entity_types": [
+    {
+      "maltego_type": "humint.Alias",
+      "graph_label": "humint_alias",
+      "main_property": "humint.alias",
+      "normalizer": "text",
+      "example": "@phantom_ops",
+      "description": "Perfiles, pseudónimos y manejadores virtuales con huella estilométrica y temporal",
+      "category": "humint",
+      "origin": "humint"
+    },
+    {
+      "maltego_type": "humint.Organization",
+      "graph_label": "humint_org",
+      "main_property": "humint.organization",
+      "normalizer": "text",
+      "example": "Colectivo Atlas",
+      "description": "Filiaciones políticas, colectivos, células operativas o empresas pantalla",
+      "category": "humint",
+      "origin": "humint"
+    },
+    {
+      "maltego_type": "humint.LocationHistory",
+      "graph_label": "humint_location",
+      "main_property": "humint.location",
+      "normalizer": "text",
+      "example": "Madrid, ES (UTC+1 · actividad frecuente)",
+      "description": "Coordenadas frecuentes, zonas horarias inferidas y check-ins históricos",
+      "category": "humint",
+      "origin": "humint"
+    },
+    {
+      "maltego_type": "humint.PsychologicalTrait",
+      "graph_label": "humint_trait",
+      "main_property": "humint.trait",
+      "normalizer": "text",
+      "example": "[Hipótesis] Alta apertura técnica / OPSEC estricto",
+      "description": "Rasgos conductuales, intereses o estilo comunicativo inferidos [Hipótesis analítica]",
+      "category": "humint",
+      "origin": "humint"
+    }
+  ]
+}
+

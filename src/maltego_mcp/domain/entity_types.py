@@ -21,7 +21,10 @@ from maltego_mcp.errors import InvalidInput
 logger = logging.getLogger(__name__)
 
 Normalizer = Literal["domain", "ipv4", "ipv6", "netblock", "asn", "url", "email", "phone", "hash", "port", "text"]
-Category = Literal["infraestructura", "identidad", "organizacion", "artefacto", "cripto", "social", "general"]
+Category = Literal[
+    "infraestructura", "identidad", "organizacion", "artefacto", "cripto", "social", "humint", "general"
+]
+HUMINT_ONTOLOGY_PATH = Path(__file__).resolve().parents[1] / "ontology" / "humint.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +42,37 @@ class EntityType:
         return asdict(self)
 
 
-def _t(mtype: str, label: str, prop: str, norm: Normalizer, example: str, desc: str, cat: Category) -> EntityType:
-    return EntityType(mtype, label, prop, norm, example, desc, cat)
+def _t(
+    mtype: str,
+    label: str,
+    prop: str,
+    norm: Normalizer,
+    example: str,
+    desc: str,
+    cat: Category,
+    origin: str = "estándar",
+) -> EntityType:
+    return EntityType(mtype, label, prop, norm, example, desc, cat, origin)
+
+
+def _load_humint_ontology() -> tuple[EntityType, ...]:
+    try:
+        raw = json.loads(HUMINT_ONTOLOGY_PATH.read_text(encoding="utf-8"))
+        return tuple(
+            EntityType(
+                maltego_type=str(item["maltego_type"]),
+                graph_label=str(item["graph_label"]),
+                main_property=str(item["main_property"]),
+                normalizer="text",
+                example=str(item.get("example", "")),
+                description=str(item.get("description", "")),
+                category="humint",
+                origin=str(item.get("origin", "humint")),
+            )
+            for item in raw.get("entity_types", [])
+        )
+    except (OSError, ValueError, KeyError, TypeError):  # pragma: no cover
+        return ()
 
 
 ENTITY_TYPES: tuple[EntityType, ...] = (
@@ -116,6 +148,7 @@ ENTITY_TYPES: tuple[EntityType, ...] = (
         "general",
     ),
     _t("maltego.UniqueIdentifier", "unique_id", "identifier", "text", "UA-12345-1", "Identificador único", "general"),
+    *_load_humint_ontology(),
 )
 
 CUSTOM_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$")

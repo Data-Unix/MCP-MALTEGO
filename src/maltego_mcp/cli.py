@@ -209,6 +209,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--type", default="")
     p = sub.add_parser("import-entities", help="Importa la ontología de tu Maltego desde un .mtz")
     p.add_argument("file", type=Path)
+    p = sub.add_parser(
+        "index-breaches",
+        help="Indexa un fichero local de filtraciones (.csv, .tsv, .jsonl, .txt) en SQLite",
+    )
+    p.add_argument("file", type=Path)
     p = sub.add_parser("export", help="Exporta un caso")
     p.add_argument("case_id")
     p.add_argument("--format", default="mtgx", choices=["mtgx", "json", "graphml", "csv", "report_md", "report_html"])
@@ -245,6 +250,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Importados {len(defs)} tipos de entidad en {path}. Reinicia los agentes para cargarlos.")
             total = len(all_entity_types())
             print(f"(Tipos estándar disponibles antes de importar: {total})", file=sys.stderr)
+            return 0
+        if ns.command == "index-breaches":
+            from maltego_mcp.breaches import BREACH_DB_NAME, index_breach_file
+
+            db_path = Settings.from_env().home / BREACH_DB_NAME
+            count = index_breach_file(db_path, ns.file)
+            print(f"Indexados {count} registros de filtraciones en {db_path}.")
             return 0
         if ns.command == "export":
             return asyncio.run(_export(ns.case_id, ns.format, ns.layout))

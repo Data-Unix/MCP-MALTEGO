@@ -7,14 +7,21 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - **20 MCP tools** covering cases, entities, links, transforms, Machines, an investigation copilot and import/export.
-- **38 built-in transforms**: 26 keyless (DNS over HTTPS, RDAP/WHOIS with ARIN fallback, crt.sh + CertSpotter,
+- **40 built-in transforms**: 28 keyless (DNS over HTTPS, RDAP/WHOIS with ARIN fallback, crt.sh + CertSpotter,
   HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar, GitHub profile details,
-  AlienVault OTX hash pulses, multi-network profile lookup, email/URL parsing) and 12 provider transforms enabled by API
-  key (VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise, Tatum).
+  AlienVault OTX hash pulses, semantic breach router `BreachSemanticPivot` over local SQLite + HIBP k-Anonymity +
+  XposedOrNot, HUMINT behavioral profiler `AnalyzeSubjectBehavior`, multi-network profile lookup, email/URL parsing) and
+  12 provider transforms enabled by API key (VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned,
+  GreyNoise, Tatum).
+- **HUMINT & Multi-Agent Swarm capabilities**: native `humint.*` ontology (`humint.Alias`, `humint.Organization`,
+  `humint.LocationHistory`, `humint.PsychologicalTrait`), `PersonaFootprint` Machine, cross-platform pseudonym
+  correlation (`osint_link_entities(action="correlate")`), subject behavioral timeline and anomaly detection
+  (`osint_get_timeline(mode="subject")`), weighted/annotated links, dynamic `.mtgx` visual styles (`<mtg:Style>`,
+  `<mtg:Notes>`, dashed hypothesis links), and multi-agent case `fork`/`delegate`/`merge` with optimistic locking.
 - **Dynamic `~/.maltego-mcp/.env` configuration** loaded automatically outside the repository by all agents, CLI and
   Maltego Desktop bridge.
-- **Machines**: DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, URLRecon,
-  ThreatSweep, ASNToNetblocks and custom Machines in TOML, with recursive rounds and cost budgets.
+- **Machines**: DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, PersonaFootprint,
+  URLRecon, ThreatSweep, ASNToNetblocks and custom Machines in TOML, with recursive rounds and cost budgets.
 - **Copilot**: procedural memory per case, provenance, explainable scoring, next-best-action and outcome learning.
 - **Maltego Desktop integration**: local transforms bridge (open case, neighbours, save), native `.mtgx` with
   hierarchical/radial/force layouts and embedded memory, ontology import from your Maltego (`.mtz`).

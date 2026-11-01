@@ -45,7 +45,9 @@ class CaseSummary:
 class GraphStore(Protocol):
     """Operaciones que necesitan las tools. Todas acotadas en tamaño."""
 
-    async def ensure_case(self, case_id: str, description: str = "") -> tuple[CaseRecord, bool]: ...
+    async def ensure_case(
+        self, case_id: str, description: str = "", parent_case_id: str = ""
+    ) -> tuple[CaseRecord, bool]: ...
 
     async def get_case(self, case_id: str) -> CaseRecord | None: ...
 
