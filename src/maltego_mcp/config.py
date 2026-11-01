@@ -17,12 +17,48 @@ Backend = Literal["memory", "gremlin"]
 REPO_TRANSFORMS_FILE = Path("config/transforms.toml")
 LEGACY_DATA_FILE = Path("data/graph.json")  # ubicación usada hasta la v0.1 (dentro del repo)
 ONTOLOGY_FILE = "entities.json"  # ontología importada de Maltego (maltegoctl import-entities)
+ENV_FILE = ".env"  # claves opcionales de proveedores en ~/.maltego-mcp/.env (fuera del repo)
 
 
 def default_home(env: dict[str, str] | None = None) -> Path:
     e = os.environ if env is None else env
     raw = e.get("MALTEGO_MCP_HOME", "").strip()
     return Path(raw).expanduser() if raw else Path.home() / ".maltego-mcp"
+
+
+def parse_dotenv(text: str) -> dict[str, str]:
+    """Parsea un fichero .env sencillo (CLAVE=valor, comentarios #, comillas opcionales) sin dependencias."""
+    out: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        key, _, val = line.partition("=")
+        k = key.strip()
+        v = val.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+            v = v[1:-1]
+        elif " #" in v:
+            v = v.split(" #", 1)[0].strip()
+        if k and v:
+            out[k] = v
+    return out
+
+
+def load_home_dotenv(home: Path | None = None, base_env: dict[str, str] | None = None) -> dict[str, str]:
+    """Combina ~/.maltego-mcp/.env (si existe) con el entorno; las variables del entorno tienen prioridad."""
+    env = dict(os.environ if base_env is None else base_env)
+    target = (home or default_home(env)) / ENV_FILE
+    try:
+        file_vars = parse_dotenv(target.read_text(encoding="utf-8")) if target.is_file() else {}
+    except OSError:
+        file_vars = {}
+    for k, v in file_vars.items():
+        if not env.get(k, "").strip():
+            env[k] = v
+    return env
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +75,9 @@ class Settings:
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
-        e = dict(os.environ if env is None else env)
-        home = default_home(e)
+        raw_env = dict(os.environ if env is None else env)
+        home = default_home(raw_env)
+        e = load_home_dotenv(home, raw_env)
         backend = e.get("MALTEGO_MCP_BACKEND", "memory").strip().lower()
         if backend not in ("memory", "gremlin"):
             raise ConfigError("MALTEGO_MCP_BACKEND debe ser 'memory' o 'gremlin'.")
