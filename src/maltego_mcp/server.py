@@ -16,7 +16,7 @@ import uvicorn
 from mcp.server.mcpserver import MCPServer
 
 from maltego_mcp import __version__
-from maltego_mcp.config import LEGACY_DATA_FILE, ONTOLOGY_FILE, Settings
+from maltego_mcp.config import LEGACY_DATA_FILE, ONTOLOGY_FILE, Settings, load_home_dotenv
 from maltego_mcp.domain.entity_types import load_imported_types
 from maltego_mcp.errors import MaltegoMcpError
 from maltego_mcp.graph.base import GraphStore
@@ -78,12 +78,14 @@ def migrate_legacy_data(settings: Settings, legacy: Path = LEGACY_DATA_FILE) -> 
 
 def build_service(settings: Settings) -> OsintService:
     load_imported_types(settings.home / ONTOLOGY_FILE)
-    return OsintService(
+    svc = OsintService(
         build_store(settings),
         load_catalog(settings.transforms_file).with_builtins(),
         settings.export_dir,
         settings.import_dir,
     )
+    svc.env = load_home_dotenv(settings.home)
+    return svc
 
 
 def create_server(settings: Settings | None = None, service: OsintService | None = None) -> MCPServer:

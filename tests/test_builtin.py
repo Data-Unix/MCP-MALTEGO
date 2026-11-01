@@ -84,10 +84,10 @@ class Router:
             name, rtype = params["name"].rstrip("."), params["type"]
             answers = [{"name": name, "type": TYPES[rtype], "data": d} for d in DNS.get((name, rtype), [])]
             return httpx.Response(200, json={"Status": 0 if answers else 3, "Answer": answers})
-        if host == "rdap.org":
-            if path.startswith("/domain/example.com"):
+        if host in ("rdap.org", "rdap-bootstrap.arin.net"):
+            if "/domain/example.com" in path:
                 return httpx.Response(200, json=RDAP_DOMAIN)
-            if path.startswith("/ip/93.184.216.34"):
+            if "/ip/93.184.216.34" in path:
                 return httpx.Response(200, json=RDAP_IP)
             return httpx.Response(404)
         if host == "crt.sh":
@@ -361,6 +361,13 @@ async def test_doh_usa_respaldo_si_falla_google(ctx: BuiltinContext, router: Rou
     router.fail["dns.google"] = 503
     assert await run(ctx, "DNSToIP", "example.com") == [("maltego.IPv4Address", "93.184.216.34", "resolves_to")]
     assert any(r.url.host == "cloudflare-dns.com" for r in router.requests)
+
+
+async def test_rdap_usa_respaldo_arin_si_falla_rdap_org(ctx: BuiltinContext, router: Router) -> None:
+    router.fail["rdap.org"] = "timeout"
+    dom = await run(ctx, "DomainToWhois", "example.com")
+    assert ("maltego.Organization", "RESERVED-IANA", "registrar") in dom
+    assert any(r.url.host == "rdap-bootstrap.arin.net" for r in router.requests)
 
 
 async def test_soft_limit_y_deduplicado(ctx: BuiltinContext) -> None:

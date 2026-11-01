@@ -37,11 +37,11 @@ Matriz completa de funciones y verificación: `docs/COBERTURA.md`.
   HTTPS), DomainToWhois, IPToWhois (RDAP), DomainToSubdomains (crt.sh), IPToAS, IPToNetblock (Team Cymru),
   AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), EmailToDomain, EmailToAlias, URLToDomain,
   WebsiteToDomain, DomainToWebsite.
-- **Con API key** (define la variable de entorno y se activan): `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`,
-  `SECURITYTRAILS_API_KEY`, `CENSYS_API_ID` + `CENSYS_API_SECRET`, `HUNTER_API_KEY`, `HIBP_API_KEY`,
-  `GREYNOISE_API_KEY`, `TATUM_API_KEY`. Censys usa la API Search v2 (credenciales API ID/Secret); si tu cuenta es
-  de la nueva Censys Platform, ese transform puede no funcionar todavía. Para los agentes de Orca, ponlas en las variables de entorno de usuario
-  del sistema (Windows: "Editar las variables de entorno de tu cuenta") y reinicia Orca.
+- **Con API key** (define la variable de entorno o guárdala en `~/.maltego-mcp/.env` y se activan solos):
+  `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`, `SECURITYTRAILS_API_KEY`, `HUNTER_API_KEY`, `GREYNOISE_API_KEY`,
+  `TATUM_API_KEY` (todos con capa gratuita / Community sin suscripción de pago), más `CENSYS_API_ID` +
+  `CENSYS_API_SECRET` y `HIBP_API_KEY`. El fichero `~/.maltego-mcp/.env` vive fuera del repositorio y lo leen
+  automáticamente todos los agentes (Orca, Claude, Gemini, Codex, Cursor...) y el puente de Maltego Desktop.
 
 ## Machines
 DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint y URLRecon. Las propias se

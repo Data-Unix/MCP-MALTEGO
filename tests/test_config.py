@@ -75,3 +75,21 @@ def test_settings_por_defecto_usan_el_home(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setenv("MALTEGO_MCP_HOME", str(tmp_path))
     s = Settings()
     assert (s.export_dir, s.import_dir) == (tmp_path / "exports", tmp_path / "imports")
+
+
+def test_dotenv_en_home_carga_claves_sin_pisar_entorno(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from maltego_mcp.config import load_home_dotenv, parse_dotenv
+    from maltego_mcp.server import build_service
+
+    (tmp_path / ".env").write_text(
+        "# comentario\nVIRUSTOTAL_API_KEY = 'vt-desde-fichero'\nexport SHODAN_API_KEY=\"sh-fichero\" # nota\n",
+        encoding="utf-8",
+    )
+    assert parse_dotenv("A=1\nB='2'\n") == {"A": "1", "B": "2"}
+    env = load_home_dotenv(tmp_path, {"SHODAN_API_KEY": "sh-entorno"})
+    assert env["VIRUSTOTAL_API_KEY"] == "vt-desde-fichero"
+    assert env["SHODAN_API_KEY"] == "sh-entorno"
+    monkeypatch.setenv("MALTEGO_MCP_HOME", str(tmp_path))
+    monkeypatch.delenv("VIRUSTOTAL_API_KEY", raising=False)
+    svc = build_service(Settings.from_env())
+    assert svc.env.get("VIRUSTOTAL_API_KEY") == "vt-desde-fichero"

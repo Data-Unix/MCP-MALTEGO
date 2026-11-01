@@ -28,6 +28,7 @@ from maltego_mcp.transforms.protocol import ResultEntity, TransformResponse
 
 USER_AGENT = f"maltego-mcp/{__version__} (+https://github.com/Data-Unix/MCP-MALTEGO)"
 DOH_ENDPOINTS = ("https://dns.google/resolve", "https://cloudflare-dns.com/dns-query")
+RDAP_ENDPOINTS = ("https://rdap.org", "https://rdap-bootstrap.arin.net/bootstrap")
 DNS_TYPES = {"A": 1, "NS": 2, "CNAME": 5, "PTR": 12, "MX": 15, "TXT": 16, "AAAA": 28}
 HOST_TYPES = ("maltego.Domain", "maltego.DNSName", "maltego.Website", "maltego.MXRecord", "maltego.NSRecord")
 IP_TYPES = ("maltego.IPv4Address", "maltego.IPv6Address")
@@ -246,10 +247,21 @@ def _rdap_entities(data: dict[str, Any], depth: int = 0) -> list[tuple[list[str]
     return found
 
 
+async def _rdap_lookup(ctx: BuiltinContext, kind: str, target: str) -> Any:
+    """Consulta RDAP con respaldo en el bootstrap de ARIN (rdap.org a veces sufre bloqueos por IP de Cloudflare)."""
+    last: Exception | None = None
+    for base in RDAP_ENDPOINTS:
+        try:
+            return await _get_json(ctx, f"{base}/{kind}/{quote(target)}", not_found_ok=True)
+        except TransformError as exc:
+            last = exc
+    raise last or TransformError("No se pudo consultar RDAP.")
+
+
 async def _domain_whois(
     ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
 ) -> TransformResponse:
-    data = await _get_json(ctx, f"https://rdap.org/domain/{quote(_host(value))}", not_found_ok=True)
+    data = await _rdap_lookup(ctx, "domain", _host(value))
     if not data:
         return TransformResponse(messages=[("Inform", f"RDAP no tiene registro de {value}.")])
     events = {e.get("eventAction", ""): e.get("eventDate", "") for e in data.get("events", [])}
@@ -276,7 +288,7 @@ async def _domain_whois(
 
 
 async def _ip_whois(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
-    data = await _get_json(ctx, f"https://rdap.org/ip/{quote(value.strip())}", not_found_ok=True)
+    data = await _rdap_lookup(ctx, "ip", value.strip())
     if not data:
         return TransformResponse(messages=[("Inform", f"RDAP no tiene registro de {value}.")])
     items = []
