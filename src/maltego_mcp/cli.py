@@ -214,6 +214,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Indexa un fichero local de filtraciones (.csv, .tsv, .jsonl, .txt) en SQLite",
     )
     p.add_argument("file", type=Path)
+    p = sub.add_parser(
+        "sync-cti",
+        help="Sincroniza fuentes CTI activas (ONLINE/VALID) desde fastfire/deepdarkCTI y purga las OFFLINE/EXPIRED",
+    )
+    p.add_argument("--force", action="store_true", help="Fuerza la descarga aunque la caché sea reciente")
+    p = sub.add_parser(
+        "accounts",
+        help="Gestiona cuentas de redes sociales y Sock Puppets (~/.maltego-mcp/accounts.toml)",
+    )
+    p.add_argument("action", nargs="?", default="list", choices=["list", "generate-persona"])
+    p.add_argument("--role", default="security_researcher")
+    p.add_argument("--region", default="EU")
+    p.add_argument("--site", default="")
+    p.add_argument("--seed", default="")
+    p.add_argument("--save", action="store_true", help="Añade la plantilla del Sock Puppet a accounts.toml")
     p = sub.add_parser("export", help="Exporta un caso")
     p.add_argument("case_id")
     p.add_argument("--format", default="mtgx", choices=["mtgx", "json", "graphml", "csv", "report_md", "report_html"])
@@ -257,6 +272,64 @@ def main(argv: list[str] | None = None) -> int:
             db_path = Settings.from_env().home / BREACH_DB_NAME
             count = index_breach_file(db_path, ns.file)
             print(f"Indexados {count} registros de filtraciones en {db_path}.")
+            return 0
+        if ns.command == "sync-cti":
+            import httpx
+
+            from maltego_mcp.cti_feeds import CTISyncSummary, sync_deepdark_cti
+
+            async def _run_sync() -> CTISyncSummary:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    return await sync_deepdark_cti(Settings.from_env().home, client, force=bool(ns.force))
+
+            res = asyncio.run(_run_sync())
+            print(
+                f"Sincronización DeepDarkCTI ({res['db_path']}): "
+                f"{res['active_rows']} fuentes ACTIVAS (ONLINE/VALID), "
+                f"{res['purged_rows']} purgadas/actualizadas."
+            )
+            return 0
+        if ns.command == "accounts":
+            from maltego_mcp.accounts import (
+                ensure_accounts_template,
+                generate_sockpuppet_persona,
+                load_account_pool,
+                save_persona_to_accounts_toml,
+            )
+
+            home = Settings.from_env().home
+            tpl = ensure_accounts_template(home)
+            if ns.action == "generate-persona":
+                persona = generate_sockpuppet_persona(
+                    role=ns.role,
+                    region=ns.region,
+                    target_site=ns.site,
+                    seed=ns.seed,
+                )
+                print(json.dumps(persona.to_dict(), ensure_ascii=False, indent=2))
+                if ns.save:
+                    saved = save_persona_to_accounts_toml(home, persona)
+                    print(f"\nPlantilla añadida en {saved}", file=sys.stderr)
+                return 0
+            pool = load_account_pool(home)
+            items = pool.summary()
+            if not items:
+                print(
+                    f"Sin cuentas activas configuradas. Edita {tpl} o usa "
+                    "'maltegoctl accounts generate-persona --save'."
+                )
+                return 0
+            rows = [["PLATAFORMA", "CUENTA", "SITIO", "ESTADO", "SECRETO"]] + [
+                [
+                    str(a["platform"]),
+                    str(a["username"]),
+                    str(a["site"] or "-"),
+                    "disponible" if a["available"] else "cooldown",
+                    str(a["secret_preview"]),
+                ]
+                for a in items
+            ]
+            _print_table(rows)
             return 0
         if ns.command == "export":
             return asyncio.run(_export(ns.case_id, ns.format, ns.layout))

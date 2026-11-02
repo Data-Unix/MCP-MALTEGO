@@ -20,6 +20,12 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 import httpx
 
+from maltego_mcp.accounts import (
+    SockPuppetPersona,
+    generate_sockpuppet_persona,
+    load_account_pool,
+    save_persona_to_accounts_toml,
+)
 from maltego_mcp.analysis import (
     Action,
     EntityScore,
@@ -155,6 +161,7 @@ class Inventory:
     machines: list[Machine]
     providers: dict[str, bool]
     servers: dict[str, str]
+    accounts: list[dict[str, object]] = field(default_factory=list)
 
 
 async def _probe_server(server: TransformServer) -> str:
@@ -449,7 +456,10 @@ class OsintService:
         remote = {s.server.name: s.server for s in self.catalog.transforms.values() if s.builtin is None}
         for name, server in remote.items():
             servers[name] = await _probe_server(server) if check_servers else server.url
-        return Inventory(self.list_transforms(entity_type, category), machines, providers, servers)
+        home_raw = (self.env.get("MALTEGO_MCP_HOME") or os.environ.get("MALTEGO_MCP_HOME") or "").strip()
+        home_dir = Path(home_raw) if home_raw else self.export_dir.parent
+        accounts = load_account_pool(home_dir, self.env).summary()
+        return Inventory(self.list_transforms(entity_type, category), machines, providers, servers, accounts)
 
     def _coerce_auto_entity(
         self,
@@ -1004,6 +1014,57 @@ class OsintService:
             )
             emitted.append(child)
         return updated, analysis, emitted
+
+    async def generate_persona_entity(
+        self,
+        case_id: str,
+        seed_or_eid: str,
+        properties: list[str],
+        notes: str = "",
+        reason: str = "",
+    ) -> tuple[EntityRecord, SockPuppetPersona, Path | None]:
+        """Genera un kit operativo de Sock Puppet (humint.Alias) en el caso y opcionalmente en accounts.toml."""
+        cid = validate_case_id(case_id)
+        props = parse_properties(properties)
+        role = props.get("role", "security_researcher")
+        region = props.get("region", "EU")
+        site = props.get("site", props.get("target_site", ""))
+        save_toml = props.get("save", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+        persona = generate_sockpuppet_persona(
+            role=role,
+            region=region,
+            target_site=site,
+            seed=props.get("seed", seed_or_eid),
+        )
+        ent_props = [
+            f"platform={site or 'multi'}",
+            f"display_name={persona.display_name}",
+            f"humint.role={persona.role}",
+            f"humint.region={persona.region}",
+            f"humint.timezone={persona.timezone}",
+            f"humint.pgp_key_id={persona.pgp_key_id_hint}",
+            "humint.sockpuppet=true",
+        ]
+        summary_note = (
+            notes.strip()
+            or f"[Sock Puppet Operativo] {persona.display_name} ({persona.role}, {persona.region}). Bio: {persona.bio}"
+        )
+        stored, _ = await self.upsert_entity(
+            cid,
+            "humint.Alias",
+            persona.handle,
+            0.95,
+            "sockpuppet_generator",
+            ent_props,
+            summary_note,
+        )
+        saved_path: Path | None = None
+        if save_toml:
+            home_raw = (self.env.get("MALTEGO_MCP_HOME") or os.environ.get("MALTEGO_MCP_HOME") or "").strip()
+            home_dir = Path(home_raw) if home_raw else self.export_dir.parent
+            saved_path = save_persona_to_accounts_toml(home_dir, persona)
+        await self.record_step(cid, "manual", "generate_persona", stored, reason or "sockpuppet_kit", [stored.id], 1)
+        return stored, persona, saved_path
 
     async def delete_entity(self, case_id: str, eid: str, reason: str = "") -> int:
         entity = await self.get_entity(case_id, eid)

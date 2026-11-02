@@ -182,6 +182,130 @@ class Router:
             if "nobody@" in path:
                 return httpx.Response(404)
             return httpx.Response(200, json={"breaches": [["Adobe", "Dropbox"]]})
+        if host == "cavalier.hudsonrock.com":
+            q_val = params.get("email") or params.get("domain") or params.get("username") or ""
+            if "nobody" in q_val or q_val == "ana@example.com":
+                return httpx.Response(200, json={"stealers": []})
+            return httpx.Response(
+                200,
+                json={
+                    "stealers": [
+                        {
+                            "stealer_family": "RedLine",
+                            "date_compromised": "2026-01-15T10:00:00Z",
+                            "computer_name": "WORKSTATION-01",
+                            "operating_system": "Windows 11 Pro",
+                            "ip": "198.51.100.42",
+                        }
+                    ]
+                },
+            )
+        if host == "raw.githubusercontent.com":
+            return httpx.Response(
+                200,
+                text=(
+                    "| Name | Status | Type | Description |\n"
+                    "| --- | --- | --- | --- |\n"
+                    "| [BreachForums](http://breachforums222222222222.onion) | ONLINE | Forum | Leaks & Databases |\n"
+                    "| [OldDeadMarket](http://deadmarket11111111111111.onion) | OFFLINE | Market | Seized |\n"
+                ),
+            )
+        if host == "api.ransomware.live":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "group_name": "lockbit3",
+                        "post_title": "Acme Corp",
+                        "discovered": "2026-02-01",
+                        "post_url": "http://lockbit33333333333333333.onion/post/1",
+                    }
+                ],
+            )
+        if host == "ahmia.fi":
+            return httpx.Response(
+                200,
+                text='<html><body><a href="http://ahmiaonion44444444444444.onion/">Mirror</a></body></html>',
+            )
+        if host.endswith(".onion"):
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html><head><title>Dark Forum Node</title></head><body>"
+                    "Contact: admin@darkforum.org | Telegram: https://t.me/darkforum_ops "
+                    "Escrow BTC: bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq "
+                    "PGP: 1234 5678 9ABC DEF0 1234 5678 9ABC DEF0 1234 5678 "
+                    "Mirror: http://mirroronion5555555555555.onion/login"
+                    "</body></html>"
+                ),
+            )
+        if host == "www.reddit.com":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "name": "jdoe",
+                        "total_karma": 420,
+                        "subreddit": {"public_description": "Security researcher"},
+                    }
+                },
+            )
+        if host == "hn.algolia.com":
+            return httpx.Response(200, json={"username": "jdoe", "karma": 150, "about": "OSINT & CTI"})
+        if host == "lobste.rs":
+            return httpx.Response(
+                200,
+                json={"username": "jdoe", "invited_by_user": "alice_sec", "github_username": "jdoe"},
+            )
+        if host == "public.api.bsky.app":
+            return httpx.Response(
+                200,
+                json={
+                    "handle": "jdoe.bsky.social",
+                    "displayName": "John Doe",
+                    "description": "DFIR analyst",
+                },
+            )
+        if host == "api.github.com" and path.endswith("/events/public"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "repo": {"name": "jdoe/osint-kit"},
+                        "payload": {"commits": [{"author": {"email": "jdoe.commits@example.com", "name": "John Doe"}}]},
+                    }
+                ],
+            )
+        if host == "keybase.io" and params.get("usernames") == "kproof":
+            return httpx.Response(
+                200,
+                json={
+                    "them": [
+                        {
+                            "profile": {"full_name": "Keybase Proofer", "location": "Zurich"},
+                            "proofs_summary": {
+                                "all": [
+                                    {
+                                        "proof_type": "github",
+                                        "nametag": "kproof_gh",
+                                        "service_url": "https://github.com/kproof_gh",
+                                    },
+                                    {
+                                        "proof_type": "dns",
+                                        "nametag": "kproof.org",
+                                        "service_url": "http://kproof.org",
+                                    },
+                                ]
+                            },
+                            "public_keys": {"primary": {"key_fingerprint": "AABBCCDDEEFF00112233445566778899AABBCCDD"}},
+                            "cryptocurrency_addresses": {
+                                "bitcoin": [{"address": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"}]
+                            },
+                        }
+                    ]
+                },
+            )
         profiles = {
             "api.github.com": (
                 path == "/users/jdoe",

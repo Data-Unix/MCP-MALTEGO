@@ -241,6 +241,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                     ],
                     "providers": inv.providers,
                     "servers": inv.servers,
+                    "accounts": inv.accounts,
                 }
             )
         rows = ["| transform | categoría | acepta | produce | disponible |", "|---|---|---|---|---|"]
@@ -263,6 +264,14 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             "\n**Proveedores:** "
             + ", ".join(f"{p} ({'configurado' if ok else 'sin clave'})" for p, ok in sorted(inv.providers.items()))
         )
+        if inv.accounts:
+            rows.append(
+                "**Cuentas / Sock Puppets:** "
+                + ", ".join(
+                    f"{a['platform']}:{a['username']} ({'disponible' if a['available'] else 'cooldown'})"
+                    for a in inv.accounts
+                )
+            )
         if inv.servers:
             rows.append("**Servidores TRX/iTDS:** " + ", ".join(f"{n}: {st}" for n, st in sorted(inv.servers.items())))
         return "\n".join(rows)
@@ -442,11 +451,11 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
 
     @mcp.tool(
         name="osint_manage_entity",
-        title="Editar, estilizar, perfilar o borrar entidad",
+        title="Editar, estilizar, perfilar, generar Sock Puppet o borrar entidad",
         description=(
             "action=update cambia confianza, notas o propiedades. action=visual_style fija peso/color/tamaño visual "
-            "para .mtgx. action=analyze_behavior ejecuta perfilado conductual HUMINT sobre el sujeto y su vecindario. "
-            "action=delete borra la entidad y sus relaciones."
+            "para .mtgx. action=analyze_behavior ejecuta perfilado conductual HUMINT. action=generate_persona genera "
+            "un kit operativo de Sock Puppet (humint.Alias + plantilla accounts.toml). action=delete borra la entidad."
         ),
         annotations=DESTRUCTIVE,
         structured_output=False,
@@ -460,8 +469,8 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             list[str], Field(default_factory=list, max_length=50, description="Nombres de propiedades a quitar.")
         ],
         action: Annotated[
-            Literal["update", "delete", "visual_style", "analyze_behavior"],
-            Field(description="update, delete, visual_style o analyze_behavior."),
+            Literal["update", "delete", "visual_style", "analyze_behavior", "generate_persona"],
+            Field(description="update, delete, visual_style, analyze_behavior o generate_persona."),
         ] = "update",
         confidence: Annotated[float, Field(ge=-1, le=1, description="Nueva confianza 0-1; -1 = no cambiar.")] = -1,
         notes: Annotated[str, Field(max_length=4000, description="Notas (sustituyen a las actuales).")] = "",
@@ -511,6 +520,27 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             if emitted:
                 lines.append(entities_table(emitted))
             lines.append(UNTRUSTED_NOTE)
+            return "\n\n".join(lines)
+        if action == "generate_persona":
+            ent, persona, saved_path = await svc.generate_persona_entity(case_id, entity_id, properties, notes, reason)
+            if response_format == "json":
+                return to_json(
+                    {
+                        "entity": ent.to_dict(),
+                        "persona": persona.to_dict(),
+                        "saved_accounts_toml": str(saved_path) if saved_path else "",
+                    }
+                )
+            lines = [
+                f"## Kit operativo de Sock Puppet: `{persona.handle}` ({entity_line(ent)})",
+                f"- **Nombre / Rol:** {persona.display_name} · `{persona.role}` · `{persona.region}`",
+                f"- **Biografía sugerida:** {safe(persona.bio, 300)}",
+                f"- **Correo desechable:** `{persona.burner_email_hint}` · **PGP ID:** `{persona.pgp_key_id_hint}`",
+                f"- **Semilla TOTP (2FA offline Base32):** `{persona.totp_secret_base32}`",
+                "**Checklist OPSEC:**\n" + "\n".join(f"  - {item}" for item in persona.opsec_checklist),
+            ]
+            if saved_path:
+                lines.append(f"Plantilla guardada en `{saved_path}`.")
             return "\n\n".join(lines)
         extra_props = list(properties)
         if visual_weight >= 0:
