@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Maltego | Consola de Control y Bóveda OSINT</title>
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+  <!-- Lienzo acelerado en segundo plano vía Web Worker -->
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="app-shell">
+    <!-- Barra Lateral de Navegación -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">M</div>
+        <div class="brand-title">MCP Maltego</div>
+        <div class="brand-version" id="app-version">v0.2.0</div>
+      </div>
+
+      <nav class="nav-group">
+        <div class="nav-heading">Investigación</div>
+        <a class="nav-link active" data-tab="overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span class="nav-label">Centro de Mando</span>
+        </a>
+        <a class="nav-link" data-tab="accounts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+          <span class="nav-label">Bóveda & Sock Puppets</span>
+          <span class="nav-badge" id="badge-accounts-count">0</span>
+        </a>
+        <a class="nav-link" data-tab="providers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          <span class="nav-label">Claves de Proveedores</span>
+        </a>
+        <a class="nav-link" data-tab="cti-feeds">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <span class="nav-label">Feeds CTI Dark Web</span>
+          <span class="nav-badge pulse">CTI</span>
+        </a>
+
+        <div class="nav-heading" style="margin-top:0.75rem;">Herramientas MCP</div>
+        <a class="nav-link" data-tab="transforms">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span class="nav-label">Transforms & Playground</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="mono">127.0.0.1:8000</span>
+        <span class="pill pill-ok">Local Seguro</span>
+      </div>
+    </aside>
+
+    <!-- Contenido Principal -->
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1 class="view-title" id="current-view-title">Centro de Mando</h1>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-secondary btn-sm" onclick="openPersonaModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            Generar Sock Puppet
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="openNewAccountModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Añadir Cuenta
+          </button>
+        </div>
+      </header>
+
+      <main class="content-scroll">
+        <!-- VISTA 1: OVERVIEW / COMMAND CENTER -->
+        <section class="view-section active" id="view-overview">
+          <div class="metrics-row">
+            <div class="metric-box">
+              <div class="metric-label">Estado del Servidor</div>
+              <div class="metric-value" id="stat-status"><span class="pill pill-ok">Online</span></div>
+              <div class="metric-hint">Transporte: <span class="mono" id="stat-transport">http</span></div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Pasarela Tor SOCKS5</div>
+              <div class="metric-value" id="stat-tor"><span class="pill pill-ok">127.0.0.1:9050</span></div>
+              <div class="metric-hint">Acceso pasivo a servicios .onion</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Cuentas en Rotación</div>
+              <div class="metric-value" id="stat-accounts-count">0</div>
+              <div class="metric-hint">Bóveda accounts.toml</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Fuentes CTI Activas</div>
+              <div class="metric-value" id="stat-cti-count">0</div>
+              <div class="metric-hint">deepdarkCTI indexadas</div>
+            </div>
+          </div>
+
+          <div class="card-stack">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Actividad y Telemetría en Tiempo Real</div>
+                  <div class="panel-subtitle">Transmisión continua de eventos y consultas del servidor MCP</div>
+                </div>
+                <span class="pill pill-cyan">SSE Conectado</span>
+              </div>
+              <div class="event-log" id="event-log">
+                <div class="log-entry">
+                  <span class="log-time">00:00:00</span>
+                  <span class="log-source">[SYSTEM]</span>
+                  <span class="log-msg">Servidor MCP Maltego inicializado en 127.0.0.1. OffscreenCanvas en Web Worker activo.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 2: BÓVEDA DE CUENTAS & SOCK PUPPETS -->
+        <section class="view-section" id="view-accounts">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Bóveda de Cuentas y Sock Puppets</div>
+                <div class="panel-subtitle">Gestión centralizada en ~/.maltego-mcp/accounts.toml con rotación y prevención de 429</div>
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-secondary btn-sm" onclick="loadAccounts()">Actualizar</button>
+                <button class="btn btn-primary btn-sm" onclick="openNewAccountModal()">Nueva Cuenta</button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Identidad / ID</th>
+                    <th>Plataforma</th>
+                    <th>Ámbito</th>
+                    <th>Estado de Secreto</th>
+                    <th>Cuota / Cooldown</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="accounts-tbody">
+                  <tr><td colspan="7" style="padding:1.5rem; text-align:center; color:var(--text-muted);">Cargando bóveda...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 3: PROVEEDORES Y CLAVES API -->
+        <section class="view-section" id="view-providers">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Proveedores de Inteligencia y APIs Externas</div>
+                <div class="panel-subtitle">Detección de variables de entorno en ~/.maltego-mcp/.env para servicios comerciales</div>
+              </div>
+            </div>
+            <div class="metrics-row" id="providers-grid">
+              <!-- Rellenado dinámicamente -->
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 4: FEEDS CTI DARK WEB -->
+        <section class="view-section" id="view-cti-feeds">
+          <div class="metrics-row">
+            <div class="metric-box">
+              <div class="metric-label">Fuentes Activas (ONLINE / VALID)</div>
+              <div class="metric-value" style="color:var(--accent-emerald);" id="cti-active-count">0</div>
+              <div class="metric-hint">Disponibles para correlación en el grafo</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Fuentes Purgadas (OFFLINE / SEIZED)</div>
+              <div class="metric-value" style="color:var(--text-muted);" id="cti-purged-count">0</div>
+              <div class="metric-hint">Descartadas automáticamente</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Catálogo CTI Sincronizado (fastfire/deepdarkCTI)</div>
+                <div class="panel-subtitle">Índice SQLite en ~/.maltego-mcp/cti_feeds.sqlite</div>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-sync-cti" onclick="triggerCTISync()">
+                Sincronizar Feeds CTI
+              </button>
+            </div>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nombre de Fuente</th>
+                    <th>Categoría</th>
+                    <th>Endpoint .onion / URL</th>
+                    <th>Estado</th>
+                    <th>Actualizado</th>
+                  </tr>
+                </thead>
+                <tbody id="cti-tbody">
+                  <tr><td colspan="5" style="padding:1.5rem; text-align:center; color:var(--text-muted);">Cargando feeds...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 5: TRANSFORMS Y PLAYGROUND -->
+        <section class="view-section" id="view-transforms">
+          <div class="panel" style="margin-bottom:1.5rem;">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Playground de Consulta Directa (Lookup)</div>
+                <div class="panel-subtitle">Ejecución aislada de transformadas sin modificar el grafo persistente</div>
+              </div>
+            </div>
+            <form onsubmit="runPlaygroundLookup(event)" style="display:grid; grid-template-columns:1.5fr 2fr 1fr auto; gap:0.75rem; align-items:end;">
+              <div>
+                <label class="form-label">Transformada</label>
+                <select class="select" id="playground-transform"></select>
+              </div>
+              <div>
+                <label class="form-label">Valor Objetivo</label>
+                <input class="input" id="playground-value" placeholder="ej. lockbit, uber.com, max" required>
+              </div>
+              <div>
+                <label class="form-label">Tipo Maltego</label>
+                <input class="input" id="playground-type" value="auto">
+              </div>
+              <div>
+                <button type="submit" class="btn btn-primary">Ejecutar Lookup</button>
+              </div>
+            </form>
+            <div id="playground-results" style="margin-top:1.25rem;"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Catálogo Registrado de Transformadas</div>
+            </div>
+            <div id="transforms-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- MODAL: NUEVA CUENTA -->
+  <div class="modal-overlay" id="modal-account">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="panel-title">Registrar Cuenta en la Bóveda</div>
+        <button class="btn btn-secondary btn-sm" onclick="closeNewAccountModal()">✕</button>
+      </div>
+      <form id="form-account" onsubmit="submitNewAccount(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Plataforma</label>
+              <select class="select" name="acc_platform" required>
+                <option value="github">GitHub</option>
+                <option value="reddit">Reddit</option>
+                <option value="bluesky">Bluesky</option>
+                <option value="onion">Dark Web (.onion)</option>
+                <option value="tor">Tor General</option>
+                <option value="intelx">Intelligence X</option>
+                <option value="telegram">Telegram</option>
+                <option value="discord">Discord</option>
+                <option value="mastodon">Mastodon</option>
+                <option value="generic">Otra / Genérica</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Identificador / ID (Opcional)</label>
+              <input class="input mono" name="acc_id" placeholder="auto: sp-github-01">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Usuario / Handle</label>
+              <input class="input" name="acc_username" placeholder="ej. shadow_sec" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Límite RPM (Peticiones/min)</label>
+              <input type="number" class="input mono" name="acc_rpm" value="30" min="1" max="600">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Token de Acceso / API Key</label>
+            <input type="password" class="input mono" name="acc_token" placeholder="Token Bearer o Personal Access Token">
+            <div class="form-hint">O introduce el nombre de la variable de entorno abajo.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Variable de Entorno (token_env)</label>
+            <input class="input mono" name="acc_token_env" placeholder="ej. GITHUB_TOKEN, REDDIT_TOKEN">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cookie de Sesión (Requerido para foros .onion)</label>
+            <textarea class="textarea mono" rows="2" name="acc_cookie" placeholder="xf_user=...; xf_session=..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Sitio Destino (.onion o dominio)</label>
+              <input class="input mono" name="acc_target_site" placeholder="ej. exploit.in o breachforums22...onion">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Proxy Dedicado</label>
+              <input class="input mono" name="acc_proxy" placeholder="ej. socks5h://127.0.0.1:9050">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">User-Agent Personalizado</label>
+            <input class="input" name="acc_user_agent" placeholder="Mozilla/5.0...">
+          </div>
+
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+            <input type="checkbox" id="acc_enabled" name="acc_enabled" checked>
+            <label for="acc_enabled" style="font-size:13px; font-weight:500;">Habilitar cuenta inmediatamente en el pool</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeNewAccountModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar en accounts.toml</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GENERADOR DE SOCK PUPPETS -->
+  <div class="modal-overlay" id="modal-persona">
+    <div class="modal-card" style="max-width:680px;">
+      <div class="modal-header">
+        <div class="panel-title">Generador de Identidades Sock Puppet (Kit OPSEC)</div>
+        <button class="btn btn-secondary btn-sm" onclick="closePersonaModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row" style="margin-bottom:1rem;">
+          <div>
+            <label class="form-label">Rol Operativo</label>
+            <select class="select" id="persona-role" onchange="generatePersonaPreview()">
+              <option value="threat_intel_collector">Recolector CTI (Ransomware/Infostealers)</option>
+              <option value="cyber_researcher">Investigador de Seguridad & Malware</option>
+              <option value="underground_auditor">Auditor Subterráneo / Red Team</option>
+              <option value="crypto_analyst">Analista Cripto & Blockchain</option>
+              <option value="devops_freelancer">Freelancer DevOps / SRE</option>
+              <option value="osint_journalist">Periodista de Investigación OSINT</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Región / Husillo</label>
+            <select class="select" id="persona-region" onchange="generatePersonaPreview()">
+              <option value="EE">Europa del Este / Báltico (UTC+3)</option>
+              <option value="EU">Europa Central / Occidental (UTC+1)</option>
+              <option value="US">Estados Unidos Este (UTC-5)</option>
+              <option value="LATAM">Latinoamérica (UTC-3)</option>
+              <option value="APAC">Asia-Pacífico (UTC+9)</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Sitio Destino</label>
+            <input class="input mono" id="persona-site" value="exploit.in" onchange="generatePersonaPreview()">
+          </div>
+        </div>
+
+        <div id="persona-result">
+          <!-- Rellenado dinámicamente -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

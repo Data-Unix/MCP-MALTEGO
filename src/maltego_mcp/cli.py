@@ -220,6 +220,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--force", action="store_true", help="Fuerza la descarga aunque la caché sea reciente")
     p = sub.add_parser(
+        "dashboard",
+        help="Inicia el panel web interactivo en 127.0.0.1 y lo abre en el navegador",
+    )
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--no-browser", action="store_true", help="No abrir automáticamente el navegador")
+    p = sub.add_parser(
         "accounts",
         help="Gestiona cuentas de redes sociales y Sock Puppets (~/.maltego-mcp/accounts.toml)",
     )
@@ -287,6 +294,36 @@ def main(argv: list[str] | None = None) -> int:
                 f"Sincronización DeepDarkCTI ({res['db_path']}): "
                 f"{res['active_rows']} fuentes ACTIVAS (ONLINE/VALID), "
                 f"{res['purged_rows']} purgadas/actualizadas."
+            )
+            return 0
+        if ns.command == "dashboard":
+            import webbrowser
+
+            import uvicorn
+
+            from maltego_mcp.server import _uvicorn_log_config, build_service, create_server
+            from maltego_mcp.web_app import attach_dashboard_routes
+
+            settings = Settings.from_env()
+            server = create_server(settings)
+            app = server.streamable_http_app(stateless_http=True, json_response=True, host=ns.host)
+            svc = getattr(server, "_service", None) or build_service(settings)
+            attach_dashboard_routes(app, svc, settings)
+
+            url = f"http://{ns.host}:{ns.port}/"
+            print(f"Panel web MCP Maltego activo en: {url}")
+            print(f"Transporte MCP Streamable HTTP en: http://{ns.host}:{ns.port}/mcp")
+            if not ns.no_browser:
+                import contextlib
+
+                with contextlib.suppress(Exception):
+                    webbrowser.open(url)
+            uvicorn.run(
+                app,
+                host=ns.host,
+                port=ns.port,
+                log_level="info",
+                log_config=_uvicorn_log_config(),
             )
             return 0
         if ns.command == "accounts":
