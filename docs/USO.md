@@ -126,6 +126,7 @@ El servidor los descubre automáticamente en el arranque sin tocar el código fu
 ```python
 from maltego_mcp.transforms.plugins import custom_transform, result_entity, transform_response
 
+
 @custom_transform(
     name="DomainToCustomData",
     input_types=("maltego.Domain",),
@@ -134,9 +135,7 @@ from maltego_mcp.transforms.plugins import custom_transform, result_entity, tran
     category="comunidad",
 )
 async def mi_transform(ctx, etype, value, props, limit):
-    return transform_response([
-        result_entity("maltego.Phrase", f"Intel: {value}", label="custom_intel")
-    ])
+    return transform_response([result_entity("maltego.Phrase", f"Intel: {value}", label="custom_intel")])
 ```
 
 Prueba rápida desde un agente:

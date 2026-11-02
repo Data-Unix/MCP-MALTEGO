@@ -18,7 +18,7 @@
     <!-- Barra Lateral de Navegación -->
     <aside class="sidebar">
       <div class="brand">
-        <img src="/logo.png?v=2" alt="MCP Maltego Logo" class="brand-logo" width="32" height="32">
+        <img src="/logo.png?v=2" alt="MCP Maltego Logo" class="brand-logo" width="32" height="32" onerror="this.onerror=null; this.src='/favicon-32x32.png';">
         <div class="brand-title">MCP Maltego</div>
         <div class="brand-version" id="app-version">v0.2.0</div>
       </div>
@@ -157,6 +157,74 @@
                   <tr><td colspan="7" style="padding:1.5rem; text-align:center; color:var(--text-muted);">Cargando bóveda...</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <!-- PANEL DE BUZONES EFÍMEROS & RECEPTOR OTP -->
+          <div class="panel" style="margin-top:1.5rem;">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Buzones Efímeros & Receptor Automático de OTPs (Mail.tm)</div>
+                <div class="panel-subtitle">Genera correos al vuelo sin registro previo para registrar Sock Puppets y extrae códigos 2FA y URLs de activación</div>
+              </div>
+              <div style="display:flex; gap:0.5rem; align-items:center;">
+                <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.8rem; color:var(--text-muted); cursor:pointer;">
+                  <input type="checkbox" id="chk-save-sockpuppet" style="accent-color:var(--accent-cyan);"> Guardar en Bóveda
+                </label>
+                <button class="btn btn-primary btn-sm" id="btn-create-inbox" onclick="createBurnerInbox()">
+                  + Generar Buzón Efímero
+                </button>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1.6fr; gap:1.25rem; margin-top:0.5rem;">
+              <!-- Columna izquierda: Buzones activos -->
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                  <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">Buzones en Sesión</span>
+                  <span class="pill pill-cyan" id="inbox-count-pill">0 activos</span>
+                </div>
+                <div id="inbox-list" class="inbox-cards-scroll">
+                  <div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-subtle); border-radius:8px;">
+                    Ningún buzón temporal activo.<br>Haz clic en <strong>+ Generar Buzón Efímero</strong> para crear uno.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Columna derecha: Mensajes y OTPs detectados -->
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                  <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">Mensajes y Códigos Recibidos</span>
+                  <button class="btn btn-secondary btn-sm" id="btn-refresh-inbox" onclick="refreshCurrentInboxMessages()" style="font-size:0.75rem; padding:0.25rem 0.5rem;">
+                    🔄 Consultar Mensajes
+                  </button>
+                </div>
+                <div id="inbox-messages-container" class="inbox-messages-box">
+                  <div style="text-align:center; padding:2rem; color:var(--text-muted); font-size:0.85rem;">
+                    Selecciona o crea un buzón para inspeccionar correos entrantes y códigos de verificación.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANEL CATÁLOGO DE PROVEEDORES DE CORREO OPSEC -->
+          <div class="panel" style="margin-top:1.5rem;">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Catálogo y Directrices OPSEC de Proveedores de Correo</div>
+                <div class="panel-subtitle">Matriz de selección para identidades Sock Puppet según requerimientos legales, cifrado y anonimato</div>
+              </div>
+              <div style="display:flex; gap:0.25rem;" id="email-prov-filter-group">
+                <button class="pill pill-cyan active" onclick="filterEmailProviders('all', this)">Todos (10)</button>
+                <button class="pill pill-cyan" onclick="filterEmailProviders('permanent_encrypted', this)">Cifrados E2EE (6)</button>
+                <button class="pill pill-cyan" onclick="filterEmailProviders('alias_forwarding', this)">Alias & Reenvío (2)</button>
+                <button class="pill pill-cyan" onclick="filterEmailProviders('disposable_api', this)">Desechables (2)</button>
+              </div>
+            </div>
+
+            <div class="metrics-row" id="email-providers-grid" style="margin-top:1rem; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));">
+              <!-- Rellenado dinámicamente -->
             </div>
           </div>
         </section>

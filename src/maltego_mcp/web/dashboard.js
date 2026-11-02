@@ -13,6 +13,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initSSE();
   loadStatus();
   loadAccounts();
+  loadBurnerInboxesFromStorage();
+  loadEmailProviders();
   loadProviders();
   loadCTIFeeds();
   loadTransforms();
@@ -146,6 +148,10 @@ function handleServerEvent(ev) {
   }
   if (ev.type === "accounts_updated") {
     loadAccounts();
+  }
+  if (ev.type === "inbox_created") {
+    appendLogEntry("INBOX", `Buzón efímero creado: ${ev.address}`);
+    triggerVisualPulse(0.7);
   }
   if (ev.type === "cti_synced") {
     loadCTIFeeds();
@@ -1914,5 +1920,333 @@ function roundRect(ctx, x, y, width, height, radius) {
   ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
   ctx.lineTo(x, y + radius);
   ctx.quadraticCurveTo(x, y, x + radius, y);
+}
+
+// ============================================================================
+// 10. Buzones Efímeros, Receptor de OTPs y Catálogo OPSEC de Correos
+// ============================================================================
+let burnerInboxes = [];
+let selectedInboxId = null;
+let allEmailProviders = [];
+
+function loadBurnerInboxesFromStorage() {
+  try {
+    const raw = localStorage.getItem("maltego_burner_inboxes");
+    if (raw) {
+      burnerInboxes = JSON.parse(raw);
+    }
+  } catch (e) {
+    burnerInboxes = [];
+  }
+  if (burnerInboxes.length > 0) {
+    selectedInboxId = burnerInboxes[0].inbox_id;
+  }
+  renderInboxList();
+  if (selectedInboxId) {
+    refreshCurrentInboxMessages();
+  }
+}
+
+function saveBurnerInboxesToStorage() {
+  try {
+    localStorage.setItem("maltego_burner_inboxes", JSON.stringify(burnerInboxes));
+  } catch (e) {
+    console.error("Error guardando buzones en localStorage", e);
+  }
+}
+
+async function createBurnerInbox() {
+  const btn = document.getElementById("btn-create-inbox");
+  const origText = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="width:12px; height:12px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:4px;"></span> Generando...`;
+  }
+
+  const saveSock = document.getElementById("chk-save-sockpuppet")?.checked || false;
+
+  try {
+    const res = await fetch("/api/inbox/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ save_as_sockpuppet: saveSock }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const inboxEntry = {
+        inbox_id: data.inbox_id,
+        address: data.address,
+        password: data.password,
+        token: data.token,
+        createdAt: new Date().toISOString(),
+      };
+      burnerInboxes.unshift(inboxEntry);
+      selectedInboxId = inboxEntry.inbox_id;
+      saveBurnerInboxesToStorage();
+      renderInboxList();
+      triggerVisualPulse(0.9);
+      appendLogEntry("INBOX", `Buzón listo: ${data.address}`);
+      refreshCurrentInboxMessages();
+      if (saveSock) {
+        loadAccounts();
+      }
+    } else {
+      alert(`Error al generar buzón: ${data.error || "respuesta desconocida"}`);
+    }
+  } catch (err) {
+    alert(`Error de red al crear buzón: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+}
+
+function renderInboxList() {
+  const container = document.getElementById("inbox-list");
+  const countPill = document.getElementById("inbox-count-pill");
+  if (countPill) countPill.textContent = `${burnerInboxes.length} activos`;
+  if (!container) return;
+
+  if (burnerInboxes.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-subtle); border-radius:8px;">
+        Ningún buzón temporal activo.<br>Haz clic en <strong>+ Generar Buzón Efímero</strong> para crear uno.
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = burnerInboxes
+    .map((ib) => {
+      const isSelected = ib.inbox_id === selectedInboxId;
+      const createdTime = ib.createdAt ? new Date(ib.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+      return `
+        <div class="inbox-card ${isSelected ? "active" : ""}" onclick="selectInbox('${ib.inbox_id}')">
+          <div class="inbox-card-header">
+            <span class="inbox-addr" title="${ib.address}">📧 ${ib.address}</span>
+            <span style="font-size:0.7rem; color:var(--text-muted);">${createdTime}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.4rem;">
+            <button class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="event.stopPropagation(); copyInboxAddress('${ib.address}')" title="Copiar dirección de correo">
+              📋 Copiar
+            </button>
+            <button class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.15rem 0.4rem; color:var(--accent-rose);" onclick="event.stopPropagation(); deleteBurnerInbox('${ib.inbox_id}')" title="Eliminar buzón de la sesión">
+              ✕
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function selectInbox(inboxId) {
+  selectedInboxId = inboxId;
+  renderInboxList();
+  refreshCurrentInboxMessages();
+}
+
+function deleteBurnerInbox(inboxId) {
+  burnerInboxes = burnerInboxes.filter((b) => b.inbox_id !== inboxId);
+  if (selectedInboxId === inboxId) {
+    selectedInboxId = burnerInboxes.length > 0 ? burnerInboxes[0].inbox_id : null;
+  }
+  saveBurnerInboxesToStorage();
+  renderInboxList();
+  if (selectedInboxId) {
+    refreshCurrentInboxMessages();
+  } else {
+    const container = document.getElementById("inbox-messages-container");
+    if (container) {
+      container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted); font-size:0.85rem;">Ningún buzón seleccionado.</div>`;
+    }
+  }
+}
+
+function copyInboxAddress(address) {
+  navigator.clipboard.writeText(address);
+  appendLogEntry("PORTAPAPELES", `Copiado correo: ${address}`);
+}
+
+function copyInboxOTP(otp) {
+  navigator.clipboard.writeText(otp);
+  appendLogEntry("OTP", `Código ${otp} copiado al portapapeles`);
+  triggerVisualPulse(0.7);
+}
+
+async function refreshCurrentInboxMessages() {
+  const container = document.getElementById("inbox-messages-container");
+  if (!container) return;
+
+  const currentInbox = burnerInboxes.find((b) => b.inbox_id === selectedInboxId);
+  if (!currentInbox) {
+    container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted); font-size:0.85rem;">Ningún buzón seleccionado.</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="text-align:center; padding:2rem; color:var(--text-muted); font-size:0.85rem;">
+      <span class="spinner" style="width:16px; height:16px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:6px;"></span>
+      Consultando mensajes para ${currentInbox.address}...
+    </div>`;
+
+  try {
+    const res = await fetch(`/api/inbox/messages?token=${encodeURIComponent(currentInbox.token)}`);
+    const data = await res.json();
+    const msgs = data.messages || [];
+
+    if (msgs.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:2.5rem 1rem; color:var(--text-muted); font-size:0.85rem;">
+          <div style="font-size:1.5rem; margin-bottom:0.5rem;">📭</div>
+          Bandeja vacía.<br>
+          Esperando mensajes de activación para <code>${currentInbox.address}</code>.<br>
+          <span style="font-size:0.75rem; color:var(--text-secondary);">Haz clic en <strong>🔄 Consultar Mensajes</strong> cuando completes el formulario de registro en la web objetivo.</span>
+        </div>`;
+      return;
+    }
+
+    // Para cada mensaje, recuperar detalles con extracción de OTP y enlaces
+    const detailedHtml = [];
+    for (const m of msgs) {
+      let detail = null;
+      try {
+        const dRes = await fetch(`/api/inbox/messages/${m.id}?token=${encodeURIComponent(currentInbox.token)}`);
+        detail = await dRes.json();
+      } catch (e) {
+        detail = null;
+      }
+
+      const otps = detail && detail.detected_otps ? detail.detected_otps : [];
+      const links = detail && detail.detected_links ? detail.detected_links : [];
+      const msgDate = m.created_at ? new Date(m.created_at).toLocaleTimeString() : "";
+
+      let otpHtml = "";
+      if (otps.length > 0) {
+        otpHtml = otps
+          .map(
+            (code) => `
+          <div class="otp-alert-box">
+            <div>
+              <div style="font-size:0.7rem; text-transform:uppercase; font-weight:700; color:var(--accent-emerald);">🔑 Código de Activación / 2FA Detectado</div>
+              <div class="otp-code">${code}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="copyInboxOTP('${code}')">📋 Copiar Código</button>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      let linksHtml = "";
+      if (links.length > 0) {
+        linksHtml = links
+          .map(
+            (url) => `
+          <div class="activation-url-box">
+            <div style="font-size:0.7rem; font-weight:600; color:var(--accent-cyan); margin-bottom:0.2rem;">🔗 Enlace de Verificación / Activación:</div>
+            <a href="${url}" target="_blank" rel="noopener noreferrer" style="color:#67e8f9; text-decoration:underline;">${url}</a>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      detailedHtml.push(`
+        <div class="inbox-msg-card">
+          <div class="inbox-msg-meta">
+            <span>De: <strong>${m.from || "Desconocido"}</strong></span>
+            <span>${msgDate}</span>
+          </div>
+          <div class="inbox-msg-subject">${m.subject || "(Sin asunto)"}</div>
+          ${otpHtml}
+          ${linksHtml}
+          <div style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4; margin-top:0.4rem; white-space:pre-wrap; max-height:120px; overflow-y:auto; background:rgba(0,0,0,0.2); padding:0.4rem; border-radius:4px;">
+            ${(detail && detail.text) ? detail.text.slice(0, 500) : (m.intro || "")}
+          </div>
+        </div>
+      `);
+    }
+
+    container.innerHTML = detailedHtml.join("");
+  } catch (err) {
+    container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--accent-rose); font-size:0.85rem;">Error al recuperar mensajes: ${err.message}</div>`;
+  }
+}
+
+// Catálogo OPSEC de Proveedores de Correo
+async function loadEmailProviders() {
+  const grid = document.getElementById("email-providers-grid");
+  if (!grid) return;
+
+  try {
+    const res = await fetch("/api/inbox/providers");
+    const data = await res.json();
+    allEmailProviders = data.providers || [];
+    renderEmailProviders(allEmailProviders);
+  } catch (err) {
+    grid.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;">No se pudo cargar el catálogo de proveedores de correo.</div>`;
+  }
+}
+
+function filterEmailProviders(category, btn) {
+  const filterGroup = document.getElementById("email-prov-filter-group");
+  if (filterGroup) {
+    filterGroup.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  }
+  if (btn) btn.classList.add("active");
+
+  if (category === "all") {
+    renderEmailProviders(allEmailProviders);
+  } else {
+    renderEmailProviders(allEmailProviders.filter((p) => p.category === category));
+  }
+}
+
+function renderEmailProviders(providers) {
+  const grid = document.getElementById("email-providers-grid");
+  if (!grid) return;
+
+  if (providers.length === 0) {
+    grid.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;">Ningún proveedor en esta categoría.</div>`;
+    return;
+  }
+
+  grid.innerHTML = providers
+    .map((p) => {
+      const opsecList = (p.recommended_opsec || [])
+        .map((tip) => `<li>${tip}</li>`)
+        .join("");
+
+      return `
+        <div class="email-prov-card">
+          <div>
+            <div class="email-prov-title">
+              <span>${p.name}</span>
+              <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.15rem 0.45rem;">
+                Web ↗
+              </a>
+            </div>
+            <div style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">${p.description}</div>
+            
+            <div class="email-prov-tags">
+              <span class="email-prov-tag">📍 ${p.jurisdiction}</span>
+              <span class="email-prov-tag">🔒 ${p.encryption_type}</span>
+              <span class="email-prov-tag">${p.requires_phone ? "📱 Teléfono req." : "🚫 Sin teléfono"}</span>
+              ${p.tor_onion_available ? '<span class="email-prov-tag" style="color:var(--accent-purple);">🧅 Tor .onion</span>' : ""}
+            </div>
+          </div>
+
+          <div class="email-prov-opsec">
+            <div style="font-weight:600; color:var(--accent-cyan); margin-bottom:0.2rem;">🛡️ Pautas OPSEC Recomendadas:</div>
+            <ul style="margin:0; padding-left:1.1rem; line-height:1.35;">
+              ${opsecList}
+            </ul>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 

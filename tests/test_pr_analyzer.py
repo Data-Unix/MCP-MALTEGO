@@ -73,4 +73,3 @@ def test_report_formatting_and_risk() -> None:
     assert "MCP Maltego Governance" in md
     assert "@Data-Unix" in md
     assert "20 / 20" in md
-

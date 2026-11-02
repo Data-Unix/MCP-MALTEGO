@@ -39,6 +39,7 @@ from maltego_mcp.accounts import (
 )
 from maltego_mcp.config import Settings
 from maltego_mcp.cti_feeds import _connect, ensure_seed_cti_db, sync_deepdark_cti
+from maltego_mcp.inbox import PROVIDER_CATALOG, MailTmClient
 from maltego_mcp.service import OsintService
 
 logger = logging.getLogger("maltego_mcp.web")
@@ -562,6 +563,74 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
 
         return StreamingResponse(sse_stream(), media_type="text/event-stream")
 
+    async def api_inbox_providers(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        return JSONResponse({"providers": [p.to_dict() for p in PROVIDER_CATALOG]})
+
+    async def api_inbox_create(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = await request.json() if "application/json" in request.headers.get("content-type", "") else {}
+        except Exception:
+            body = {}
+        desired_addr = str(body.get("address") or "").strip()
+        desired_pwd = str(body.get("password") or "").strip()
+        save_as_sock = bool(body.get("save_as_sockpuppet", False))
+
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            client = MailTmClient(http)
+            res = await client.create_inbox(address=desired_addr, password=desired_pwd)
+
+        if not res.get("ok"):
+            return JSONResponse(res, status_code=400)
+
+        if save_as_sock and res.get("address"):
+            try:
+                acc = SocialAccount(
+                    id=f"mailtm_{res['address'].split('@')[0]}",
+                    platform="custom",
+                    handle=res["address"],
+                    token=res.get("token", ""),
+                    target_site="mail.tm",
+                    enabled=True,
+                )
+                save_account_to_toml(settings.home, acc)
+                broadcast_event({"type": "account_created", "account_id": acc.id, "platform": "custom"})
+            except Exception as e:
+                logger.warning("No se pudo persistir buzón en accounts.toml: %s", e)
+
+        broadcast_event({"type": "inbox_created", "address": res.get("address")})
+        return JSONResponse(res)
+
+    async def api_inbox_messages(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        token = request.headers.get("x-inbox-token") or request.query_params.get("token") or ""
+        if not token:
+            return JSONResponse({"error": "Falta token de autenticación del buzón"}, status_code=400)
+
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            client = MailTmClient(http)
+            msgs = await client.get_messages(token)
+        return JSONResponse({"ok": True, "messages": msgs, "count": len(msgs)})
+
+    async def api_inbox_message_detail(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        msg_id = str(request.path_params.get("message_id") or "").strip()
+        token = request.headers.get("x-inbox-token") or request.query_params.get("token") or ""
+        if not token or not msg_id:
+            return JSONResponse({"error": "Falta token o message_id"}, status_code=400)
+
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            client = MailTmClient(http)
+            detail = await client.get_message_detail(token, msg_id)
+        if not detail.get("ok"):
+            return JSONResponse(detail, status_code=404 if "No se pudo" in detail.get("error", "") else 400)
+        return JSONResponse(detail)
+
     # Registro de rutas en la app Starlette
     app.add_route("/", root_view, methods=["GET"])
     app.add_route("/dashboard", root_view, methods=["GET"])
@@ -579,6 +648,10 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
     app.add_route("/api/accounts/{account_id}", api_delete_account, methods=["DELETE"])
     app.add_route("/api/accounts/verify", api_verify_account, methods=["POST"])
     app.add_route("/api/accounts/generate-persona", api_generate_persona, methods=["POST"])
+    app.add_route("/api/inbox/providers", api_inbox_providers, methods=["GET"])
+    app.add_route("/api/inbox/create", api_inbox_create, methods=["POST"])
+    app.add_route("/api/inbox/messages", api_inbox_messages, methods=["GET"])
+    app.add_route("/api/inbox/messages/{message_id}", api_inbox_message_detail, methods=["GET"])
     app.add_route("/api/providers", api_providers, methods=["GET"])
     app.add_route("/api/cti-feeds", api_cti_feeds, methods=["GET"])
     app.add_route("/api/cti-feeds/sync", api_cti_sync, methods=["POST"])
