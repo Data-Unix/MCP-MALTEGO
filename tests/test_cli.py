@@ -137,3 +137,17 @@ def test_logs_de_httpx_nunca_en_debug() -> None:
     configure_logging("DEBUG")
     assert logging.getLogger("httpx").level == logging.WARNING
     configure_logging("INFO")
+
+
+def test_dashboard_cli_port_collision(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    import uvicorn
+
+    def mock_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise OSError("Address already in use")
+
+    monkeypatch.setattr(uvicorn, "run", mock_run)
+    res = main(["dashboard", "--port", "8000", "--no-browser"])
+    assert res == 1
+    err = capsys.readouterr().err
+    assert "no se pudo iniciar el panel" in err
+    assert "8001" in err

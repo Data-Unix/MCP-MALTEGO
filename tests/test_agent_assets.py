@@ -73,8 +73,13 @@ def test_no_escribe_a_traves_de_enlaces(tmp_path: Path, monkeypatch) -> None:  #
 
     try:
         link.symlink_to(outside)
-    except OSError as exc:  # Windows sin modo desarrollador ni privilegio SeCreateSymbolicLink
-        pytest.skip(f"el sistema no permite crear enlaces simbólicos: {exc}")
+    except OSError:
+        # En Windows sin modo desarrollador ni privilegio SeCreateSymbolicLink,
+        # se comprueba directamente la barrera de seguridad contra rutas externas.
+        with pytest.raises(SystemExit, match="fuera"):
+            mod.ensure_safe([outside])
+        assert outside.read_text(encoding="utf-8") == "no tocar"
+        return
     try:
         with pytest.raises(SystemExit, match="fuera"):
             mod.main([])
