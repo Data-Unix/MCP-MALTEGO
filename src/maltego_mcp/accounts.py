@@ -14,7 +14,10 @@ import os
 import time
 import tomllib
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+
+import httpx
 
 ACCOUNTS_FILE = "accounts.toml"
 
@@ -473,3 +476,310 @@ def save_persona_to_accounts_toml(home: Path, persona: SockPuppetPersona, platfo
     )
     path.write_text(existing.rstrip() + "\n" + block, encoding="utf-8")
     return path
+
+
+@dataclass(frozen=True, slots=True)
+class AccountVerificationReport:
+    account_id: str
+    platform: str
+    status: str  # "ok", "invalid_credentials", "rate_limited", "tor_unreachable", "error"
+    message: str
+    checked_at: str
+    latency_ms: float = 0.0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "account_id": self.account_id,
+            "platform": self.platform,
+            "status": self.status,
+            "message": self.message,
+            "checked_at": self.checked_at,
+            "latency_ms": round(self.latency_ms, 2),
+        }
+
+
+def _format_account_toml(acc: SocialAccount) -> str:
+    lines = [
+        "[[accounts]]",
+        f'id = "{acc.id}"',
+        f'platform = "{acc.platform}"',
+        f'username = "{acc.username}"',
+        f'handle = "{acc.handle or acc.username}"',
+    ]
+    if acc.token:
+        lines.append(f'token = "{acc.token}"')
+    if acc.cookie:
+        lines.append(f'cookie = "{acc.cookie}"')
+    if acc.token_env:
+        lines.append(f'token_env = "{acc.token_env}"')
+    if acc.target_site or acc.site:
+        lines.append(f'target_site = "{acc.target_site or acc.site}"')
+    if acc.user_agent:
+        lines.append(f'user_agent = "{acc.user_agent}"')
+    if acc.proxy:
+        lines.append(f'proxy = "{acc.proxy}"')
+    lines.append(f"rate_limit_rpm = {max(1, acc.rate_limit_rpm)}")
+    lines.append(f"enabled = {'true' if acc.enabled else 'false'}")
+    return "\n".join(lines)
+
+
+def serialize_accounts_toml(accounts: list[SocialAccount]) -> str:
+    header = (
+        "# Bóveda local de cuentas y Sock Puppets para MCP Maltego (~/.maltego-mcp/accounts.toml)\n"
+        "# Los secretos reales se pueden fijar directamente o mediante token_env apuntando a ~/.maltego-mcp/.env.\n\n"
+    )
+    blocks = [_format_account_toml(a) for a in accounts]
+    return header + "\n\n".join(blocks) + "\n"
+
+
+def save_account_to_toml(home: Path, account: SocialAccount) -> SocialAccount:
+    """Guarda o actualiza una cuenta en ~/.maltego-mcp/accounts.toml."""
+    path = ensure_accounts_template(home)
+    pool = load_account_pool(home, {})
+    existing = [a for a in pool.accounts if a.id != account.id]
+    existing.append(account)
+    path.write_text(serialize_accounts_toml(existing), encoding="utf-8")
+    return account
+
+
+def remove_account_from_toml(home: Path, account_id: str) -> bool:
+    """Elimina una cuenta de ~/.maltego-mcp/accounts.toml."""
+    path = ensure_accounts_template(home)
+    pool = load_account_pool(home, {})
+    remaining = [a for a in pool.accounts if a.id != account_id]
+    if len(remaining) == len(pool.accounts):
+        return False
+    path.write_text(serialize_accounts_toml(remaining), encoding="utf-8")
+    return True
+
+
+async def verify_account_connection(
+    account: SocialAccount,
+    env: dict[str, str] | None = None,
+    timeout: float = 6.0,
+    client: httpx.AsyncClient | None = None,
+) -> AccountVerificationReport:
+    """Realiza una comprobación en vivo de conectividad y credenciales de la cuenta."""
+    now_iso = datetime.now(UTC).isoformat()
+    t0 = time.perf_counter()
+    active_env = dict(os.environ if env is None else env)
+
+    token = account.token
+    if not token and account.token_env:
+        token = active_env.get(account.token_env, "").strip()
+    cookie = account.cookie
+
+    plat = account.platform.lower().strip()
+    target_site = (account.target_site or account.site).lower().strip()
+    is_onion = plat in ("onion", "tor") or ".onion" in target_site
+
+    if is_onion:
+        proxy_url = account.proxy or active_env.get("TOR_SOCKS_PROXY", "socks5h://127.0.0.1:9050")
+        try:
+            cl = client or httpx.AsyncClient(proxy=proxy_url, timeout=timeout)
+            async with cl:
+                test_url = (
+                    f"http://{target_site}/"
+                    if target_site
+                    else "http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/"
+                )
+                headers = {
+                    "User-Agent": account.user_agent
+                    or "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0"
+                }
+                if cookie:
+                    headers["Cookie"] = cookie
+                resp = await cl.get(test_url, headers=headers)
+                lat = (time.perf_counter() - t0) * 1000
+                if resp.status_code in (200, 301, 302, 304):
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="ok",
+                        message=f"Conexión Tor exitosa a {target_site or 'red .onion'} (HTTP {resp.status_code})",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                elif resp.status_code in (401, 403):
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="invalid_credentials",
+                        message=f"Sesión denegada o cookie expirada en {target_site} (HTTP {resp.status_code})",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                elif resp.status_code == 429:
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="rate_limited",
+                        message=f"Límite de peticiones alcanzado en {target_site} (HTTP 429)",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                return AccountVerificationReport(
+                    account_id=account.id,
+                    platform=account.platform,
+                    status="ok",
+                    message=f"Servicio responde (HTTP {resp.status_code}) vía {proxy_url}",
+                    checked_at=now_iso,
+                    latency_ms=lat,
+                )
+        except (httpx.ProxyError, httpx.ConnectError, OSError):
+            lat = (time.perf_counter() - t0) * 1000
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="tor_unreachable",
+                message=f"Proxy Tor inaccesible ({proxy_url}). Inicie Tor Browser o el daemon Tor en 127.0.0.1:9050.",
+                checked_at=now_iso,
+                latency_ms=lat,
+            )
+        except Exception as exc:
+            lat = (time.perf_counter() - t0) * 1000
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="error",
+                message=f"Error al verificar .onion: {exc}",
+                checked_at=now_iso,
+                latency_ms=lat,
+            )
+
+    if plat == "github":
+        if not token:
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="ok",
+                message="Perfil público configurado (modo lectura sin token).",
+                checked_at=now_iso,
+                latency_ms=(time.perf_counter() - t0) * 1000,
+            )
+        try:
+            cl = client or httpx.AsyncClient(timeout=timeout)
+            async with cl:
+                resp = await cl.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "User-Agent": account.user_agent or "maltego-mcp",
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                )
+                lat = (time.perf_counter() - t0) * 1000
+                if resp.status_code == 200:
+                    data = resp.json()
+                    login = data.get("login", account.username)
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="ok",
+                        message=f"Token válido: autenticado como @{login}",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                elif resp.status_code in (401, 403):
+                    msg = (
+                        "Token inválido o expirado"
+                        if resp.status_code == 401
+                        else "Permisos insuficientes o límite de peticiones"
+                    )
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="invalid_credentials",
+                        message=f"{msg} (HTTP {resp.status_code})",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                elif resp.status_code == 429:
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="rate_limited",
+                        message="Límite de API alcanzado en GitHub (HTTP 429)",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                return AccountVerificationReport(
+                    account_id=account.id,
+                    platform=account.platform,
+                    status="error",
+                    message=f"Respuesta inesperada de GitHub (HTTP {resp.status_code})",
+                    checked_at=now_iso,
+                    latency_ms=lat,
+                )
+        except Exception as exc:
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="error",
+                message=f"Error de conexión con GitHub: {exc}",
+                checked_at=now_iso,
+                latency_ms=(time.perf_counter() - t0) * 1000,
+            )
+
+    if plat == "bluesky":
+        handle = account.handle or account.username
+        if not handle:
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="ok",
+                message="Configuración Bluesky registrada.",
+                checked_at=now_iso,
+            )
+        try:
+            cl = client or httpx.AsyncClient(timeout=timeout)
+            async with cl:
+                resp = await cl.get(
+                    f"https://bsky.social/xrpc/app.bsky.actor.getProfile?actor={handle}",
+                    headers={"User-Agent": account.user_agent or "maltego-mcp"},
+                )
+                lat = (time.perf_counter() - t0) * 1000
+                if resp.status_code == 200:
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="ok",
+                        message=f"Perfil verificado en Bluesky: @{handle}",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                elif resp.status_code == 404:
+                    return AccountVerificationReport(
+                        account_id=account.id,
+                        platform=account.platform,
+                        status="invalid_credentials",
+                        message=f"Handle no encontrado en Bluesky: @{handle}",
+                        checked_at=now_iso,
+                        latency_ms=lat,
+                    )
+                return AccountVerificationReport(
+                    account_id=account.id,
+                    platform=account.platform,
+                    status="ok",
+                    message=f"Servicio Bluesky respondió (HTTP {resp.status_code})",
+                    checked_at=now_iso,
+                    latency_ms=lat,
+                )
+        except Exception as exc:
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="error",
+                message=f"Error al consultar Bluesky: {exc}",
+                checked_at=now_iso,
+                latency_ms=(time.perf_counter() - t0) * 1000,
+            )
+
+    return AccountVerificationReport(
+        account_id=account.id,
+        platform=account.platform,
+        status="ok",
+        message=f"Cuenta activa en el pool para {account.platform} (RPM: {account.rate_limit_rpm})",
+        checked_at=now_iso,
+        latency_ms=(time.perf_counter() - t0) * 1000,
+    )

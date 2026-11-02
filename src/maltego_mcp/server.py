@@ -91,6 +91,7 @@ def build_service(settings: Settings) -> OsintService:
 def create_server(settings: Settings | None = None, service: OsintService | None = None) -> MCPServer:
     svc = service or build_service(settings or Settings(data_file=None))
     mcp = MCPServer(name="maltego_mcp", version=__version__, instructions=INSTRUCTIONS)
+    mcp._service = svc  # type: ignore[attr-defined]
     register_tools(mcp, svc)
     return mcp
 
@@ -130,7 +131,12 @@ def main(argv: list[str] | None = None) -> None:
     except MaltegoMcpError as exc:
         parser.exit(2, f"maltego-mcp: error de configuración: {exc}\n")
     if args.transport == "http":
+        from maltego_mcp.web_app import attach_dashboard_routes
+
         app = server.streamable_http_app(stateless_http=True, json_response=True, host=args.host)
+        svc = getattr(server, "_service", None) or build_service(settings)
+        attach_dashboard_routes(app, svc, settings)
+        logger.info("Dashboard web y suite de gestión activos en http://%s:%d/", args.host, args.port)
         logger.info("Streamable HTTP stateless en http://%s:%d/mcp", args.host, args.port)
         uvicorn.run(
             app,
