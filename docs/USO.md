@@ -144,6 +144,38 @@ Crea el caso demo y ejecuta la cadena EmailToDomain, DomainToWebsite, DomainToIP
 Luego dame el resumen del caso y expórtalo a csv.
 ```
 
+## Consola Web y Visualizador de Grafos OSINT (`maltegoctl dashboard`)
+
+Inicia la consola de control interactiva local con aceleración gráfica:
+
+```bash
+uv run maltegoctl dashboard --port 8000
+```
+
+### Capacidades del Visualizador de Grafos en Vivo:
+- **Disposiciones Espaciales Multimodales (Layouts)**:
+  - *Orgánico (Fuerzas físicas de Fruchterman-Reingold)*: simulación elástica con amortiguamiento.
+  - *Jerárquico (Piramidal Top-Down)*: entidad objetivo y dictámenes arriba, proveedores e intermediarios en medio, evidencias y campañas abajo.
+  - *Radial (Órbitas concéntricas)*: distribución por saltos de distancia topológica.
+  - *Por Categoría (Bloques espaciales)*: agrupación por familias de entidades (Empresas, Redes, Personas, Amenazas, Ubicaciones).
+- **Filtrado Multidimensional**:
+  - *Filtrado por Relaciones (Aristas)*: selector selectivo de tipos de aristas con contadores en vivo (`owns`, `operates`, `resolves_to`, `hosts`, etc.).
+  - *Filtrado por Familias de Entidades*: selección granular de tipos de nodo.
+  - *Certeza Continua (0% - 100%)*: deslizador para aislar evidencias confirmadas de meros indicios.
+  - *Distancia Topológica (Ego-Network / Hops)*: filtro por 1 salto (perímetro inmediato), 2 saltos o grafo completo.
+  - *Ocultación de Nodos Huérfanos*: depura el lienzo eliminando entidades desconectadas.
+  - *Buscador Reactivo en Tiempo Real*: caja de búsqueda con autoenfoque y centrado suave de cámara.
+- **Renderizado Impeccable de Alta Fidelidad**:
+  - Glifos vectoriales geométricos dentro de los nodos según su tipo (edificio, servidor, avatar, pin, triángulo de alerta, globo terráqueo).
+  - Anillo perimetral de confianza radial (*Confidence Ring*) que visualiza el grado de certeza perimetral.
+  - Aristas con curvas cuadráticas Bézier automáticas para conexiones paralelas y bidireccionales.
+  - Modo de enfoque (*Focus Mode*): atenuación de nodos y enlaces no conectados al pasar el cursor o seleccionar.
+  - Micro-tarjeta flotante (*Tooltip*) con información de inteligencia al vuelo.
+- **Bóveda de Sock Puppets & Buzones Efímeros**:
+  - Generador de buzones temporales con `Mail.tm` sin registro previo.
+  - Extractor automático de códigos 2FA/OTP y enlaces de activación por regex multilingüe.
+  - Catálogo OPSEC con 10 proveedores clasificados por nivel de privacidad (*Proton Mail, Tuta, Disroot, Onionmail, Addy.io, SimpleLogin*, etc.).
+
 ## Backends del grafo
 - **memory** (por defecto): verificado con tests y de punta a punta. Guarda todo el grafo en un JSON en cada
   escritura; pensado para uso local y casos de tamaño moderado (miles de entidades).

@@ -1023,3 +1023,232 @@ body {
   color: var(--text-secondary);
 }
 
+/* ============================================================================
+   Filtros Multidimensionales, Buscador Reactivo y Tooltip del Grafo (Impeccable)
+   ============================================================================ */
+.graph-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.graph-search-box input {
+  padding-right: 24px;
+  width: 220px;
+  transition: width 200ms ease, border-color 200ms ease;
+  font-size: 11px;
+}
+
+.graph-search-box input:focus {
+  width: 280px;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 245, 255, 0.2);
+}
+
+.graph-search-box button {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.graph-search-box button:hover {
+  color: var(--text-primary);
+}
+
+.graph-filter-drawer {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 320px;
+  max-height: calc(100% - 20px);
+  background: rgba(13, 17, 30, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 245, 255, 0.25);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: drawerFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes drawerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.drawer-header {
+  padding: 0.65rem 0.85rem;
+  background: rgba(0, 245, 255, 0.05);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.drawer-content {
+  padding: 0.85rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.filter-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.mini-text-btn {
+  background: transparent;
+  border: none;
+  font-size: 10px;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mini-text-btn:hover {
+  color: #67e8f9;
+}
+
+.pill-group-hops {
+  display: flex;
+  gap: 4px;
+}
+
+.pill-group-hops .pill {
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all 150ms ease;
+}
+
+.pill-group-hops .pill.active {
+  background: var(--accent-cyan);
+  color: #050811;
+  font-weight: 700;
+  border-color: var(--accent-cyan);
+}
+
+.filter-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding-right: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.filter-check-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.filter-check-item:hover {
+  color: var(--text-primary);
+}
+
+.filter-check-item label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.filter-check-item input[type="checkbox"] {
+  accent-color: var(--accent-cyan);
+}
+
+.filter-count-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.graph-node-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(10, 14, 25, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 90;
+  max-width: 260px;
+  line-height: 1.35;
+  transition: opacity 120ms ease;
+}
+
+.graph-node-tooltip .tooltip-title {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+
+.graph-node-tooltip .tooltip-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 3px;
+}
+
+

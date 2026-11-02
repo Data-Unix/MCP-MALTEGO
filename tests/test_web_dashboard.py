@@ -31,6 +31,8 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "MCP Maltego" in r_root.text
     assert "Centro de Mando" in r_root.text
     assert "bg-canvas" in r_root.text
+    assert "graph-filter-drawer" in r_root.text
+    assert "graph-search-input" in r_root.text
 
     r_dash = client.get("/dashboard")
     assert r_dash.status_code == 200
@@ -40,10 +42,13 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     r_css = client.get("/dashboard.css")
     assert r_css.status_code == 200
     assert "--bg-base" in r_css.text
+    assert ".graph-filter-drawer" in r_css.text
 
     r_js = client.get("/dashboard.js")
     assert r_js.status_code == 200
     assert "initBackgroundCanvas" in r_js.text
+    assert "applyAllGraphFilters" in r_js.text
+    assert "drawNodeGlyph" in r_js.text
 
     r_worker = client.get("/bg-worker.js")
     assert r_worker.status_code == 200

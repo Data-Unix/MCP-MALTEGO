@@ -39,7 +39,7 @@
 | :--- | :--- | :--- |
 | **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)**. Includes **28 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
 | **Layer 1: Investigation Memory** | Graph Memory & Copilot | Local deterministic case storage (`~/.maltego-mcp/graph.json`), entity fusion, step auditing, autonomous multi-round Machines, and `osint_investigate` copilot. |
-| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (Canvas Web Worker with 4 layouts: Organic, Hierarchical, Radial, Categorized), Sock Puppet OPSEC vault, Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
+| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Sock Puppet OPSEC vault with burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
 
 ---
 

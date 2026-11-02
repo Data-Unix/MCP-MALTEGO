@@ -132,4 +132,3 @@ async def test_mailtm_client_mocked() -> None:
         assert detail["ok"] is True
         assert "789123" in detail["detected_otps"]
         assert any("verify?token=" in u for u in detail["detected_links"])
-

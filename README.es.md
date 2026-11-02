@@ -39,7 +39,7 @@
 | :--- | :--- | :--- |
 | **Capa 0: Núcleo Gratuito** | CLI y Servidor MCP | Ejecución directa (`npx mcp-maltego`). Genera y lee archivos `.mtgx` para **Maltego Community Edition (CE)**. Incluye **28 transforms integrados sin API key** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan) y motor de plugins comunitarios (`@custom_transform`). **100% Local y Gratuito.** |
 | **Capa 1: Memoria de Casos** | Memoria de Grafo y Copiloto | Almacenamiento local determinista de casos (`~/.maltego-mcp/graph.json`), fusión de identidades, auditoría forense de pasos, Machines autónomas y copiloto `osint_investigate`. |
-| **Capa 2: Plataforma Avanzada** | Consola Web y Bóveda CTI | Web Dashboard interactivo (Canvas Web Worker con 4 layouts: Orgánico, Jerárquico, Radial, Por Categoría), Bóveda de Sock Puppets OPSEC, feeds CTI Tor/Dark Web y persistencia opcional en clúster Azure Cosmos DB Gremlin. |
+| **Capa 2: Plataforma Avanzada** | Consola Web y Bóveda CTI | Web Dashboard interactivo (`maltegoctl dashboard`) con aceleración por Web Worker y 4 layouts (Orgánico, Jerárquico, Radial, Por Categoría), filtrado multidimensional (aristas, entidades, certeza continua, saltos y buscador en vivo), renderizado vectorial Impeccable (iconos en canvas, anillos de confianza y aristas Bézier), Bóveda de Sock Puppets OPSEC con buzones efímeros (Mail.tm + extractor OTP), feeds CTI Tor/Dark Web y persistencia opcional en clúster Azure Cosmos DB Gremlin. |
 
 ---
 

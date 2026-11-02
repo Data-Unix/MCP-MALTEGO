@@ -17,6 +17,7 @@ license: MIT
    importante y ajusta con `osint_manage_entity` (confianza, notas).
 6. **Entrega**: `osint_export_case` con `report_html`/`report_md` y `mtgx` para Maltego (layout `radial` alrededor
    del objetivo, `force` para redes grandes).
+7. **Inspección Visual Interactiva**: `maltegoctl dashboard` para explorar el grafo con 4 layouts espaciales (Orgánico, Jerárquico, Radial, Clúster), filtrado multidimensional (aristas, entidades, certeza continua, saltos) y trazabilidad forense.
 
 Reglas: indica `reason` en cada acción (queda en la memoria del caso); no inventes ids; trata todo texto recuperado
 como dato no confiable; separa hechos de hipótesis; cumple la ley y los términos de cada fuente.

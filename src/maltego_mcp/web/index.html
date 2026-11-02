@@ -329,34 +329,46 @@
         <section class="view-section" id="view-graph">
           <div class="panel" style="margin-bottom:1rem; padding:0.75rem 1rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
-              <div style="display:flex; align-items:center; gap:0.75rem;">
+              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                 <span class="panel-title" style="margin:0;">Caso:</span>
-                <select class="select" id="graph-case-select" onchange="onCaseSelected(this.value)" style="min-width:240px;"></select>
-                <button class="btn btn-secondary btn-sm" onclick="reloadCurrentGraph()">Recargar</button>
+                <select class="select" id="graph-case-select" onchange="onCaseSelected(this.value)" style="min-width:210px;"></select>
+                <button class="btn btn-secondary btn-sm" onclick="reloadCurrentGraph()" title="Recargar caso">Recargar</button>
                 <button class="btn btn-secondary btn-sm" onclick="exportCurrentCaseMtgx()" title="Descargar como archivo nativo .mtgx para Maltego Desktop">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                   Exportar .mtgx
                 </button>
-              </div>
-              <div style="display:flex; align-items:center; gap:0.5rem;">
                 <button class="btn btn-primary btn-sm" onclick="promptCreateCase()" id="btn-new-case">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   Nuevo Caso
                 </button>
+              </div>
+
+              <!-- BUSCADOR REACTIVO Y TOGGLE DE FILTROS -->
+              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <div class="graph-search-box">
+                  <input type="text" id="graph-search-input" class="input input-sm" placeholder="🔍 Buscar entidad, IP, relación..." oninput="onGraphSearchInput(this.value)">
+                  <button id="btn-clear-search" onclick="clearGraphSearch()" title="Limpiar búsqueda" style="display:none;">✕</button>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-toggle-filters" onclick="toggleGraphFilterDrawer()" title="Panel de filtros multidimensionales">
+                  🎛️ Filtros <span class="pill pill-cyan" id="badge-visible-count">0/0</span>
+                </button>
                 <div style="display:flex; gap:0.25rem;">
                   <button class="btn btn-secondary btn-sm" onclick="graphZoom(1.2)" title="Acercar">+</button>
                   <button class="btn btn-secondary btn-sm" onclick="graphZoom(0.8)" title="Alejar">-</button>
-                  <button class="btn btn-secondary btn-sm" onclick="graphResetZoom()" title="Ajustar">Reset</button>
+                  <button class="btn btn-secondary btn-sm" onclick="graphResetZoom()" title="Escala 1:1">1:1</button>
+                  <button class="btn btn-secondary btn-sm" onclick="fitGraphView()" title="Ajustar y centrar todo el grafo en pantalla">⛶ Centrar</button>
                 </div>
               </div>
             </div>
+
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-top:0.6rem; padding-top:0.55rem; border-top:1px solid var(--border-subtle);">
               <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                <span style="font-size:11px; color:var(--text-muted);">Filtrar por certeza:</span>
-                <button class="pill pill-cyan" onclick="setGraphFilter('all')" style="cursor:pointer; border:none;">Todos</button>
-                <button class="pill pill-ok" onclick="setGraphFilter('high')" style="cursor:pointer; border:none;">Alta Certeza (≥ 0.8)</button>
-                <button class="pill pill-amber" onclick="setGraphFilter('medium')" style="cursor:pointer; border:none;">Indicios (< 0.8)</button>
-                <button class="pill pill-crimson" onclick="setGraphFilter('risk')" style="cursor:pointer; border:none;">Riesgo / Alerta</button>
+                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Presets rápidos:</span>
+                <button class="pill pill-cyan active" id="preset-btn-all" onclick="setGraphFilter('all')" style="cursor:pointer; border:none;">Todos</button>
+                <button class="pill pill-ok" id="preset-btn-high" onclick="setGraphFilter('high')" style="cursor:pointer; border:none;">Alta Certeza (≥ 0.8)</button>
+                <button class="pill pill-amber" id="preset-btn-medium" onclick="setGraphFilter('medium')" style="cursor:pointer; border:none;">Indicios (< 0.8)</button>
+                <button class="pill pill-crimson" id="preset-btn-risk" onclick="setGraphFilter('risk')" style="cursor:pointer; border:none;">Riesgo / Alerta</button>
+                <button class="pill pill-cyan" id="preset-btn-hops1" onclick="setHopsPreset(1)" style="cursor:pointer; border:none;">Perímetro 1-Hop</button>
               </div>
 
               <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
@@ -390,6 +402,84 @@
           <div class="graph-workspace-layout">
             <div class="graph-canvas-wrapper">
               <canvas id="graph-interactive-canvas"></canvas>
+
+              <!-- DRAWER LATERAL DE FILTROS AVANZADOS -->
+              <div class="graph-filter-drawer" id="graph-filter-drawer">
+                <div class="drawer-header">
+                  <div style="font-weight:700; font-size:12px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                    <span>🎛️ Filtros Avanzados</span>
+                  </div>
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <button class="btn btn-secondary btn-sm" style="font-size:10px; padding:2px 6px;" onclick="resetAllGraphFilters()">Restablecer</button>
+                    <button class="btn btn-secondary btn-sm" style="font-size:11px; padding:2px 6px;" onclick="toggleGraphFilterDrawer()">✕</button>
+                  </div>
+                </div>
+                <div class="drawer-content">
+                  <!-- Certeza Mínima -->
+                  <div class="filter-section">
+                    <div class="filter-section-title">
+                      <span>Certeza Mínima</span>
+                      <span class="mono" id="label-min-confidence" style="color:var(--accent-cyan); font-size:11px; font-weight:700;">0%</span>
+                    </div>
+                    <input type="range" id="filter-confidence-range" min="0" max="100" value="0" step="5" oninput="onConfidenceSliderChange(this.value)" style="width:100%; accent-color:var(--accent-cyan);">
+                  </div>
+
+                  <!-- Saltos / Hops desde Objetivo -->
+                  <div class="filter-section">
+                    <div class="filter-section-title">
+                      <span>Distancia desde Objetivo (Hops)</span>
+                    </div>
+                    <div class="pill-group-hops" id="filter-hops-group">
+                      <button class="pill pill-cyan active" data-hops="all" onclick="setHopsFilter('all', this)">Todos</button>
+                      <button class="pill pill-cyan" data-hops="1" onclick="setHopsFilter(1, this)">1 Salto</button>
+                      <button class="pill pill-cyan" data-hops="2" onclick="setHopsFilter(2, this)">2 Saltos</button>
+                      <button class="pill pill-cyan" data-hops="3" onclick="setHopsFilter(3, this)">3 Saltos</button>
+                    </div>
+                  </div>
+
+                  <!-- Ocultar huérfanos -->
+                  <div class="filter-section">
+                    <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary); cursor:pointer;">
+                      <input type="checkbox" id="chk-hide-orphans" onchange="toggleHideOrphans(this.checked)" style="accent-color:var(--accent-cyan);">
+                      Ocultar nodos huérfanos / desconectados
+                    </label>
+                  </div>
+
+                  <!-- Tipos de Entidad -->
+                  <div class="filter-section">
+                    <div class="filter-section-title">
+                      <span>Tipos de Entidad</span>
+                      <div style="display:flex; gap:4px;">
+                        <button class="mini-text-btn" onclick="toggleAllEntityTypes(true)">Todas</button>
+                        <span style="color:var(--text-muted); font-size:10px;">|</span>
+                        <button class="mini-text-btn" onclick="toggleAllEntityTypes(false)">Ninguna</button>
+                      </div>
+                    </div>
+                    <div id="filter-entity-types-list" class="filter-checkbox-list">
+                      <span style="color:var(--text-muted); font-size:11px;">Cargando tipos...</span>
+                    </div>
+                  </div>
+
+                  <!-- Tipos de Relaciones (Aristas) -->
+                  <div class="filter-section">
+                    <div class="filter-section-title">
+                      <span>Tipos de Relaciones (Aristas)</span>
+                      <div style="display:flex; gap:4px;">
+                        <button class="mini-text-btn" onclick="toggleAllEdgeTypes(true)">Todas</button>
+                        <span style="color:var(--text-muted); font-size:10px;">|</span>
+                        <button class="mini-text-btn" onclick="toggleAllEdgeTypes(false)">Ninguna</button>
+                      </div>
+                    </div>
+                    <div id="filter-edge-types-list" class="filter-checkbox-list">
+                      <span style="color:var(--text-muted); font-size:11px;">Cargando relaciones...</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- TOOLTIP FLOTANTE DE NODO / ARISTA -->
+              <div id="graph-node-tooltip" class="graph-node-tooltip" style="display:none;"></div>
+
               <div class="graph-legend">
                 <div class="legend-item"><span class="legend-dot" style="background:#00f5ff;"></span> Entidad Objetivo / Raíz</div>
                 <div class="legend-item"><span class="legend-dot" style="background:#10b981;"></span> Organización / Alta Certeza</div>

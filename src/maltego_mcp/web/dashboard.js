@@ -753,6 +753,21 @@ let graphSteps = [];
 let selectedNode = null;
 let hoveredNode = null;
 
+// Filtros multidimensionales y estado reactivo (Impeccable)
+let graphFilters = {
+  searchQuery: "",
+  minConfidence: 0.0,
+  maxHops: "all",
+  hideOrphans: false,
+  preset: "all",
+  enabledEntityTypes: new Set(),
+  enabledEdgeTypes: new Set(),
+};
+let allEntityTypesInCase = new Map();
+let allEdgeTypesInCase = new Map();
+let nodeHopsFromTarget = new Map();
+let filterDrawerOpen = false;
+
 // Cámara y navegación (Pan & Zoom)
 let graphCamera = { x: 0, y: 0, scale: 1.0 };
 let isPanning = false;
@@ -1035,7 +1050,9 @@ function buildGraphModel(data) {
     })
     .filter(Boolean);
 
-  applyFilter();
+  calculateNodeHops(targetId);
+  populateFilterDrawerOptions();
+  applyAllGraphFilters();
   graphResetZoom();
   physicsAlpha = 1.0;
 
@@ -1258,31 +1275,392 @@ function setGraphLayout(layoutMode) {
   }
 }
 
-function setGraphFilter(filter) {
-  activeFilter = filter;
-  applyFilter();
-  physicsAlpha = Math.max(physicsAlpha, 0.4);
+function calculateNodeHops(targetId) {
+  nodeHopsFromTarget.clear();
+  if (!targetId || graphNodes.length === 0) return;
+
+  const adj = new Map();
+  graphNodes.forEach((n) => adj.set(n.id, []));
+  graphLinks.forEach((l) => {
+    if (adj.has(l.sourceNode.id) && adj.has(l.targetNode.id)) {
+      adj.get(l.sourceNode.id).push(l.targetNode.id);
+      adj.get(l.targetNode.id).push(l.sourceNode.id);
+    }
+  });
+
+  const visited = new Set();
+  const queue = [{ id: targetId, depth: 0 }];
+  visited.add(targetId);
+  nodeHopsFromTarget.set(targetId, 0);
+
+  while (queue.length > 0) {
+    const item = queue.shift();
+    const neighbors = adj.get(item.id) || [];
+    for (const nbr of neighbors) {
+      if (!visited.has(nbr)) {
+        visited.add(nbr);
+        nodeHopsFromTarget.set(nbr, item.depth + 1);
+        queue.push({ id: nbr, depth: item.depth + 1 });
+      }
+    }
+  }
+
+  // Nodos no alcanzables desde la raíz
+  graphNodes.forEach((n) => {
+    if (!nodeHopsFromTarget.has(n.id)) {
+      nodeHopsFromTarget.set(n.id, 999);
+    }
+  });
 }
 
-function applyFilter() {
+function populateFilterDrawerOptions() {
+  allEntityTypesInCase.clear();
+  allEdgeTypesInCase.clear();
+
   graphNodes.forEach((n) => {
-    if (activeFilter === "all") {
-      n.visible = true;
-    } else if (activeFilter === "high") {
-      n.visible = n.isTarget || n.confidence >= 0.8 || n.isLocation;
-    } else if (activeFilter === "medium") {
-      n.visible = n.confidence < 0.8;
-    } else if (activeFilter === "risk") {
-      n.visible = n.isRisk || n.isTarget;
-    }
+    const t = n.type || "maltego.Unknown";
+    allEntityTypesInCase.set(t, (allEntityTypesInCase.get(t) || 0) + 1);
   });
 
   graphLinks.forEach((l) => {
-    l.visible = l.sourceNode.visible && l.targetNode.visible;
-    if (activeFilter === "risk" && !l.isRiskLink && !l.isTargetLink) {
-      l.visible = false;
-    }
+    const lbl = l.label || "(sin relación)";
+    allEdgeTypesInCase.set(lbl, (allEdgeTypesInCase.get(lbl) || 0) + 1);
   });
+
+  // Habilitar todos inicialmente si el set está vacío
+  if (graphFilters.enabledEntityTypes.size === 0) {
+    graphFilters.enabledEntityTypes = new Set(allEntityTypesInCase.keys());
+  }
+  if (graphFilters.enabledEdgeTypes.size === 0) {
+    graphFilters.enabledEdgeTypes = new Set(allEdgeTypesInCase.keys());
+  }
+
+  // Renderizar checkboxes de tipos de entidad
+  const entContainer = document.getElementById("filter-entity-types-list");
+  if (entContainer) {
+    if (allEntityTypesInCase.size === 0) {
+      entContainer.innerHTML = '<span style="color:var(--text-muted); font-size:11px;">Sin entidades</span>';
+    } else {
+      entContainer.innerHTML = Array.from(allEntityTypesInCase.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, count]) => {
+          const checked = graphFilters.enabledEntityTypes.has(type) ? "checked" : "";
+          const shortName = type.replace("maltego.", "");
+          return `
+            <div class="filter-check-item">
+              <label>
+                <input type="checkbox" value="${escapeHtml(type)}" ${checked} onchange="toggleEntityType('${escapeHtml(type)}', this.checked)">
+                <span title="${escapeHtml(type)}">${escapeHtml(shortName)}</span>
+              </label>
+              <span class="filter-count-badge">${count}</span>
+            </div>
+          `;
+        })
+        .join("");
+    }
+  }
+
+  // Renderizar checkboxes de tipos de relación (aristas)
+  const edgeContainer = document.getElementById("filter-edge-types-list");
+  if (edgeContainer) {
+    if (allEdgeTypesInCase.size === 0) {
+      edgeContainer.innerHTML = '<span style="color:var(--text-muted); font-size:11px;">Sin relaciones</span>';
+    } else {
+      edgeContainer.innerHTML = Array.from(allEdgeTypesInCase.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([lbl, count]) => {
+          const checked = graphFilters.enabledEdgeTypes.has(lbl) ? "checked" : "";
+          return `
+            <div class="filter-check-item">
+              <label>
+                <input type="checkbox" value="${escapeHtml(lbl)}" ${checked} onchange="toggleEdgeType('${escapeHtml(lbl)}', this.checked)">
+                <span title="${escapeHtml(lbl)}">${escapeHtml(lbl)}</span>
+              </label>
+              <span class="filter-count-badge">${count}</span>
+            </div>
+          `;
+        })
+        .join("");
+    }
+  }
+}
+
+function applyAllGraphFilters() {
+  const query = (graphFilters.searchQuery || "").trim().toLowerCase();
+
+  // 1. Filtrar nodos
+  graphNodes.forEach((n) => {
+    // A. Certeza mínima
+    const passConfidence = (n.confidence || 0) >= graphFilters.minConfidence || n.isTarget;
+
+    // B. Tipo de entidad
+    const passType = graphFilters.enabledEntityTypes.has(n.type || "maltego.Unknown") || n.isTarget;
+
+    // C. Distancia de saltos (Hops)
+    let passHops = true;
+    if (graphFilters.maxHops !== "all") {
+      const dist = nodeHopsFromTarget.get(n.id) ?? 999;
+      passHops = dist <= Number(graphFilters.maxHops) || n.isTarget;
+    }
+
+    // D. Preset rápido
+    let passPreset = true;
+    if (graphFilters.preset === "high") {
+      passPreset = n.isTarget || (n.confidence || 0) >= 0.8 || n.isLocation;
+    } else if (graphFilters.preset === "medium") {
+      passPreset = (n.confidence || 0) < 0.8;
+    } else if (graphFilters.preset === "risk") {
+      passPreset = n.isRisk || n.isTarget;
+    }
+
+    // E. Búsqueda reactiva
+    let passQuery = true;
+    if (query) {
+      const valMatch = String(n.value || "").toLowerCase().includes(query);
+      const idMatch = String(n.id || "").toLowerCase().includes(query);
+      const typeMatch = String(n.type || "").toLowerCase().includes(query);
+      const notesMatch = String(n.notes || "").toLowerCase().includes(query);
+      passQuery = valMatch || idMatch || typeMatch || notesMatch;
+    }
+
+    n.visible = passConfidence && passType && passHops && passPreset && passQuery;
+  });
+
+  // 2. Filtrar enlaces
+  graphLinks.forEach((l) => {
+    const nodesVis = l.sourceNode.visible && l.targetNode.visible;
+    const passEdgeType = graphFilters.enabledEdgeTypes.has(l.label || "(sin relación)");
+    let passEdgePreset = true;
+    if (graphFilters.preset === "risk" && !l.isRiskLink && !l.isTargetLink) {
+      passEdgePreset = false;
+    }
+    l.visible = nodesVis && passEdgeType && passEdgePreset;
+  });
+
+  // 3. Ocultar huérfanos / desconectados si está marcado
+  if (graphFilters.hideOrphans) {
+    const visibleEdgeCount = new Map();
+    graphNodes.forEach((n) => visibleEdgeCount.set(n.id, 0));
+    graphLinks.forEach((l) => {
+      if (l.visible) {
+        visibleEdgeCount.set(l.sourceNode.id, (visibleEdgeCount.get(l.sourceNode.id) || 0) + 1);
+        visibleEdgeCount.set(l.targetNode.id, (visibleEdgeCount.get(l.targetNode.id) || 0) + 1);
+      }
+    });
+
+    graphNodes.forEach((n) => {
+      if (n.visible && !n.isTarget && (visibleEdgeCount.get(n.id) || 0) === 0) {
+        n.visible = false;
+      }
+    });
+  }
+
+  // 4. Actualizar contadores y badges en UI
+  const visNodes = graphNodes.filter((n) => n.visible).length;
+  const visLinks = graphLinks.filter((l) => l.visible).length;
+
+  const countBadge = document.getElementById("badge-visible-count");
+  if (countBadge) {
+    countBadge.textContent = `${visNodes}/${graphNodes.length}`;
+  }
+
+  updateGraphStatusBar(
+    `Caso: ${currentCaseId} | Visibles: ${visNodes}/${graphNodes.length} nodos, ${visLinks}/${graphLinks.length} aristas`
+  );
+
+  physicsAlpha = Math.max(physicsAlpha, 0.4);
+}
+
+function setGraphFilter(filter) {
+  graphFilters.preset = filter;
+  activeFilter = filter;
+
+  // Actualizar botones de preset
+  document.querySelectorAll("[id^='preset-btn-']").forEach((b) => b.classList.remove("active"));
+  const btn = document.getElementById(`preset-btn-${filter}`);
+  if (btn) btn.classList.add("active");
+
+  applyAllGraphFilters();
+}
+
+function setHopsPreset(hops) {
+  graphFilters.preset = "all";
+  graphFilters.maxHops = hops;
+
+  document.querySelectorAll("[id^='preset-btn-']").forEach((b) => b.classList.remove("active"));
+  const btn = document.getElementById(`preset-btn-hops${hops}`);
+  if (btn) btn.classList.add("active");
+
+  // Sincronizar botones en el drawer
+  const hopsGroup = document.getElementById("filter-hops-group");
+  if (hopsGroup) {
+    hopsGroup.querySelectorAll("button").forEach((b) => {
+      b.classList.toggle("active", b.getAttribute("data-hops") === String(hops));
+    });
+  }
+
+  applyAllGraphFilters();
+}
+
+function setHopsFilter(hops, btn) {
+  graphFilters.maxHops = hops;
+  const hopsGroup = document.getElementById("filter-hops-group");
+  if (hopsGroup) {
+    hopsGroup.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  }
+  if (btn) btn.classList.add("active");
+
+  applyAllGraphFilters();
+}
+
+function toggleHideOrphans(checked) {
+  graphFilters.hideOrphans = checked;
+  applyAllGraphFilters();
+}
+
+function toggleEntityType(type, checked) {
+  if (checked) {
+    graphFilters.enabledEntityTypes.add(type);
+  } else {
+    graphFilters.enabledEntityTypes.delete(type);
+  }
+  applyAllGraphFilters();
+}
+
+function toggleEdgeType(lbl, checked) {
+  if (checked) {
+    graphFilters.enabledEdgeTypes.add(lbl);
+  } else {
+    graphFilters.enabledEdgeTypes.delete(lbl);
+  }
+  applyAllGraphFilters();
+}
+
+function toggleAllEntityTypes(enableAll) {
+  const container = document.getElementById("filter-entity-types-list");
+  if (enableAll) {
+    graphFilters.enabledEntityTypes = new Set(allEntityTypesInCase.keys());
+  } else {
+    graphFilters.enabledEntityTypes.clear();
+  }
+  if (container) {
+    container.querySelectorAll("input[type='checkbox']").forEach((cb) => {
+      cb.checked = enableAll;
+    });
+  }
+  applyAllGraphFilters();
+}
+
+function toggleAllEdgeTypes(enableAll) {
+  const container = document.getElementById("filter-edge-types-list");
+  if (enableAll) {
+    graphFilters.enabledEdgeTypes = new Set(allEdgeTypesInCase.keys());
+  } else {
+    graphFilters.enabledEdgeTypes.clear();
+  }
+  if (container) {
+    container.querySelectorAll("input[type='checkbox']").forEach((cb) => {
+      cb.checked = enableAll;
+    });
+  }
+  applyAllGraphFilters();
+}
+
+function onConfidenceSliderChange(val) {
+  const num = Number(val) / 100.0;
+  graphFilters.minConfidence = num;
+  const label = document.getElementById("label-min-confidence");
+  if (label) label.textContent = `${val}%`;
+  applyAllGraphFilters();
+}
+
+function onGraphSearchInput(val) {
+  graphFilters.searchQuery = val;
+  const clearBtn = document.getElementById("btn-clear-search");
+  if (clearBtn) {
+    clearBtn.style.display = val ? "inline-block" : "none";
+  }
+  applyAllGraphFilters();
+
+  // Si hay un único resultado visible, auto-enfocarlo suavemente
+  const vis = graphNodes.filter((n) => n.visible);
+  if (vis.length === 1 && val.trim().length >= 2) {
+    selectNode(vis[0]);
+    graphCamera.x = -vis[0].x * graphCamera.scale;
+    graphCamera.y = -vis[0].y * graphCamera.scale;
+  }
+}
+
+function clearGraphSearch() {
+  const input = document.getElementById("graph-search-input");
+  if (input) input.value = "";
+  onGraphSearchInput("");
+}
+
+function toggleGraphFilterDrawer() {
+  const drawer = document.getElementById("graph-filter-drawer");
+  if (!drawer) return;
+  filterDrawerOpen = !filterDrawerOpen;
+  drawer.style.display = filterDrawerOpen ? "flex" : "none";
+}
+
+function resetAllGraphFilters() {
+  graphFilters.searchQuery = "";
+  graphFilters.minConfidence = 0.0;
+  graphFilters.maxHops = "all";
+  graphFilters.hideOrphans = false;
+  graphFilters.preset = "all";
+  graphFilters.enabledEntityTypes = new Set(allEntityTypesInCase.keys());
+  graphFilters.enabledEdgeTypes = new Set(allEdgeTypesInCase.keys());
+
+  const searchInput = document.getElementById("graph-search-input");
+  if (searchInput) searchInput.value = "";
+  const clearBtn = document.getElementById("btn-clear-search");
+  if (clearBtn) clearBtn.style.display = "none";
+
+  const confSlider = document.getElementById("filter-confidence-range");
+  if (confSlider) confSlider.value = "0";
+  const confLabel = document.getElementById("label-min-confidence");
+  if (confLabel) confLabel.textContent = "0%";
+
+  const orphanChk = document.getElementById("chk-hide-orphans");
+  if (orphanChk) orphanChk.checked = false;
+
+  populateFilterDrawerOptions();
+  setGraphFilter("all");
+}
+
+function fitGraphView() {
+  const visNodes = graphNodes.filter((n) => n.visible);
+  if (visNodes.length === 0 || !graphCanvas) return;
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  visNodes.forEach((n) => {
+    if (n.x < minX) minX = n.x;
+    if (n.x > maxX) maxX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.y > maxY) maxY = n.y;
+  });
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = graphCanvas.width / dpr;
+  const h = graphCanvas.height / dpr;
+
+  const graphW = Math.max(maxX - minX + 160, 200);
+  const graphH = Math.max(maxY - minY + 160, 200);
+
+  const scaleX = w / graphW;
+  const scaleY = h / graphH;
+  const newScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.35), 2.5);
+
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+
+  graphCamera.scale = newScale;
+  graphCamera.x = -midX * newScale;
+  graphCamera.y = -midY * newScale;
+
+  physicsAlpha = Math.max(physicsAlpha, 0.2);
 }
 
 function graphZoom(factor, clientX = null, clientY = null) {
@@ -1372,6 +1750,38 @@ function onGraphMouseMove(e) {
       physicsAlpha = Math.max(physicsAlpha, 0.05);
     }
   }
+
+  // Actualizar micro-tarjeta flotante (Tooltip)
+  const tooltip = document.getElementById("graph-node-tooltip");
+  if (tooltip && graphCanvas) {
+    if (hoveredNode && !draggedNode && !isPanning) {
+      const incidentEdges = graphLinks.filter(
+        (l) => l.visible && (l.sourceNode.id === hoveredNode.id || l.targetNode.id === hoveredNode.id)
+      );
+      const confPct = Math.round((hoveredNode.confidence || 0) * 100);
+      const typeShort = (hoveredNode.type || "maltego.Entity").replace("maltego.", "");
+
+      tooltip.innerHTML = `
+        <div class="tooltip-title">${escapeHtml(hoveredNode.value)}</div>
+        <div style="font-size:10px; color:var(--accent-cyan); font-family:var(--font-mono);">${escapeHtml(typeShort)}</div>
+        <div class="tooltip-meta">
+          <span>Certeza: ${confPct}%</span>
+          <span>${incidentEdges.length} conex.</span>
+        </div>
+      `;
+
+      const wrapper = graphCanvas.parentElement;
+      const rect = wrapper ? wrapper.getBoundingClientRect() : { left: 0, top: 0, width: 800, height: 600 };
+      const posX = clientX - rect.left + 14;
+      const posY = clientY - rect.top + 14;
+
+      tooltip.style.left = `${Math.min(posX, rect.width - 240)}px`;
+      tooltip.style.top = `${Math.min(posY, rect.height - 80)}px`;
+      tooltip.style.display = "block";
+    } else {
+      tooltip.style.display = "none";
+    }
+  }
 }
 
 function onGraphMouseUp() {
@@ -1380,6 +1790,8 @@ function onGraphMouseUp() {
   if (graphCanvas) {
     graphCanvas.style.cursor = hoveredNode ? "pointer" : "default";
   }
+  const tooltip = document.getElementById("graph-node-tooltip");
+  if (tooltip && !hoveredNode) tooltip.style.display = "none";
 }
 
 function onGraphWheel(e) {
@@ -1758,16 +2170,47 @@ function drawGraph() {
   graphCtx.translate(w / 2 + graphCamera.x, h / 2 + graphCamera.y);
   graphCtx.scale(graphCamera.scale, graphCamera.scale);
 
-  // 1. Dibujar Aristas
+  // Precalcular conjunto de nodos conectados al nodo enfocado (hover o selección)
+  const focusNode = hoveredNode || selectedNode;
+  const connectedNodeIds = new Set();
+  if (focusNode) {
+    connectedNodeIds.add(focusNode.id);
+    for (const l of graphLinks) {
+      if (!l.visible) continue;
+      if (l.sourceNode.id === focusNode.id) connectedNodeIds.add(l.targetNode.id);
+      if (l.targetNode.id === focusNode.id) connectedNodeIds.add(l.sourceNode.id);
+    }
+  }
+
+  // Pre-agrupar enlaces entre mismos pares de nodos para calcular curvas Bézier
+  const edgePairGroups = new Map();
   for (const l of graphLinks) {
     if (!l.visible) continue;
-    drawEdge(graphCtx, l);
+    const key = l.sourceNode.id < l.targetNode.id
+      ? `${l.sourceNode.id}__${l.targetNode.id}`
+      : `${l.targetNode.id}__${l.sourceNode.id}`;
+    if (!edgePairGroups.has(key)) edgePairGroups.set(key, []);
+    edgePairGroups.get(key).push(l);
+  }
+
+  // 1. Dibujar Aristas
+  for (const [key, linksInPair] of edgePairGroups.entries()) {
+    const total = linksInPair.length;
+    linksInPair.forEach((l, idx) => {
+      // Offset de curvatura si hay más de 1 arista entre el par
+      let curveOffset = 0;
+      if (total > 1) {
+        curveOffset = (idx - (total - 1) / 2) * 36;
+        if (l.sourceNode.id > l.targetNode.id) curveOffset = -curveOffset;
+      }
+      drawEdge(graphCtx, l, curveOffset, focusNode, connectedNodeIds);
+    });
   }
 
   // 2. Dibujar Nodos
   for (const n of graphNodes) {
     if (!n.visible) continue;
-    drawNode(graphCtx, n);
+    drawNode(graphCtx, n, focusNode, connectedNodeIds);
   }
 
   graphCtx.restore();
@@ -1789,42 +2232,75 @@ function drawSubtleGrid(ctx, w, h) {
   ctx.stroke();
 }
 
-function drawEdge(ctx, l) {
+function drawEdge(ctx, l, curveOffset = 0, focusNode = null, connectedNodeIds = null) {
   const a = l.sourceNode;
   const b = l.targetNode;
   const isSelected = selectedNode && (selectedNode.id === a.id || selectedNode.id === b.id);
+  const isHovered = hoveredNode && (hoveredNode.id === a.id || hoveredNode.id === b.id);
+
+  // Modo foco: atenuar si no está conectado al nodo activo
+  let alpha = 1.0;
+  if (focusNode) {
+    const isIncident = (a.id === focusNode.id || b.id === focusNode.id);
+    alpha = isIncident ? 1.0 : 0.18;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
 
   ctx.beginPath();
   if (l.isRiskLink) {
-    ctx.strokeStyle = isSelected ? "rgba(244, 63, 94, 0.9)" : "rgba(244, 63, 94, 0.55)";
-    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.strokeStyle = (isSelected || isHovered) ? "rgba(244, 63, 94, 0.95)" : "rgba(244, 63, 94, 0.65)";
+    ctx.lineWidth = (isSelected || isHovered) ? 2.6 : 1.6;
     ctx.setLineDash([5, 4]);
   } else if (l.isTargetLink) {
-    ctx.strokeStyle = isSelected ? "rgba(0, 245, 255, 0.95)" : "rgba(0, 245, 255, 0.4)";
-    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.strokeStyle = (isSelected || isHovered) ? "rgba(0, 245, 255, 0.95)" : "rgba(0, 245, 255, 0.45)";
+    ctx.lineWidth = (isSelected || isHovered) ? 2.5 : 1.5;
     ctx.setLineDash([]);
   } else if (l.isFacilityLink) {
-    ctx.strokeStyle = isSelected ? "rgba(129, 140, 248, 0.85)" : "rgba(129, 140, 248, 0.35)";
-    ctx.lineWidth = isSelected ? 2.0 : 1.2;
+    ctx.strokeStyle = (isSelected || isHovered) ? "rgba(129, 140, 248, 0.9)" : "rgba(129, 140, 248, 0.4)";
+    ctx.lineWidth = (isSelected || isHovered) ? 2.2 : 1.3;
     ctx.setLineDash([]);
   } else {
-    ctx.strokeStyle = isSelected ? "rgba(255, 255, 255, 0.7)" : "rgba(255, 255, 255, 0.18)";
-    ctx.lineWidth = isSelected ? 2.0 : 1.0;
+    ctx.strokeStyle = (isSelected || isHovered) ? "rgba(255, 255, 255, 0.85)" : "rgba(255, 255, 255, 0.22)";
+    ctx.lineWidth = (isSelected || isHovered) ? 2.0 : 1.1;
     ctx.setLineDash([]);
   }
 
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.stroke();
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+  let midX = (a.x + b.x) / 2;
+  let midY = (a.y + b.y) / 2;
+  let endX = b.x;
+  let endY = b.y;
+
+  if (Math.abs(curveOffset) > 1) {
+    const normX = -dy / dist;
+    const normY = dx / dist;
+    const ctrlX = midX + normX * curveOffset;
+    const ctrlY = midY + normY * curveOffset;
+
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo(ctrlX, ctrlY, b.x, b.y);
+    ctx.stroke();
+
+    // Punto medio sobre la curva de Bézier (t = 0.5)
+    midX = 0.25 * a.x + 0.5 * ctrlX + 0.25 * b.x;
+    midY = 0.25 * a.y + 0.5 * ctrlY + 0.25 * b.y;
+  } else {
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
 
   // Flecha direccional orientada hacia el destino
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > b.radius + 10) {
-    const arrowX = b.x - (dx / dist) * (b.radius + 4);
-    const arrowY = b.y - (dy / dist) * (b.radius + 4);
+  if (dist > b.radius + 12) {
+    const arrowDist = b.radius + 4;
+    const arrowX = b.x - (dx / dist) * arrowDist;
+    const arrowY = b.y - (dy / dist) * arrowDist;
     const angle = Math.atan2(dy, dx);
     const arrowSize = 6;
 
@@ -1843,10 +2319,8 @@ function drawEdge(ctx, l) {
     ctx.fill();
   }
 
-  // Etiqueta de la arista si hay zoom suficiente o está seleccionada
-  if (graphCamera.scale >= 0.85 || isSelected) {
-    const midX = (a.x + b.x) / 2;
-    const midY = (a.y + b.y) / 2;
+  // Etiqueta de la arista si hay zoom suficiente o está enfocada
+  if (graphCamera.scale >= 0.85 || isSelected || isHovered) {
     ctx.font = "9px Inter, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -1854,60 +2328,162 @@ function drawEdge(ctx, l) {
     const labelText = l.label || "";
     const textWidth = ctx.measureText(labelText).width;
 
-    ctx.fillStyle = "rgba(10, 13, 20, 0.85)";
-    ctx.fillRect(midX - textWidth / 2 - 3, midY - 6, textWidth + 6, 12);
+    ctx.fillStyle = "rgba(10, 13, 20, 0.9)";
+    ctx.fillRect(midX - textWidth / 2 - 3, midY - 6, textWidth + 6, 13);
 
-    ctx.fillStyle = l.isRiskLink ? "#f43f5e" : isSelected ? "#00f5ff" : "#94a3b8";
+    ctx.fillStyle = l.isRiskLink ? "#f43f5e" : (isSelected || isHovered) ? "#00f5ff" : "#94a3b8";
     ctx.fillText(labelText, midX, midY);
   }
+
+  ctx.restore();
 }
 
-function drawNode(ctx, n) {
+function drawNodeGlyph(ctx, x, y, radius, n) {
+  const s = radius * 0.48; // Escala proporcional del icono interior
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.lineWidth = 1.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (n.isOrganization) {
+    // Icono: Edificio corporativo con puerta y ventanas
+    ctx.strokeRect(x - s * 0.8, y - s * 0.9, s * 1.6, s * 1.8);
+    // Puerta
+    ctx.fillRect(x - s * 0.25, y + s * 0.3, s * 0.5, s * 0.6);
+    // Ventanas
+    ctx.fillRect(x - s * 0.6, y - s * 0.6, s * 0.3, s * 0.3);
+    ctx.fillRect(x + s * 0.3, y - s * 0.6, s * 0.3, s * 0.3);
+    ctx.fillRect(x - s * 0.6, y - s * 0.1, s * 0.3, s * 0.3);
+    ctx.fillRect(x + s * 0.3, y - s * 0.1, s * 0.3, s * 0.3);
+  } else if (n.isPerson) {
+    // Icono: Silueta de avatar (cabeza y hombros)
+    ctx.beginPath();
+    ctx.arc(x, y - s * 0.35, s * 0.45, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y + s * 1.05, s * 0.9, Math.PI * 1.25, Math.PI * 1.75);
+    ctx.stroke();
+  } else if (n.isNetwork) {
+    // Icono: Servidor rack con bahías y led
+    ctx.strokeRect(x - s * 0.85, y - s * 0.7, s * 1.7, s * 0.6);
+    ctx.strokeRect(x - s * 0.85, y + s * 0.1, s * 1.7, s * 0.6);
+    // Leds
+    ctx.beginPath();
+    ctx.arc(x + s * 0.5, y - s * 0.4, 1.5, 0, Math.PI * 2);
+    ctx.arc(x + s * 0.5, y + s * 0.4, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (n.isLocation) {
+    // Icono: Pin de mapa GPS
+    ctx.beginPath();
+    ctx.arc(x, y - s * 0.25, s * 0.55, Math.PI * 0.8, Math.PI * 0.2, true);
+    ctx.lineTo(x, y + s * 0.85);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y - s * 0.25, s * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (n.isRisk) {
+    // Icono: Triángulo de alerta con signo de exclamación
+    ctx.beginPath();
+    ctx.moveTo(x, y - s * 0.85);
+    ctx.lineTo(x + s * 0.85, y + s * 0.75);
+    ctx.lineTo(x - s * 0.85, y + s * 0.75);
+    ctx.closePath();
+    ctx.stroke();
+    // Exclamación
+    ctx.fillRect(x - 0.75, y - s * 0.35, 1.5, s * 0.55);
+    ctx.fillRect(x - 0.75, y + s * 0.4, 1.5, 1.5);
+  } else {
+    // Icono por defecto (Globo terráqueo para Domain/Service)
+    ctx.beginPath();
+    ctx.arc(x, y, s * 0.8, 0, Math.PI * 2);
+    ctx.stroke();
+    // Ecuador
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.8, y);
+    ctx.lineTo(x + s * 0.8, y);
+    ctx.stroke();
+    // Meridiano elíptico
+    ctx.beginPath();
+    ctx.ellipse(x, y, s * 0.4, s * 0.8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawNode(ctx, n, focusNode = null, connectedNodeIds = null) {
   const isSelected = selectedNode && selectedNode.id === n.id;
   const isHovered = hoveredNode && hoveredNode.id === n.id;
+
+  // Atenuación si hay un foco activo y el nodo no está en el subgrafo enfocado
+  let alpha = 1.0;
+  if (focusNode && connectedNodeIds) {
+    alpha = connectedNodeIds.has(n.id) ? 1.0 : 0.22;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
 
   // 1. Halo de resplandor para nodos activos o seleccionados
   if (isSelected || isHovered || n.isTarget) {
     ctx.beginPath();
-    ctx.arc(n.x, n.y, n.radius + (isSelected ? 9 : 5), 0, Math.PI * 2);
+    ctx.arc(n.x, n.y, n.radius + (isSelected ? 10 : 6), 0, Math.PI * 2);
     ctx.fillStyle = isSelected
-      ? "rgba(0, 245, 255, 0.35)"
-      : n.isTarget
-      ? "rgba(0, 245, 255, 0.2)"
-      : "rgba(255, 255, 255, 0.15)";
+      ? "rgba(0, 245, 255, 0.4)"
+      : isHovered
+      ? "rgba(255, 255, 255, 0.22)"
+      : "rgba(0, 245, 255, 0.25)";
     ctx.fill();
   }
 
-  // 2. Cuerpo del nodo
+  // 2. Anillo perimetral de confianza radial (Confidence Arc)
+  const conf = Math.max(0.05, Math.min(1.0, n.confidence ?? 0.8));
   ctx.beginPath();
-  ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-  ctx.fillStyle = n.color;
-  ctx.fill();
-
-  ctx.lineWidth = isSelected ? 2.5 : 1.5;
-  ctx.strokeStyle = isSelected ? "#ffffff" : "rgba(10, 13, 20, 0.75)";
+  ctx.arc(n.x, n.y, n.radius + 1.8, -Math.PI / 2, -Math.PI / 2 + conf * Math.PI * 2);
+  ctx.strokeStyle = n.color;
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
   ctx.stroke();
 
-  // 3. Etiqueta de texto debajo del nodo con fondo contrastado
+  // 3. Fondo translúcido del cuerpo del nodo
+  ctx.beginPath();
+  ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(10, 14, 26, 0.92)";
+  ctx.fill();
+
+  // 4. Borde del nodo
+  ctx.lineWidth = isSelected ? 2.5 : 1.5;
+  ctx.strokeStyle = isSelected ? "#ffffff" : n.color;
+  ctx.stroke();
+
+  // 5. Glifo vectorial representativo en el centro
+  drawNodeGlyph(ctx, n.x, n.y, n.radius, n);
+
+  // 6. Etiqueta de texto debajo del nodo con fondo contrastado
   ctx.font = isSelected ? "bold 11px Inter, system-ui, sans-serif" : "11px Inter, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
 
-  const label = n.value;
+  const label = n.value || "";
   const metrics = ctx.measureText(label);
   const textW = metrics.width;
-  const labelY = n.y + n.radius + 4;
+  const labelY = n.y + n.radius + 6;
 
-  ctx.fillStyle = "rgba(10, 13, 20, 0.88)";
+  ctx.fillStyle = "rgba(10, 13, 20, 0.9)";
   ctx.beginPath();
-  roundRect(ctx, n.x - textW / 2 - 5, labelY - 2, textW + 10, 16, 4);
+  roundRect(ctx, n.x - textW / 2 - 6, labelY - 2, textW + 12, 17, 4);
   ctx.fill();
-  ctx.strokeStyle = isSelected ? "rgba(0, 245, 255, 0.6)" : "rgba(255, 255, 255, 0.08)";
+  ctx.strokeStyle = isSelected ? "rgba(0, 245, 255, 0.8)" : "rgba(255, 255, 255, 0.1)";
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  ctx.fillStyle = isSelected ? "#ffffff" : "#e2e8f0";
+  ctx.fillStyle = isSelected ? "#00f5ff" : "#f1f5f9";
   ctx.fillText(label, n.x, labelY);
+
+  ctx.restore();
 }
 
 function roundRect(ctx, x, y, width, height, radius) {
