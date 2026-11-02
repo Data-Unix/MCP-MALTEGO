@@ -110,10 +110,12 @@ def _hierarchical(adj: dict[str, set[str]]) -> dict[str, tuple[float, float]]:
     positions: dict[str, tuple[float, float]] = {}
     x_offset = 0.0
     for levels in _components(adj):
-        width = max(len(v) for v in levels.values())
+        max_level_len = max(len(v) for v in levels.values()) if levels else 1
+        width = max_level_len
+        y_step = max(300.0, min(1200.0, max_level_len * 22.0))
         for depth, nodes in levels.items():
             for i, node in enumerate(nodes):
-                positions[node] = (x_offset + (i - (len(nodes) - 1) / 2) * 180.0, depth * 200.0)
+                positions[node] = (x_offset + (i - (len(nodes) - 1) / 2) * 180.0, depth * y_step)
         x_offset += width * 180.0 + 300.0
     return positions
 
@@ -332,7 +334,15 @@ def write_mtgx(
             SubElement(ment, _q(MTG_NS, "Notes")).text = e.notes
         g = SubElement(node, "data", key="d5")
         renderer = SubElement(g, _q(MTG_NS, "EntityRenderer"))
-        x, y = positions.get(e.id, (0.0, 0.0))
+        raw_x = e.properties.get("mcp.pos.x") or e.properties.get("pos.x")
+        raw_y = e.properties.get("mcp.pos.y") or e.properties.get("pos.y")
+        if raw_x is not None and raw_y is not None:
+            try:
+                x, y = float(raw_x), float(raw_y)
+            except ValueError:
+                x, y = positions.get(e.id, (0.0, 0.0))
+        else:
+            x, y = positions.get(e.id, (0.0, 0.0))
         SubElement(renderer, _q(MTG_NS, "Position"), x=f"{x:.1f}", y=f"{y:.1f}")
         SubElement(
             renderer,

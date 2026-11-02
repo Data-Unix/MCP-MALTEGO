@@ -14,27 +14,41 @@
   <a href="https://www.npmjs.com/package/mcp-maltego"><img alt="npm" src="https://img.shields.io/npm/v/mcp-maltego?logo=npm"></a>
   <a href="https://github.com/Data-Unix/MCP-MALTEGO/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Data-Unix/MCP-MALTEGO/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+  <img alt="Maltego CE" src="https://img.shields.io/badge/Maltego-Community%20Edition%20Compatible-orange">
+  <img alt="Zero Cost" src="https://img.shields.io/badge/Plan-100%25%20Free%20%26%20Open%20Source-brightgreen">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-server-8A2BE2">
   <img alt="Tools" src="https://img.shields.io/badge/tools-20-blue">
+  <a href="CONTRIBUTING.md"><img alt="Contributions" src="https://img.shields.io/badge/PRs-welcome-blue"></a>
   <a href="README.es.md"><img alt="Español" src="https://img.shields.io/badge/docs-español-red"></a>
 </p>
 
 ---
 
-**mcp-maltego** is a [Model Context Protocol](https://modelcontextprotocol.io) server that turns an AI agent into a
-Maltego operator. It runs real transforms (built-in, commercial providers or your own TRX/iTDS servers), chains them
-into Machines, keeps a persistent investigation graph with memory of every step, recommends the next pivot, and
-exports everything to Maltego Desktop. One graph is shared by every agent you use.
+**mcp-maltego** is a high-performance [Model Context Protocol](https://modelcontextprotocol.io) server that turns any AI agent into an expert Maltego operator. It runs real OSINT transforms, chains them into autonomous reconnaissance Machines, maintains an in-memory or graph database investigation state with full provenance, recommends next-best pivots, and synchronizes seamlessly with Maltego Desktop via native `.mtgx` files.
+
+> [!TIP]
+> **Zero-Cost & No Commercial Maltego License Required**: You do **not** need a paid Maltego Pro/XL plan or commercial API keys to start. `mcp-maltego` runs completely free out of the box, generating native `.mtgx` graphs compatible with the free **Maltego Community Edition (CE)** or Basic tier.
+
+---
+
+## 🏛️ Layered Architecture: From Zero-Cost Core to Full Platform
+
+`mcp-maltego` is built in three decoupled layers so you can start instantly without cloud infrastructure or configuration overhead:
+
+| Layer | Component | Description & Cost |
+| :--- | :--- | :--- |
+| **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)**. Includes **28 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
+| **Layer 1: Investigation Memory** | Graph Memory & Copilot | Local deterministic case storage (`~/.maltego-mcp/graph.json`), entity fusion, step auditing, autonomous multi-round Machines, and `osint_investigate` copilot. |
+| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (Canvas Web Worker with 4 layouts: Organic, Hierarchical, Radial, Categorized), Sock Puppet OPSEC vault, Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
+
+---
 
 ## Key features
 
 - **20 tools, portable to every model.** Flat JSON schemas validated against Gemini's strict function-calling
   subset; variants grouped with an `action` parameter so agents are not flooded with tools.
-- **38 real transforms out of the box.** 26 without API keys (DNS over HTTPS, RDAP/WHOIS, certificate transparency via
-  crt.sh and CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar,
-  GitHub profile details, AlienVault OTX threat pulses, multi-network profile lookup, parsing) and 12 provider
-  transforms that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been
-  Pwned, GreyNoise and Tatum.
+- **40 real transforms out of the box.** 28 without API keys (DNS over HTTPS, RDAP/WHOIS, CISA KEV active exploitation, Abuse.ch URLhaus malware, certificate transparency via crt.sh and CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar, GitHub profile details, AlienVault OTX threat pulses, multi-network profile lookup, parsing) and 12 provider transforms that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
+- **Community Extensibility Engine (`@custom_transform`).** Drop custom Python transform files in `~/.maltego-mcp/plugins/` or `./plugins/` to immediately expose custom OSINT logic to LLMs without touching core code.
 - **Your Maltego transforms too.** Speaks the Maltego TRX/iTDS XML protocol, so an agent can run the same transforms
   you use in Maltego.
 - **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, PersonaFootprint,
@@ -53,6 +67,9 @@ exports everything to Maltego Desktop. One graph is shared by every agent you us
 - **Reports and CLI.** Executive reports in Markdown or self-contained HTML, and `maltegoctl` for terminals and CI.
 - **Safe by default.** OSINT content is treated as untrusted data, XML is parsed with defusedxml, archives are read
   with bounds, agents cannot supply arbitrary URLs, and API keys are never logged.
+
+## Community Contributions & Governance
+We welcome contributions! All contributions are subject to our [Contributing Guide](CONTRIBUTING.md). Pull requests are automatically analyzed by our AST Security & Blast Radius CI scanner, and all merges require manual sign-off by repository owner [@Data-Unix](https://github.com/Data-Unix).
 
 ## Requirements
 

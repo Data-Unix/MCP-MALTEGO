@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from maltego_mcp import __version__
 from maltego_mcp.accounts import (
@@ -39,6 +39,7 @@ from maltego_mcp.accounts import (
 )
 from maltego_mcp.config import Settings
 from maltego_mcp.cti_feeds import _connect, ensure_seed_cti_db, sync_deepdark_cti
+from maltego_mcp.inbox import PROVIDER_CATALOG, MailTmClient
 from maltego_mcp.service import OsintService
 
 logger = logging.getLogger("maltego_mcp.web")
@@ -94,6 +95,36 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         if not f.is_file():
             return Response("// no worker", media_type="application/javascript")
         return Response(f.read_text(encoding="utf-8"), media_type="application/javascript")
+
+    async def static_favicon(request: Request) -> Response:
+        f = WEB_DIR / "favicon.ico"
+        if f.is_file():
+            return FileResponse(f, media_type="image/x-icon")
+        return Response(status_code=404)
+
+    async def static_favicon_png(request: Request) -> Response:
+        f = WEB_DIR / "favicon.png"
+        if f.is_file():
+            return FileResponse(f, media_type="image/png")
+        return Response(status_code=404)
+
+    async def static_favicon_32(request: Request) -> Response:
+        f = WEB_DIR / "favicon-32x32.png"
+        if f.is_file():
+            return FileResponse(f, media_type="image/png")
+        return Response(status_code=404)
+
+    async def static_apple_touch_icon(request: Request) -> Response:
+        f = WEB_DIR / "apple-touch-icon.png"
+        if f.is_file():
+            return FileResponse(f, media_type="image/png")
+        return Response(status_code=404)
+
+    async def static_logo(request: Request) -> Response:
+        f = WEB_DIR / "logo.png"
+        if f.is_file():
+            return FileResponse(f, media_type="image/png")
+        return Response(status_code=404)
 
     async def api_status(request: Request) -> JSONResponse:
         if not _check_host(request):
@@ -385,6 +416,134 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         except Exception as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
+    async def api_cases(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        page = await service.list_cases(50, 0)
+        items = []
+        for c in page.items:
+            summary = await service.case_summary(c.case_id, top=1)
+            items.append(
+                {
+                    "case_id": c.case_id,
+                    "description": c.description,
+                    "entity_count": summary.entity_count,
+                    "edge_count": summary.edge_count,
+                    "updated": c.updated,
+                }
+            )
+        return JSONResponse({"cases": items})
+
+    async def api_case_graph(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        cid = str(request.path_params.get("case_id") or "").strip()
+        try:
+            ents, edges = await service.store.export_case(cid, 1000)
+            report = await service.report_data(cid)
+            score_map = report.scores
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
+
+        nodes = [
+            {
+                "id": e.id,
+                "value": e.value,
+                "type": e.maltego_type,
+                "label": e.label,
+                "confidence": e.confidence,
+                "priority": score_map[e.id].priority if e.id in score_map else e.confidence,
+                "priority_rationale": score_map[e.id].rationale() if e.id in score_map else "",
+                "sources": list(e.sources),
+                "properties": dict(e.properties),
+                "notes": e.notes,
+            }
+            for e in ents
+        ]
+        links = [
+            {
+                "id": ed.id,
+                "source": ed.out_id,
+                "target": ed.in_id,
+                "label": ed.label,
+                "confidence": ed.confidence,
+                "properties": dict(ed.properties),
+            }
+            for ed in edges
+        ]
+        steps_out = [
+            {
+                "seq": s.seq,
+                "kind": s.kind,
+                "action": s.action,
+                "input_id": s.input_id,
+                "input_value": s.input_value,
+                "outputs": list(s.outputs),
+                "reason": s.reason,
+                "timestamp": s.timestamp,
+            }
+            for s in report.steps
+        ]
+        return JSONResponse(
+            {
+                "ok": True,
+                "case_id": cid,
+                "quality": report.quality(),
+                "nodes": nodes,
+                "links": links,
+                "steps": steps_out,
+            }
+        )
+
+    async def api_export_case(request: Request) -> Response:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        cid = str(request.path_params.get("case_id") or "").strip()
+        fmt = str(request.path_params.get("format") or "mtgx").strip().lower()
+        if fmt not in ("mtgx", "json", "csv", "graphml", "report_md", "report_html"):
+            return JSONResponse({"ok": False, "error": f"Formato no soportado: {fmt}"}, status_code=400)
+        try:
+            path, _n, _m = await service.export_case(cid, fmt)  # type: ignore[arg-type]
+            media_type = "application/octet-stream"
+            if fmt == "mtgx":
+                media_type = "application/vnd.maltego.graph"
+            elif fmt == "json":
+                media_type = "application/json"
+            elif fmt == "csv":
+                media_type = "text/csv"
+            return FileResponse(path, filename=path.name, media_type=media_type)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
+
+    async def api_create_case(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        body = await request.json()
+        cid = str(body.get("case_id") or "").strip()
+        desc = str(body.get("description") or "").strip()
+        if not cid:
+            return JSONResponse({"ok": False, "error": "Falta el identificador 'case_id'"}, status_code=400)
+        try:
+            case_rec, _ = await service.create_case(cid, desc)
+            broadcast_event({"type": "case_created", "case_id": cid, "description": desc})
+            broadcast_event({"type": "pulse", "intensity": 0.8})
+            return JSONResponse({"ok": True, "case_id": case_rec.case_id, "description": case_rec.description})
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    async def api_delete_case(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        cid = str(request.path_params.get("case_id") or "").strip()
+        if not cid:
+            return JSONResponse({"ok": False, "error": "Falta 'case_id'"}, status_code=400)
+        try:
+            d_ents, d_edges = await service.delete_case(cid, confirm=cid)
+            broadcast_event({"type": "case_deleted", "case_id": cid})
+            return JSONResponse({"ok": True, "case_id": cid, "deleted_entities": d_ents, "deleted_edges": d_edges})
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
     async def api_events(request: Request) -> StreamingResponse:
         if not _check_host(request):
             return StreamingResponse(iter(['data: {"error": "forbidden"}\n\n']), status_code=403)
@@ -404,23 +563,105 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
 
         return StreamingResponse(sse_stream(), media_type="text/event-stream")
 
+    async def api_inbox_providers(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        return JSONResponse({"providers": [p.to_dict() for p in PROVIDER_CATALOG]})
+
+    async def api_inbox_create(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = await request.json() if "application/json" in request.headers.get("content-type", "") else {}
+        except Exception:
+            body = {}
+        desired_addr = str(body.get("address") or "").strip()
+        desired_pwd = str(body.get("password") or "").strip()
+        save_as_sock = bool(body.get("save_as_sockpuppet", False))
+
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            client = MailTmClient(http)
+            res = await client.create_inbox(address=desired_addr, password=desired_pwd)
+
+        if not res.get("ok"):
+            return JSONResponse(res, status_code=400)
+
+        if save_as_sock and res.get("address"):
+            try:
+                acc = SocialAccount(
+                    id=f"mailtm_{res['address'].split('@')[0]}",
+                    platform="custom",
+                    handle=res["address"],
+                    token=res.get("token", ""),
+                    target_site="mail.tm",
+                    enabled=True,
+                )
+                save_account_to_toml(settings.home, acc)
+                broadcast_event({"type": "account_created", "account_id": acc.id, "platform": "custom"})
+            except Exception as e:
+                logger.warning("No se pudo persistir buzón en accounts.toml: %s", e)
+
+        broadcast_event({"type": "inbox_created", "address": res.get("address")})
+        return JSONResponse(res)
+
+    async def api_inbox_messages(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        token = request.headers.get("x-inbox-token") or request.query_params.get("token") or ""
+        if not token:
+            return JSONResponse({"error": "Falta token de autenticación del buzón"}, status_code=400)
+
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            client = MailTmClient(http)
+            msgs = await client.get_messages(token)
+        return JSONResponse({"ok": True, "messages": msgs, "count": len(msgs)})
+
+    async def api_inbox_message_detail(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        msg_id = str(request.path_params.get("message_id") or "").strip()
+        token = request.headers.get("x-inbox-token") or request.query_params.get("token") or ""
+        if not token or not msg_id:
+            return JSONResponse({"error": "Falta token o message_id"}, status_code=400)
+
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            client = MailTmClient(http)
+            detail = await client.get_message_detail(token, msg_id)
+        if not detail.get("ok"):
+            return JSONResponse(detail, status_code=404 if "No se pudo" in detail.get("error", "") else 400)
+        return JSONResponse(detail)
+
     # Registro de rutas en la app Starlette
     app.add_route("/", root_view, methods=["GET"])
     app.add_route("/dashboard", root_view, methods=["GET"])
     app.add_route("/dashboard.css", static_css, methods=["GET"])
     app.add_route("/dashboard.js", static_js, methods=["GET"])
     app.add_route("/bg-worker.js", static_worker_js, methods=["GET"])
+    app.add_route("/favicon.ico", static_favicon, methods=["GET"])
+    app.add_route("/favicon.png", static_favicon_png, methods=["GET"])
+    app.add_route("/favicon-32x32.png", static_favicon_32, methods=["GET"])
+    app.add_route("/apple-touch-icon.png", static_apple_touch_icon, methods=["GET"])
+    app.add_route("/logo.png", static_logo, methods=["GET"])
     app.add_route("/api/status", api_status, methods=["GET"])
     app.add_route("/api/accounts", api_get_accounts, methods=["GET"])
     app.add_route("/api/accounts", api_save_account, methods=["POST"])
     app.add_route("/api/accounts/{account_id}", api_delete_account, methods=["DELETE"])
     app.add_route("/api/accounts/verify", api_verify_account, methods=["POST"])
     app.add_route("/api/accounts/generate-persona", api_generate_persona, methods=["POST"])
+    app.add_route("/api/inbox/providers", api_inbox_providers, methods=["GET"])
+    app.add_route("/api/inbox/create", api_inbox_create, methods=["POST"])
+    app.add_route("/api/inbox/messages", api_inbox_messages, methods=["GET"])
+    app.add_route("/api/inbox/messages/{message_id}", api_inbox_message_detail, methods=["GET"])
     app.add_route("/api/providers", api_providers, methods=["GET"])
     app.add_route("/api/cti-feeds", api_cti_feeds, methods=["GET"])
     app.add_route("/api/cti-feeds/sync", api_cti_sync, methods=["POST"])
     app.add_route("/api/transforms", api_transforms, methods=["GET"])
     app.add_route("/api/lookup", api_lookup, methods=["POST"])
+    app.add_route("/api/cases", api_cases, methods=["GET"])
+    app.add_route("/api/cases", api_create_case, methods=["POST"])
+    app.add_route("/api/cases/{case_id}", api_delete_case, methods=["DELETE"])
+    app.add_route("/api/cases/{case_id}/graph", api_case_graph, methods=["GET"])
+    app.add_route("/api/cases/{case_id}/export/{format}", api_export_case, methods=["GET"])
     app.add_route("/api/events", api_events, methods=["GET"])
 
     return app

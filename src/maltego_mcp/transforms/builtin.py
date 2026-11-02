@@ -1649,6 +1649,83 @@ async def _tatum(ctx: BuiltinContext, etype: str, value: str, props: dict[str, s
     return _limit(items, n)
 
 
+_CISA_KEV_CACHE: dict[str, Any] = {}
+
+
+async def _cisa_kev(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
+    cve_match = re.search(r"CVE-\d{4}-\d{4,7}", value.strip(), re.IGNORECASE)
+    if not cve_match:
+        return TransformResponse([])
+    target_cve = cve_match.group(0).upper()
+
+    data = _CISA_KEV_CACHE.get("data")
+    if not data:
+        url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+        data = await _get_json(ctx, url)
+        if isinstance(data, dict):
+            _CISA_KEV_CACHE["data"] = data
+
+    vulns = (data or {}).get("vulnerabilities", []) if isinstance(data, dict) else []
+    items: list[ResultEntity] = []
+    for item in vulns:
+        if str(item.get("cveID", "")).upper() == target_cve:
+            items.append(
+                _ent(
+                    "maltego.Vulnerability",
+                    target_cve,
+                    "cisa_kev",
+                    cisa__vulnerabilityName=str(item.get("vulnerabilityName", "")),
+                    cisa__requiredAction=str(item.get("requiredAction", "")),
+                    cisa__dueDate=str(item.get("dueDate", "")),
+                )
+            )
+            vendor = str(item.get("vendorProject", "")).strip()
+            if vendor:
+                items.append(_ent("maltego.Company", vendor, "vendor"))
+            product = str(item.get("product", "")).strip()
+            if product:
+                items.append(_ent("maltego.Phrase", f"[Product] {product}", "product"))
+            if item.get("knownRansomwareCampaignUse") == "Known":
+                items.append(_ent("maltego.Phrase", "[Ransomware] Known Campaign Use", "threat_tag"))
+            break
+    return _limit(items, n)
+
+
+async def _urlhaus_host(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    target_host = _host(value) if "Domain" in etype or "Website" in etype or "DNS" in etype else value.strip()
+    data = await _get_json(
+        ctx,
+        "https://urlhaus-api.abuse.ch/v1/host/",
+        params={"host": target_host},
+        not_found_ok=True,
+    )
+    if not isinstance(data, dict) or data.get("query_status") != "ok":
+        return TransformResponse([])
+
+    items: list[ResultEntity] = []
+    urls = data.get("urls", [])
+    for u in urls[:n]:
+        url_val = str(u.get("url", "")).strip()
+        status = str(u.get("url_status", "")).strip()
+        threat = str(u.get("threat", "")).strip()
+        if url_val:
+            items.append(
+                _ent(
+                    "maltego.URL",
+                    url_val,
+                    "malware_url",
+                    urlhaus__status=status,
+                    urlhaus__threat=threat,
+                )
+            )
+        if threat:
+            items.append(_ent("maltego.Phrase", f"[Threat] {threat}", "threat_type"))
+
+    return _limit(items, n)
+
+
 # ------------------------------------------------------------------------------------------ registro
 def _b(
     name: str,
@@ -1949,6 +2026,22 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "Pulsos de inteligencia de amenazas para un hash MD5/SHA1/SHA256 (AlienVault OTX).",
         "amenazas",
         _otx_hash,
+    ),
+    _b(
+        "CisaKevToVulnerabilities",
+        ("maltego.UniqueIdentifier", "maltego.Vulnerability"),
+        ("maltego.Vulnerability", "maltego.Company", "maltego.Phrase"),
+        "Comprueba si un identificador CVE figura en el catálogo KEV de CISA (explotación activa).",
+        "cve",
+        _cisa_kev,
+    ),
+    _b(
+        "UrlhausHostToThreats",
+        HOST_TYPES + IP_TYPES,
+        ("maltego.URL", "maltego.Phrase"),
+        "Consulta URLs de malware y amenazas activas asociadas a un host o IP en Abuse.ch URLhaus.",
+        "amenazas",
+        _urlhaus_host,
     ),
     _b(
         "VTDomainToIP",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from starlette.testclient import TestClient
 
 from maltego_mcp.config import Settings
@@ -47,6 +48,30 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     r_worker = client.get("/bg-worker.js")
     assert r_worker.status_code == 200
     assert "OffscreenCanvas" in r_worker.text
+
+    # 3. Logos y favicons transparentes
+    r_logo = client.get("/logo.png")
+    assert r_logo.status_code == 200
+    assert r_logo.headers["content-type"] == "image/png"
+    assert len(r_logo.content) > 1000
+
+    r_fav = client.get("/favicon.png")
+    assert r_fav.status_code == 200
+    assert r_fav.headers["content-type"] == "image/png"
+    assert len(r_fav.content) > 500
+
+    r_fav32 = client.get("/favicon-32x32.png")
+    assert r_fav32.status_code == 200
+    assert r_fav32.headers["content-type"] == "image/png"
+
+    r_ico = client.get("/favicon.ico")
+    assert r_ico.status_code == 200
+    assert r_ico.headers["content-type"] == "image/x-icon"
+    assert len(r_ico.content) > 1000
+
+    r_touch = client.get("/apple-touch-icon.png")
+    assert r_touch.status_code == 200
+    assert r_touch.headers["content-type"] == "image/png"
 
 
 def test_api_status_and_providers(tmp_path: Path) -> None:
@@ -175,3 +200,51 @@ def test_api_security_host_protection(tmp_path: Path) -> None:
 
     r_evil_root = client.get("/", headers={"Host": "attacker.malicious-site.com"})
     assert r_evil_root.status_code == 403
+
+
+def test_api_inbox_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _create_test_app(tmp_path)
+    client = TestClient(app)
+
+    # 1. Catálogo OPSEC de proveedores de correo
+    r_prov = client.get("/api/inbox/providers")
+    assert r_prov.status_code == 200
+    p_data = r_prov.json()
+    assert "providers" in p_data
+    assert len(p_data["providers"]) >= 10
+    names = [p["name"] for p in p_data["providers"]]
+    assert "Proton Mail" in names
+    assert "Mail.tm (API Automatizada)" in names
+
+    # 2. Creación simulada de buzón
+    async def mock_create_inbox(self, address="", password=""):
+        return {
+            "ok": True,
+            "provider": "mail.tm",
+            "inbox_id": "test_inbox_123",
+            "address": address or "sockpuppet_test@mailtm.me",
+            "password": password or "safe_pass_999",
+            "token": "fake_jwt_token",
+            "status": "ready",
+        }
+
+    monkeypatch.setattr("maltego_mcp.web_app.MailTmClient.create_inbox", mock_create_inbox)
+
+    r_create = client.post(
+        "/api/inbox/create",
+        json={"save_as_sockpuppet": True, "address": "osint_agent@mailtm.me"},
+    )
+    assert r_create.status_code == 200
+    c_data = r_create.json()
+    assert c_data["ok"] is True
+    assert c_data["address"] == "osint_agent@mailtm.me"
+
+    # Verificar que se guardó en accounts.toml
+    r_accs = client.get("/api/accounts")
+    assert r_accs.status_code == 200
+    acc_list = r_accs.json()["accounts"]
+    assert any("mailtm_osint_agent" in a["id"] for a in acc_list)
+
+    # 3. Validación de mensajes con token ausente
+    r_no_token = client.get("/api/inbox/messages")
+    assert r_no_token.status_code == 400
