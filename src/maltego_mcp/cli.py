@@ -318,13 +318,21 @@ def main(argv: list[str] | None = None) -> int:
 
                 with contextlib.suppress(Exception):
                     webbrowser.open(url)
-            uvicorn.run(
-                app,
-                host=ns.host,
-                port=ns.port,
-                log_level="info",
-                log_config=_uvicorn_log_config(),
-            )
+            try:
+                uvicorn.run(
+                    app,
+                    host=ns.host,
+                    port=ns.port,
+                    log_level="info",
+                    log_config=_uvicorn_log_config(),
+                )
+            except OSError as exc:
+                print(
+                    f"Error: no se pudo iniciar el panel en {ns.host}:{ns.port} ({exc}). "
+                    f"Prueba con otro puerto mediante --port (ej. maltegoctl dashboard --port {ns.port + 1}).",
+                    file=sys.stderr,
+                )
+                return 1
             return 0
         if ns.command == "accounts":
             from maltego_mcp.accounts import (
