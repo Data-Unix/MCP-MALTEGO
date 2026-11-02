@@ -151,4 +151,3 @@ def test_dashboard_cli_port_collision(monkeypatch: pytest.MonkeyPatch, capsys: p
     err = capsys.readouterr().err
     assert "no se pudo iniciar el panel" in err
     assert "8001" in err
-
