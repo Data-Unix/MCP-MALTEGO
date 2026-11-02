@@ -1,0 +1,11 @@
+title = "MCP-MALTEGO Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Permitir mocks de prueba y datos sintéticos en suites de test"
+paths = [
+    '''(^|/)tests/''',
+    '''(^|/)test/''',
+]

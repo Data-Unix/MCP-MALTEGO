@@ -298,7 +298,11 @@ class Router:
                                     },
                                 ]
                             },
-                            "public_keys": {"primary": {"key_fingerprint": "AABBCCDDEEFF00112233445566778899AABBCCDD"}},
+                            "public_keys": {
+                                "primary": {
+                                    "key_fingerprint": "AABBCCDDEEFF00112233445566778899AABBCCDD"
+                                }  # gitleaks:allow
+                            },
                             "cryptocurrency_addresses": {
                                 "bitcoin": [{"address": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"}]
                             },
