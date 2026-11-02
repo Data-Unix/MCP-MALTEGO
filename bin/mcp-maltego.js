@@ -166,7 +166,7 @@ function ensureAccountsTemplate(homeDir) {
     "# [[accounts]]",
     '# platform = "github"',
     '# username = "sockpuppet_sec_01"',
-    '# token = "ghp_xxx"',
+    '# token = "<token_personal>"',
     "# enabled = true",
     "",
   ].join("\n");

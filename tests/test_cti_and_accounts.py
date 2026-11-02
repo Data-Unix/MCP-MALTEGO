@@ -92,13 +92,13 @@ def test_account_pool_rotation_cooldown_and_masking(tmp_path: Path) -> None:
 [[accounts]]
 platform = "github"
 username = "puppet_gh_1"
-token = "ghp_secret1111111111"
+token = "test_token_alpha_1111111111"
 enabled = true
 
 [[accounts]]
 platform = "github"
 username = "puppet_gh_2"
-token = "ghp_secret2222222222"
+token = "test_token_beta_2222222222"
 enabled = true
 
 [[accounts]]
@@ -129,7 +129,7 @@ enabled = true
 
     # Enmascarado seguro en summary()
     summary_str = json.dumps(pool.summary())
-    assert "ghp_secret1111111111" not in summary_str
+    assert "test_token_alpha_1111111111" not in summary_str
     assert "secretcookie999" not in summary_str
 
 
