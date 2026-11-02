@@ -146,10 +146,32 @@ function ensureEnvTemplate(homeDir) {
     "CENSYS_API_ID=",
     "CENSYS_API_SECRET=",
     "HIBP_API_KEY=",
+    "GITHUB_TOKEN=",
+    "REDDIT_SESSION_COOKIE=",
+    "TOR_SOCKS_PROXY=",
     "",
   ].join("\n");
   fs.writeFileSync(envFile, content, { encoding: "utf8", mode: 0o600 });
   return { path: envFile, created: true };
+}
+
+function ensureAccountsTemplate(homeDir) {
+  const accFile = path.join(homeDir, "accounts.toml");
+  if (isFile(accFile)) return { path: accFile, created: false };
+  fs.mkdirSync(homeDir, { recursive: true });
+  const content = [
+    "# MCP Maltego — Cuentas de redes sociales y Sock Puppets (~/.maltego-mcp/accounts.toml)",
+    "# Genera perfiles operativos con: maltegoctl accounts generate-persona --save",
+    "",
+    "# [[accounts]]",
+    '# platform = "github"',
+    '# username = "sockpuppet_sec_01"',
+    '# token = "<token_personal>"',
+    "# enabled = true",
+    "",
+  ].join("\n");
+  fs.writeFileSync(accFile, content, { encoding: "utf8", mode: 0o600 });
+  return { path: accFile, created: true };
 }
 
 /**
@@ -331,6 +353,8 @@ function doctor(runSetup = false, setupArgv = []) {
   if (runSetup) {
     const tpl = ensureEnvTemplate(homeDir);
     out(`  .env:     ${tpl.path} (${tpl.created ? "creado" : "ya existía"})`);
+    const accTpl = ensureAccountsTemplate(homeDir);
+    out(`  cuentas:  ${accTpl.path} (${accTpl.created ? "creado" : "ya existía"})`);
     const mtzInv = buildInvocation(["ctl", "mtz"]);
     const mtzRes = spawnSync(uv, mtzInv.uvArgs, { env: { ...mtzInv.env, MCP_MALTEGO_UV: uv }, encoding: "utf8" });
     if (mtzRes.status === 0) {

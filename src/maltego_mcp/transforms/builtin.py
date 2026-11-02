@@ -12,19 +12,23 @@ guardan, puntúan y exportan igual que los transforms TRX/iTDS.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import ipaddress
 import os
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
 
 from maltego_mcp import __version__
+from maltego_mcp.accounts import load_account_pool
 from maltego_mcp.breaches import classify_breach_indicator, query_local_breaches
+from maltego_mcp.cti_feeds import search_cti_feeds, sync_deepdark_cti
 from maltego_mcp.errors import TransformError
 from maltego_mcp.humint import analyze_subject_behavior
 from maltego_mcp.transforms.protocol import ResultEntity, TransformResponse
@@ -603,15 +607,88 @@ async def _otx_hash(ctx: BuiltinContext, etype: str, value: str, props: dict[str
     return _limit(items, n)
 
 
+def _home_dir(ctx: BuiltinContext) -> Path:
+    home_raw = (ctx.env.get("MALTEGO_MCP_HOME") or os.environ.get("MALTEGO_MCP_HOME") or "").strip()
+    return Path(home_raw) if home_raw else (Path.home() / ".maltego-mcp")
+
+
+async def _hudsonrock_stealer(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Comprobación gratuita sin clave de infostealers en HudsonRock Cavalier (email, dominio o alias)."""
+    kind, norm_val = classify_breach_indicator(etype, value)
+    if kind == "email":
+        url = f"https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-email?email={quote(norm_val)}"
+    elif kind == "domain":
+        url = f"https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-domain?domain={quote(norm_val)}"
+    elif kind == "alias":
+        url = f"https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-username?username={quote(norm_val)}"
+    else:
+        return TransformResponse(messages=[("Inform", f"HudsonRock no soporta indicador '{kind}'.")])
+    try:
+        data = await _get_json(ctx, url, not_found_ok=True)
+    except TransformError:
+        data = None
+    items: list[ResultEntity] = []
+    if isinstance(data, dict):
+        stealers = data.get("stealers") or []
+        for st in stealers[:n]:
+            if not isinstance(st, dict):
+                continue
+            comp_date = str(st.get("date_compromised") or "")
+            comp_name = str(st.get("computer_name") or "")
+            os_name = str(st.get("operating_system") or "")
+            stealer_family = str(st.get("stealer_family") or "Infostealer")
+            ip_val = str(st.get("ip") or "").strip()
+            label = f"[Infostealer:{stealer_family}] {comp_name or norm_val}".strip()
+            items.append(
+                _ent(
+                    "maltego.Phrase",
+                    label,
+                    "compromised_by_stealer",
+                    weight=90,
+                    stealer__family=stealer_family,
+                    stealer__date=comp_date,
+                    stealer__os=os_name,
+                    stealer__computer=comp_name,
+                )
+            )
+            if ip_val and not ip_val.startswith("*"):
+                try:
+                    ipaddress.ip_address(ip_val)
+                    items.append(
+                        _ent(
+                            "maltego.IPv6Address" if ":" in ip_val else "maltego.IPv4Address",
+                            ip_val,
+                            "infected_host_ip",
+                            weight=80,
+                        )
+                    )
+                except ValueError:
+                    pass
+        total_corp = int(data.get("total_corporate_services") or 0)
+        total_user = int(data.get("total_user_services") or 0)
+        if (total_corp > 0 or total_user > 0) and not items:
+            items.append(
+                _ent(
+                    "maltego.Phrase",
+                    f"[Infostealer] Exposición detectada (corp={total_corp}, user={total_user})",
+                    "compromised_by_stealer",
+                    weight=85,
+                )
+            )
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"HudsonRock: sin infecciones por infostealer para '{norm_val}'."))
+    return out
+
+
 async def _breach_semantic_pivot(
     ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
 ) -> TransformResponse:
-    """Enrutador semántico de filtraciones: índice local SQLite + k-Anonymity HIBP (hashes) + XposedOrNot (emails)."""
-    from pathlib import Path
-
+    """Enrutador semántico de filtraciones: índice local SQLite + k-Anonymity HIBP + XposedOrNot + HudsonRock."""
     kind, norm_val = classify_breach_indicator(etype, value)
-    home_raw = (ctx.env.get("MALTEGO_MCP_HOME") or os.environ.get("MALTEGO_MCP_HOME") or "").strip()
-    home_dir = Path(home_raw) if home_raw else (Path.home() / ".maltego-mcp")
+    home_dir = _home_dir(ctx)
     items: list[ResultEntity] = []
 
     # 1. Consulta en base de datos local embebida (~/.maltego-mcp/breaches.sqlite)
@@ -704,9 +781,497 @@ async def _breach_semantic_pivot(
             except TransformError:
                 pass
 
+    if kind in {"email", "domain", "alias"}:
+        hr_res = await _hudsonrock_stealer(ctx, etype, norm_val, props, n)
+        items.extend(hr_res.entities)
+
     out = _limit(items, n)
     if not out.entities:
         out.messages.append(("Inform", f"Sin filtraciones detectadas para {kind} '{norm_val}'."))
+    return out
+
+
+_ONION_HOST_RE = re.compile(r"\b([a-z2-7]{16,56}\.onion)\b", re.IGNORECASE)
+_BTC_ADDR_RE = re.compile(r"\b(bc1[ac-hj-np-z02-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})\b")
+_PGP_FP_RE = re.compile(r"\b([0-9A-F]{4}(?:\s?[0-9A-F]{4}){9})\b", re.IGNORECASE)
+_EMAIL_EXTRACT_RE = re.compile(r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24})\b")
+_TG_LINK_RE = re.compile(r"(?:https?://)?t\.me/([A-Za-z0-9_]{4,64})", re.IGNORECASE)
+_HTML_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+
+
+async def _deepdark_cti_search(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Correlaciona contra fastfire/deepdarkCTI (SOLO fuentes ONLINE/VALID), Ransomware.live y Ahmia.fi."""
+    home_dir = _home_dir(ctx)
+    query = value.strip()
+    if ctx.env.get("MALTEGO_CTI_AUTO_SYNC", "1").strip() not in {"0", "false", "no"}:
+        with contextlib.suppress(Exception):
+            await sync_deepdark_cti(home_dir, ctx.http, max_age_seconds=21600)
+
+    items: list[ResultEntity] = []
+    # 1. Índice local sincronizado con fastfire/deepdarkCTI (solo ONLINE/VALID)
+    for hit in search_cti_feeds(home_dir, query, active_only=True, limit=n):
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[DeepDarkCTI:{hit.category}] {hit.name} ({hit.status})",
+                "listed_in_deepdark_cti",
+                weight=88,
+                cti__category=hit.category,
+                cti__status=hit.status,
+                cti__url=hit.url,
+                cti__description=hit.description,
+                cti__feed=hit.feed_file,
+            )
+        )
+        if hit.url:
+            items.append(
+                _ent(
+                    "maltego.URL",
+                    hit.url,
+                    "darkweb_endpoint",
+                    weight=85,
+                    cti__name=hit.name,
+                    cti__category=hit.category,
+                    cti__status=hit.status,
+                )
+            )
+            for onion_host in _ONION_HOST_RE.findall(hit.url):
+                items.append(
+                    _ent(
+                        "maltego.Website",
+                        onion_host.lower(),
+                        "onion_service",
+                        weight=85,
+                        cti__name=hit.name,
+                        cti__category=hit.category,
+                    )
+                )
+
+    # 2. Ransomware.live (víctimas y grupos de ransomware en tiempo real)
+    q_clean = _host(query) if "." in query and " " not in query else query
+    try:
+        rw_data = await _get_json(
+            ctx,
+            f"https://api.ransomware.live/v2/searchvictims/{quote(q_clean)}",
+            not_found_ok=True,
+        )
+    except TransformError:
+        rw_data = None
+    if isinstance(rw_data, list):
+        for victim in rw_data[: min(n, 15)]:
+            if not isinstance(victim, dict):
+                continue
+            group_name = str(victim.get("group_name") or "unknown").strip()
+            post_title = str(victim.get("post_title") or victim.get("victim") or q_clean).strip()
+            discovered = str(victim.get("discovered") or victim.get("published") or "").strip()
+            post_url = str(victim.get("post_url") or "").strip()
+            items.append(
+                _ent(
+                    "maltego.Phrase",
+                    f"[Ransomware:{group_name}] Víctima: {post_title}",
+                    "ransomware_mention",
+                    weight=95,
+                    ransomware__group=group_name,
+                    ransomware__discovered=discovered,
+                    ransomware__post_url=post_url,
+                )
+            )
+            if post_url:
+                items.append(_ent("maltego.URL", post_url, "leak_site_post", weight=85, ransomware__group=group_name))
+
+    # 3. Ahmia.fi (buscador clearnet de servicios ocultos Tor)
+    try:
+        ahmia_resp = await ctx.http.get(f"https://ahmia.fi/search/?q={quote(q_clean)}")
+        if ahmia_resp.status_code == 200:
+            seen_onions: set[str] = set()
+            for match in _ONION_HOST_RE.findall(ahmia_resp.text):
+                onion = match.lower()
+                if onion not in seen_onions:
+                    seen_onions.add(onion)
+                    items.append(
+                        _ent(
+                            "maltego.Website",
+                            onion,
+                            "ahmia_onion_hit",
+                            weight=75,
+                            cti__source="ahmia.fi",
+                        )
+                    )
+                    if len(seen_onions) >= min(n, 10):
+                        break
+    except httpx.HTTPError:
+        pass
+
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"Sin coincidencias activas en DeepDarkCTI para '{query}'."))
+    return out
+
+
+async def _onion_passive_pivot(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Pivote pasivo y acotado para dominios/URLs .onion (inspirado en TorCrawl, sin descarga de binarios)."""
+    raw = value.strip()
+    onion_matches = _ONION_HOST_RE.findall(raw)
+    onion_host = onion_matches[0].lower() if onion_matches else _host(raw)
+    if not onion_host.endswith(".onion"):
+        return TransformResponse(
+            messages=[("Inform", f"'{raw}' no es un servicio .onion; usa DeepDarkCTISearch para buscar en superficie.")]
+        )
+    target_url = raw if raw.startswith(("http://", "https://")) else f"http://{onion_host}/"
+    home_dir = _home_dir(ctx)
+    pool = load_account_pool(home_dir, ctx.env)
+    acct = pool.acquire("onion", site=onion_host) or pool.acquire("tor", site=onion_host)
+    headers = pool.auth_headers(acct)
+
+    items: list[ResultEntity] = []
+    # 1. Correlación inmediata contra base local fastfire/deepdarkCTI
+    for hit in search_cti_feeds(home_dir, onion_host, active_only=True, limit=n):
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[DeepDarkCTI:{hit.category}] {hit.name} ({hit.status})",
+                "identified_onion_service",
+                weight=92,
+                cti__category=hit.category,
+                cti__status=hit.status,
+                cti__description=hit.description,
+            )
+        )
+
+    # 2. Inspección pasiva de HTML (si el cliente HTTP o proxy SOCKS Tor alcanza el .onion)
+    html_text = ""
+    try:
+        resp = await ctx.http.get(target_url, headers=headers)
+        if resp.status_code == 429 and acct is not None:
+            pool.mark_rate_limited(acct)
+        elif resp.status_code == 200:
+            ctype = resp.headers.get("content-type", "text/html").lower()
+            if "text/" in ctype or "html" in ctype or "json" in ctype or not ctype:
+                html_text = resp.text[:200_000]
+    except httpx.HTTPError:
+        html_text = ""
+
+    if html_text:
+        title_m = _HTML_TITLE_RE.search(html_text)
+        if title_m:
+            clean_title = " ".join(title_m.group(1).split())[:120]
+            if clean_title:
+                items.append(
+                    _ent(
+                        "maltego.Phrase",
+                        f"[OnionTitle] {clean_title}",
+                        "page_title",
+                        weight=80,
+                        onion__host=onion_host,
+                    )
+                )
+        for linked_onion in sorted({m.lower() for m in _ONION_HOST_RE.findall(html_text)}):
+            if linked_onion != onion_host:
+                items.append(
+                    _ent(
+                        "maltego.Website",
+                        linked_onion,
+                        "linked_onion",
+                        weight=80,
+                        onion__parent=onion_host,
+                    )
+                )
+        for btc in sorted(set(_BTC_ADDR_RE.findall(html_text)))[:10]:
+            items.append(_ent("maltego.CryptocurrencyAddress", btc, "mentions_btc", weight=85, onion__host=onion_host))
+        for pgp in sorted({m.replace(" ", "").upper() for m in _PGP_FP_RE.findall(html_text)})[:10]:
+            items.append(_ent("maltego.Phrase", f"[PGP] {pgp}", "pgp_fingerprint", weight=85, onion__host=onion_host))
+        for em in sorted({m.lower() for m in _EMAIL_EXTRACT_RE.findall(html_text)})[:10]:
+            items.append(_ent("maltego.EmailAddress", em, "mentions_email", weight=80, onion__host=onion_host))
+        for tg in sorted(set(_TG_LINK_RE.findall(html_text)))[:10]:
+            items.append(
+                ResultEntity(
+                    "maltego.Affiliation",
+                    f"{tg} (Telegram)",
+                    80,
+                    {
+                        "affiliation.network": "Telegram",
+                        "affiliation.uid": tg,
+                        "affiliation.profile-url": f"https://t.me/{tg}",
+                    },
+                    {"maltego.link.label": "mentions_telegram"},
+                )
+            )
+
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"Sin metadatos accesibles para '{onion_host}' (verifique TOR_SOCKS_PROXY)."))
+    return out
+
+
+async def _keybase_proofs(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Extrae pruebas criptográficas de identidad verificadas en Keybase (redes, DNS, PGP, BTC)."""
+    alias = value.strip().lstrip("@")
+    if not _ALIAS_RE.match(alias):
+        return TransformResponse(messages=[("PartialError", "Alias no válido para Keybase.")])
+    data = await _get_json(
+        ctx,
+        f"https://keybase.io/_/api/1.0/user/lookup.json?usernames={quote(alias)}",
+        not_found_ok=True,
+    )
+    them = data.get("them") if isinstance(data, dict) else None
+    if not isinstance(them, list) or not them or not isinstance(them[0], dict):
+        return TransformResponse(messages=[("Inform", f"Keybase no tiene perfil para '{alias}'.")])
+    user = them[0]
+    items: list[ResultEntity] = []
+    profile = user.get("profile") or {}
+    if profile.get("full_name"):
+        items.append(_ent("maltego.Person", str(profile["full_name"]), "full_name", weight=85))
+    if profile.get("location"):
+        items.append(_ent("maltego.Location", str(profile["location"]), "located_in", weight=75))
+
+    proofs = (user.get("proofs_summary") or {}).get("all") or []
+    for p in proofs:
+        if not isinstance(p, dict):
+            continue
+        ptype = str(p.get("proof_type") or "").strip()
+        nametag = str(p.get("nametag") or "").strip()
+        service_url = str(p.get("service_url") or p.get("human_url") or "").strip()
+        if not ptype or not nametag:
+            continue
+        if ptype in {"dns", "generic_web_site"}:
+            items.append(_ent("maltego.Domain", _host(nametag), "verified_domain_proof", weight=95))
+        else:
+            items.append(
+                ResultEntity(
+                    "maltego.Affiliation",
+                    f"{nametag} ({ptype})",
+                    95,
+                    {
+                        "affiliation.network": ptype,
+                        "affiliation.uid": nametag,
+                        "affiliation.profile-url": service_url,
+                        "keybase.verified": "true",
+                    },
+                    {"maltego.link.label": "cryptographic_proof"},
+                )
+            )
+            if nametag.lower() != alias.lower():
+                items.append(_ent("humint.Alias", nametag, "verified_same_owner", weight=95, platform=ptype))
+
+    pub_keys = (user.get("public_keys") or {}).get("primary") or {}
+    bundle_fp = str(pub_keys.get("key_fingerprint") or "").strip()
+    if bundle_fp:
+        items.append(_ent("maltego.Phrase", f"[PGP] {bundle_fp.upper()}", "pgp_fingerprint", weight=90))
+
+    cryptos = user.get("cryptocurrency_addresses") or {}
+    if isinstance(cryptos, dict):
+        for coin, addr_list in cryptos.items():
+            if isinstance(addr_list, list):
+                for entry in addr_list:
+                    addr = str(entry.get("address") if isinstance(entry, dict) else entry).strip()
+                    if addr:
+                        items.append(
+                            _ent(
+                                "maltego.CryptocurrencyAddress",
+                                addr,
+                                "crypto_wallet",
+                                weight=90,
+                                crypto__coin=str(coin),
+                            )
+                        )
+    return _limit(items, n)
+
+
+async def _social_alias_deep(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Reconocimiento profundo en Reddit, Hacker News, Lobste.rs y Bluesky con soporte Sock Puppet."""
+    alias = value.strip().lstrip("@")
+    if not _ALIAS_RE.match(alias):
+        return TransformResponse(messages=[("PartialError", "Alias no válido para reconocimiento social.")])
+    home_dir = _home_dir(ctx)
+    pool = load_account_pool(home_dir, ctx.env)
+    items: list[ResultEntity] = []
+
+    # 1. Reddit (about.json)
+    reddit_acct = pool.acquire("reddit")
+    try:
+        r_resp = await ctx.http.get(
+            f"https://www.reddit.com/user/{quote(alias)}/about.json",
+            headers=pool.auth_headers(reddit_acct),
+        )
+        if r_resp.status_code == 429 and reddit_acct is not None:
+            pool.mark_rate_limited(reddit_acct)
+        elif r_resp.status_code == 200:
+            r_data = (r_resp.json() or {}).get("data") or {}
+            if isinstance(r_data, dict) and r_data.get("name"):
+                uname = str(r_data["name"])
+                karma = int(r_data.get("total_karma") or r_data.get("link_karma") or 0)
+                bio = str((r_data.get("subreddit") or {}).get("public_description") or "").strip()
+                items.append(
+                    ResultEntity(
+                        "maltego.Affiliation",
+                        f"{uname} (Reddit)",
+                        80,
+                        {
+                            "affiliation.network": "Reddit",
+                            "affiliation.uid": uname,
+                            "affiliation.profile-url": f"https://www.reddit.com/user/{uname}",
+                            "social.karma": str(karma),
+                            "notes": bio,
+                        },
+                        {"maltego.link.label": "has_profile"},
+                    )
+                )
+    except (httpx.HTTPError, ValueError):
+        pass
+
+    # 2. Hacker News (Algolia API)
+    try:
+        hn_data = await _get_json(ctx, f"https://hn.algolia.com/api/v1/users/{quote(alias)}", not_found_ok=True)
+    except TransformError:
+        hn_data = None
+    if isinstance(hn_data, dict) and hn_data.get("username"):
+        uname = str(hn_data["username"])
+        about = str(hn_data.get("about") or "").strip()
+        karma = int(hn_data.get("karma") or 0)
+        items.append(
+            ResultEntity(
+                "maltego.Affiliation",
+                f"{uname} (HackerNews)",
+                80,
+                {
+                    "affiliation.network": "HackerNews",
+                    "affiliation.uid": uname,
+                    "affiliation.profile-url": f"https://news.ycombinator.com/user?id={uname}",
+                    "social.karma": str(karma),
+                    "notes": about,
+                },
+                {"maltego.link.label": "has_profile"},
+            )
+        )
+
+    # 3. Lobste.rs (~user.json + árbol de invitación)
+    try:
+        lob_data = await _get_json(ctx, f"https://lobste.rs/~{quote(alias)}.json", not_found_ok=True)
+    except TransformError:
+        lob_data = None
+    if isinstance(lob_data, dict) and lob_data.get("username"):
+        uname = str(lob_data["username"])
+        invited_by = str(lob_data.get("invited_by_user") or "").strip()
+        github_u = str(lob_data.get("github_username") or "").strip()
+        items.append(
+            ResultEntity(
+                "maltego.Affiliation",
+                f"{uname} (Lobsters)",
+                80,
+                {
+                    "affiliation.network": "Lobsters",
+                    "affiliation.uid": uname,
+                    "affiliation.profile-url": f"https://lobste.rs/~{uname}",
+                    "social.invited_by": invited_by,
+                },
+                {"maltego.link.label": "has_profile"},
+            )
+        )
+        if invited_by:
+            items.append(_ent("humint.Alias", invited_by, "invited_by", weight=75, platform="Lobsters"))
+        if github_u:
+            items.append(_ent("humint.Alias", github_u, "linked_github", weight=90, platform="GitHub"))
+
+    # 4. Bluesky ATProto (getProfile)
+    bsky_handle = alias if "." in alias else f"{alias}.bsky.social"
+    try:
+        bsky_data = await _get_json(
+            ctx,
+            f"https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor={quote(bsky_handle)}",
+            not_found_ok=True,
+        )
+    except TransformError:
+        bsky_data = None
+    if isinstance(bsky_data, dict) and bsky_data.get("handle"):
+        handle = str(bsky_data["handle"])
+        disp = str(bsky_data.get("displayName") or "").strip()
+        desc = str(bsky_data.get("description") or "").strip()
+        items.append(
+            ResultEntity(
+                "maltego.Affiliation",
+                f"{handle} (Bluesky)",
+                80,
+                {
+                    "affiliation.network": "Bluesky",
+                    "affiliation.uid": handle,
+                    "affiliation.profile-url": f"https://bsky.app/profile/{handle}",
+                    "notes": desc,
+                },
+                {"maltego.link.label": "has_profile"},
+            )
+        )
+        if disp:
+            items.append(_ent("maltego.Person", disp, "display_name", weight=70))
+
+    return _limit(items, n)
+
+
+async def _github_commit_emails(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    """Extrae correos de autor y colaboradores de los eventos de commits públicos en GitHub."""
+    alias = value.strip().lstrip("@")
+    if not _ALIAS_RE.match(alias):
+        return TransformResponse(messages=[("PartialError", "Alias de GitHub no válido.")])
+    home_dir = _home_dir(ctx)
+    pool = load_account_pool(home_dir, ctx.env)
+    gh_acct = pool.acquire("github")
+    headers = pool.auth_headers(gh_acct)
+    try:
+        events = await _get_json(
+            ctx,
+            f"https://api.github.com/users/{quote(alias)}/events/public",
+            headers=headers or None,
+            not_found_ok=True,
+        )
+    except TransformError as exc:
+        if "429" in str(exc) and gh_acct is not None:
+            pool.mark_rate_limited(gh_acct)
+        raise
+    items: list[ResultEntity] = []
+    seen_emails: set[str] = set()
+    if isinstance(events, list):
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            repo_name = str((ev.get("repo") or {}).get("name") or "").strip()
+            commits = (ev.get("payload") or {}).get("commits") or []
+            for c in commits:
+                if not isinstance(c, dict):
+                    continue
+                author = c.get("author") or {}
+                email = str(author.get("email") or "").strip().lower()
+                name = str(author.get("name") or "").strip()
+                if (
+                    email
+                    and "@" in email
+                    and not email.endswith("@users.noreply.github.com")
+                    and email not in seen_emails
+                ):
+                    seen_emails.add(email)
+                    items.append(
+                        _ent(
+                            "maltego.EmailAddress",
+                            email,
+                            "commit_author_email",
+                            weight=90,
+                            github__author_name=name,
+                            github__repo=repo_name,
+                        )
+                    )
+                if name and len(seen_emails) <= n:
+                    items.append(_ent("maltego.Person", name, "commit_author_name", weight=75, github__repo=repo_name))
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"Sin correos expuestos en eventos públicos recientes de '{alias}'."))
     return out
 
 
@@ -1285,6 +1850,46 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         _github_alias,
     ),
     _b(
+        "GitHubAliasToCommitEmails",
+        ("maltego.Alias", "humint.Alias"),
+        ("maltego.EmailAddress", "maltego.Person"),
+        "Extrae correos y autores en commits de eventos públicos de GitHub (usa cuenta/GITHUB_TOKEN si existe).",
+        "social",
+        _github_commit_emails,
+    ),
+    _b(
+        "KeybaseAliasToProofs",
+        ("maltego.Alias", "humint.Alias"),
+        (
+            "maltego.Affiliation",
+            "humint.Alias",
+            "maltego.Domain",
+            "maltego.Phrase",
+            "maltego.CryptocurrencyAddress",
+            "maltego.Person",
+            "maltego.Location",
+        ),
+        "Extrae pruebas criptográficas de identidad verificadas en Keybase (redes, dominios, PGP y wallets).",
+        "social",
+        _keybase_proofs,
+    ),
+    _b(
+        "SocialAliasDeepRecon",
+        ("maltego.Alias", "humint.Alias"),
+        ("maltego.Affiliation", "humint.Alias", "maltego.Person"),
+        "Reconocimiento profundo en Reddit, Hacker News, Lobste.rs y Bluesky con rotación de cuentas Sock Puppet.",
+        "social",
+        _social_alias_deep,
+    ),
+    _b(
+        "HudsonRockStealerCheck",
+        ("maltego.EmailAddress", "maltego.Domain", "maltego.Alias", "humint.Alias"),
+        ("maltego.Phrase", "maltego.IPv4Address", "maltego.IPv6Address"),
+        "Comprobación gratuita de compromiso por infostealers en HudsonRock Cavalier (correo, dominio o usuario).",
+        "filtraciones",
+        _hudsonrock_stealer,
+    ),
+    _b(
         "BreachSemanticPivot",
         (
             "maltego.EmailAddress",
@@ -1294,10 +1899,40 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
             "maltego.Domain",
             "maltego.Hash",
         ),
-        ("maltego.Phrase", "maltego.EmailAddress", "maltego.Alias", "maltego.Hash"),
-        "Enrutador semántico de filtraciones: índice SQLite local + HIBP Pwned Passwords (k-Anonymity) + XposedOrNot.",
+        ("maltego.Phrase", "maltego.EmailAddress", "maltego.Alias", "maltego.Hash", "maltego.IPv4Address"),
+        "Enrutador semántico de filtraciones: índice SQLite local + HIBP Pwned Passwords + XposedOrNot + HudsonRock.",
         "filtraciones",
         _breach_semantic_pivot,
+    ),
+    _b(
+        "DeepDarkCTISearch",
+        (
+            "maltego.Domain",
+            "maltego.Website",
+            "maltego.URL",
+            "maltego.Alias",
+            "humint.Alias",
+            "maltego.Organization",
+            "humint.Organization",
+        ),
+        ("maltego.Phrase", "maltego.URL", "maltego.Website"),
+        "Correlaciona contra fuentes ACTIVAS (ONLINE/VALID) de fastfire/deepdarkCTI, Ransomware.live y Ahmia.fi.",
+        "darkweb",
+        _deepdark_cti_search,
+    ),
+    _b(
+        "OnionPassivePivot",
+        ("maltego.Website", "maltego.URL", "maltego.Domain"),
+        (
+            "maltego.Phrase",
+            "maltego.Website",
+            "maltego.CryptocurrencyAddress",
+            "maltego.EmailAddress",
+            "maltego.Affiliation",
+        ),
+        "Pivote pasivo y acotado estilo TorCrawl para servicios .onion (título, enlaces, BTC, PGP, emails y Telegram).",
+        "darkweb",
+        _onion_passive_pivot,
     ),
     _b(
         "AnalyzeSubjectBehavior",

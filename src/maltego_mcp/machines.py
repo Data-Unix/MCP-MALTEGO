@@ -149,7 +149,7 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
     Machine(
         "ThreatSweep",
         "Triaje defensivo de un indicador (hash, IP o dominio): pulsos OTX y VirusTotal para hashes, "
-        "puertos/CVEs (InternetDB/Shodan/GreyNoise) para IPs, y WHOIS + urlscan.io para dominios.",
+        "puertos/CVEs (InternetDB/Shodan/GreyNoise) para IPs, y WHOIS + urlscan.io + DeepDarkCTI para dominios.",
         ("maltego.Hash", "maltego.IPv4Address", "maltego.Domain"),
         (
             (
@@ -160,6 +160,8 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
                 "ShodanIPToServices",
                 "DomainToWhois",
                 "URLScanDomainSearch",
+                "DeepDarkCTISearch",
+                "HudsonRockStealerCheck",
             ),
             ("IPToAS", "IPToWhois"),
         ),
@@ -173,7 +175,7 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
     Machine(
         "PersonaFootprint",
         "Reconocimiento HUMINT/SOCMINT de personas y pseudónimos: alias, Gravatar, perfiles públicos, GitHub, "
-        "enrutador semántico de filtraciones (BreachSemanticPivot) y perfilado conductual (AnalyzeSubjectBehavior).",
+        "Keybase, comunidades (Reddit/HN/Lobsters/Bluesky), filtraciones y perfilado conductual.",
         ("maltego.EmailAddress", "maltego.Alias", "humint.Alias", "maltego.Person"),
         (
             (
@@ -183,9 +185,38 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
                 "BreachSemanticPivot",
                 "AliasToProfiles",
                 "GitHubAliasToDetails",
+                "GitHubAliasToCommitEmails",
+                "KeybaseAliasToProofs",
+                "SocialAliasDeepRecon",
             ),
-            ("AliasToProfiles", "GitHubAliasToDetails", "AnalyzeSubjectBehavior"),
+            (
+                "AliasToProfiles",
+                "GitHubAliasToDetails",
+                "KeybaseAliasToProofs",
+                "SocialAliasDeepRecon",
+                "AnalyzeSubjectBehavior",
+            ),
         ),
+    ),
+    Machine(
+        "DarkWebFootprint",
+        "Rastreo recursivo en Dark Web y fuentes CTI activas (fastfire/deepdarkCTI, Ransomware.live, Ahmia.fi y "
+        "pivote pasivo estilo TorCrawl sobre servicios .onion con extracción de BTC, PGP, correos y Telegram).",
+        (
+            "maltego.Domain",
+            "maltego.Website",
+            "maltego.URL",
+            "maltego.Alias",
+            "humint.Alias",
+            "maltego.EmailAddress",
+            "maltego.Organization",
+            "humint.Organization",
+        ),
+        (
+            ("DeepDarkCTISearch", "OnionPassivePivot", "BreachSemanticPivot", "HudsonRockStealerCheck"),
+            ("OnionPassivePivot", "BreachSemanticPivot", "AliasToProfiles"),
+        ),
+        default_rounds=2,
     ),
 )
 
