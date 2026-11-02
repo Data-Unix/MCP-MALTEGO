@@ -71,6 +71,15 @@ BUILTIN_SERVER = TransformServer(name="integrado", url="builtin://maltego-mcp", 
 
 
 def builtin_specs() -> dict[str, TransformSpec]:
+    from maltego_mcp.transforms.plugins import discover_plugins
+
+    all_transforms = list(BUILTIN_TRANSFORMS)
+    try:
+        community = discover_plugins()
+        all_transforms.extend(community)
+    except Exception:
+        pass
+
     return {
         b.name.lower(): TransformSpec(
             name=b.name,
@@ -82,7 +91,7 @@ def builtin_specs() -> dict[str, TransformSpec]:
             builtin=b,
             category=b.category,
         )
-        for b in BUILTIN_TRANSFORMS
+        for b in all_transforms
     }
 
 

@@ -333,6 +333,37 @@ class Router:
         if host in profiles:
             exists, body = profiles[host]
             return httpx.Response(200 if exists else 404, json=body)
+        if host == "www.cisa.gov":
+            return httpx.Response(
+                200,
+                json={
+                    "vulnerabilities": [
+                        {
+                            "cveID": "CVE-2023-34362",
+                            "vendorProject": "Progress",
+                            "product": "MOVEit Transfer",
+                            "vulnerabilityName": "SQL Injection",
+                            "requiredAction": "Apply mitigations",
+                            "dueDate": "2023-06-16",
+                            "knownRansomwareCampaignUse": "Known",
+                        }
+                    ]
+                },
+            )
+        if host == "urlhaus-api.abuse.ch":
+            return httpx.Response(
+                200,
+                json={
+                    "query_status": "ok",
+                    "urls": [
+                        {
+                            "url": "http://example.com/malware.exe",
+                            "url_status": "online",
+                            "threat": "exe",
+                        }
+                    ],
+                },
+            )
         return provider_response(host, path, params, request)
 
 
@@ -741,3 +772,19 @@ async def test_analyze_subject_behavior_transform(ctx: BuiltinContext) -> None:
         for e in res.entities
         if e.entity_type == "humint.PsychologicalTrait"
     )
+
+
+async def test_cisa_kev_transform(ctx: BuiltinContext) -> None:
+    res = await T("CisaKevToVulnerabilities").handler(ctx, "maltego.UniqueIdentifier", "CVE-2023-34362", {}, 10)
+    entities = [(e.entity_type, e.value, e.link_label) for e in res.entities]
+    assert ("maltego.Vulnerability", "CVE-2023-34362", "cisa_kev") in entities
+    assert ("maltego.Company", "Progress", "vendor") in entities
+    assert any("[Product] MOVEit Transfer" in val for _, val, _ in entities)
+    assert any("[Ransomware]" in val for _, val, _ in entities)
+
+
+async def test_urlhaus_transform(ctx: BuiltinContext) -> None:
+    res = await T("UrlhausHostToThreats").handler(ctx, "maltego.Domain", "example.com", {}, 10)
+    entities = [(e.entity_type, e.value, e.link_label) for e in res.entities]
+    assert ("maltego.URL", "http://example.com/malware.exe", "malware_url") in entities
+    assert any("[Threat] exe" in val for _, val, _ in entities)

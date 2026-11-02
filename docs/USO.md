@@ -100,6 +100,45 @@ Incluye `EmailToDomain`, `EmailToHandle`, `URLToDomain`, `DomainToWebsite` y `Do
 Sirve de plantilla para escribir transforms propios con maltego-trx; los mismos transforms se pueden
 registrar en Maltego Desktop.
 
+### Plugins comunitarios en Python (sin servidor externo)
+Puedes añadir tus propios transforms colocando scripts Python en `~/.maltego-mcp/plugins/*.py` o en `./plugins/*.py`.
+El servidor los descubre automáticamente en el arranque sin tocar el código fuente:
+
+```python
+from maltego_mcp.transforms.plugins import custom_transform, result_entity, transform_response
+
+
+@custom_transform(
+    name="DomainToCustomData",
+    input_types=("maltego.Domain",),
+    output_types=("maltego.Phrase",),
+    description="Extrae inteligencia personalizada para un dominio",
+    category="comunidad",
+)
+async def mi_transform(ctx, etype, value, props, limit):
+    return transform_response([result_entity("maltego.Phrase", f"Intel: {value}", label="custom_intel")])
+```
+
+### Plugins comunitarios en Python (sin servidor externo)
+Puedes añadir tus propios transforms colocando scripts Python en `~/.maltego-mcp/plugins/*.py` o en `./plugins/*.py`.
+El servidor los descubre automáticamente en el arranque sin tocar el código fuente:
+
+```python
+from maltego_mcp.transforms.plugins import custom_transform, result_entity, transform_response
+
+@custom_transform(
+    name="DomainToCustomData",
+    input_types=("maltego.Domain",),
+    output_types=("maltego.Phrase",),
+    description="Extrae inteligencia personalizada para un dominio",
+    category="comunidad",
+)
+async def mi_transform(ctx, etype, value, props, limit):
+    return transform_response([
+        result_entity("maltego.Phrase", f"Intel: {value}", label="custom_intel")
+    ])
+```
+
 Prueba rápida desde un agente:
 ```
 Crea el caso demo y ejecuta la cadena EmailToDomain, DomainToWebsite, DomainToIP sobre ana@example.com.

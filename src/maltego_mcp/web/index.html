@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MCP Maltego | Consola de Control y Bóveda OSINT</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=2">
+  <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2">
   <link rel="stylesheet" href="/dashboard.css">
 </head>
 <body>
@@ -14,7 +18,7 @@
     <!-- Barra Lateral de Navegación -->
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-icon">M</div>
+        <img src="/logo.png?v=2" alt="MCP Maltego Logo" class="brand-logo" width="32" height="32">
         <div class="brand-title">MCP Maltego</div>
         <div class="brand-version" id="app-version">v0.2.0</div>
       </div>
@@ -41,6 +45,11 @@
         </a>
 
         <div class="nav-heading" style="margin-top:0.75rem;">Herramientas MCP</div>
+        <a class="nav-link" data-tab="graph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          <span class="nav-label">Grafo & Casos en Vivo</span>
+          <span class="nav-badge" id="badge-graph-count">0</span>
+        </a>
         <a class="nav-link" data-tab="transforms">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
           <span class="nav-label">Transforms & Playground</span>
@@ -245,6 +254,100 @@
               <div class="panel-title">Catálogo Registrado de Transformadas</div>
             </div>
             <div id="transforms-list"></div>
+          </div>
+        </section>
+
+        <!-- VISTA 6: GRAFO Y CASOS EN TIEMPO REAL -->
+        <section class="view-section" id="view-graph">
+          <div class="panel" style="margin-bottom:1rem; padding:0.75rem 1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="panel-title" style="margin:0;">Caso:</span>
+                <select class="select" id="graph-case-select" onchange="onCaseSelected(this.value)" style="min-width:240px;"></select>
+                <button class="btn btn-secondary btn-sm" onclick="reloadCurrentGraph()">Recargar</button>
+                <button class="btn btn-secondary btn-sm" onclick="exportCurrentCaseMtgx()" title="Descargar como archivo nativo .mtgx para Maltego Desktop">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Exportar .mtgx
+                </button>
+              </div>
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="promptCreateCase()" id="btn-new-case">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Nuevo Caso
+                </button>
+                <div style="display:flex; gap:0.25rem;">
+                  <button class="btn btn-secondary btn-sm" onclick="graphZoom(1.2)" title="Acercar">+</button>
+                  <button class="btn btn-secondary btn-sm" onclick="graphZoom(0.8)" title="Alejar">-</button>
+                  <button class="btn btn-secondary btn-sm" onclick="graphResetZoom()" title="Ajustar">Reset</button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-top:0.6rem; padding-top:0.55rem; border-top:1px solid var(--border-subtle);">
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:11px; color:var(--text-muted);">Filtrar por certeza:</span>
+                <button class="pill pill-cyan" onclick="setGraphFilter('all')" style="cursor:pointer; border:none;">Todos</button>
+                <button class="pill pill-ok" onclick="setGraphFilter('high')" style="cursor:pointer; border:none;">Alta Certeza (≥ 0.8)</button>
+                <button class="pill pill-amber" onclick="setGraphFilter('medium')" style="cursor:pointer; border:none;">Indicios (< 0.8)</button>
+                <button class="pill pill-crimson" onclick="setGraphFilter('risk')" style="cursor:pointer; border:none;">Riesgo / Alerta</button>
+              </div>
+
+              <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Disposición / Layout:</span>
+                <div class="layout-btn-group">
+                  <button class="btn btn-secondary btn-sm active" id="layout-btn-force" onclick="setGraphLayout('force')">
+                    Orgánico
+                    <span class="info-circle" data-tooltip="Fuerzas Físicas (Fruchterman-Reingold): Simulación elástica que agrupa nodos de forma orgánica según afinidad de relaciones.">ⓘ</span>
+                  </button>
+
+                  <button class="btn btn-secondary btn-sm" id="layout-btn-hierarchical" onclick="setGraphLayout('hierarchical')">
+                    Jerárquico
+                    <span class="info-circle" data-tooltip="Piramidal Top-Down: Nodo central y dictamen arriba, proveedores en medio, y campañas, clientes y evidencias abajo.">ⓘ</span>
+                  </button>
+
+                  <button class="btn btn-secondary btn-sm" id="layout-btn-radial" onclick="setGraphLayout('radial')">
+                    Radial
+                    <span class="info-circle" data-tooltip="Círculos Concéntricos: Nodos distribuidos en anillos orbitales según saltos de distancia desde el objetivo central.">ⓘ</span>
+                  </button>
+
+                  <button class="btn btn-secondary btn-sm" id="layout-btn-cluster" onclick="setGraphLayout('cluster')">
+                    Por Categoría
+                    <span class="info-circle" data-tooltip="Agrupación por Tipos: Separa espacialmente Empresas, Ubicaciones/GPS, Servicios y Evidencias Documentales.">ⓘ</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ESPACIO DE TRABAJO DEL GRAFO CON PANEL LATERAL -->
+          <div class="graph-workspace-layout">
+            <div class="graph-canvas-wrapper">
+              <canvas id="graph-interactive-canvas"></canvas>
+              <div class="graph-legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#00f5ff;"></span> Entidad Objetivo / Raíz</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#10b981;"></span> Organización / Alta Certeza</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> Indicio / Parcial</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#818cf8;"></span> Ubicación / Infraestructura</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#38bdf8;"></span> Servicio / Conector</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#f43f5e;"></span> Riesgo / Conflicto / Alerta</div>
+              </div>
+              <div class="graph-status-bar" id="graph-status-bar">
+                Cargando grafo interactivo...
+              </div>
+            </div>
+
+            <!-- INSPECTOR LATERAL DE ENTIDAD -->
+            <div class="graph-inspector-panel" id="graph-inspector-panel">
+              <div class="panel-header" style="padding-bottom:0.5rem; margin-bottom:0.75rem; border-bottom:1px solid var(--border-subtle);">
+                <div>
+                  <div class="panel-title" style="font-size:13px;">Ficha de Inteligencia</div>
+                  <div class="panel-subtitle" id="insp-type" style="font-family:var(--font-mono); font-size:11px;">maltego.Entity</div>
+                </div>
+                <span class="pill pill-cyan" id="insp-badge">Seleccionar Nodo</span>
+              </div>
+              <div id="insp-body">
+                <p style="color:var(--text-muted); font-size:12px;">Haz clic en cualquier nodo o entidad del grafo para inspeccionar sus atributos, fuentes verificables y relaciones de inteligencia.</p>
+              </div>
+            </div>
           </div>
         </section>
       </main>

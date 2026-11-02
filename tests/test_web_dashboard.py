@@ -48,6 +48,30 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert r_worker.status_code == 200
     assert "OffscreenCanvas" in r_worker.text
 
+    # 3. Logos y favicons transparentes
+    r_logo = client.get("/logo.png")
+    assert r_logo.status_code == 200
+    assert r_logo.headers["content-type"] == "image/png"
+    assert len(r_logo.content) > 1000
+
+    r_fav = client.get("/favicon.png")
+    assert r_fav.status_code == 200
+    assert r_fav.headers["content-type"] == "image/png"
+    assert len(r_fav.content) > 500
+
+    r_fav32 = client.get("/favicon-32x32.png")
+    assert r_fav32.status_code == 200
+    assert r_fav32.headers["content-type"] == "image/png"
+
+    r_ico = client.get("/favicon.ico")
+    assert r_ico.status_code == 200
+    assert r_ico.headers["content-type"] == "image/x-icon"
+    assert len(r_ico.content) > 1000
+
+    r_touch = client.get("/apple-touch-icon.png")
+    assert r_touch.status_code == 200
+    assert r_touch.headers["content-type"] == "image/png"
+
 
 def test_api_status_and_providers(tmp_path: Path) -> None:
     app = _create_test_app(tmp_path)
