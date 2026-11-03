@@ -131,12 +131,104 @@
           <div class="panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Bóveda de Cuentas y Sock Puppets</div>
-                <div class="panel-subtitle">Gestión centralizada en ~/.maltego-mcp/accounts.toml con rotación y prevención de 429</div>
+                <div class="panel-title">Bóveda de Cuentas, Foros, Mercados y Sock Puppets</div>
+                <div class="panel-subtitle">Gestión centralizada en ~/.maltego-mcp/accounts.toml con rotación, cookies, proxies Tor y prevención de 429</div>
               </div>
-              <div style="display:flex; gap:0.5rem;">
+              <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
                 <button class="btn btn-secondary btn-sm" onclick="loadAccounts()">Actualizar</button>
-                <button class="btn btn-primary btn-sm" onclick="openNewAccountModal()">Nueva Cuenta</button>
+                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('social')"><span style="color:var(--accent-cyan)">🌐</span> + Red Social</button>
+                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('forum')"><span style="color:var(--accent-crimson)">💀</span> + Foro Ciber</button>
+                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('market')"><span style="color:var(--accent-amber)">🛒</span> + Mercado & Leaks</button>
+                <button class="btn btn-primary btn-sm" onclick="openNewAccountModal()">+ Nueva Cuenta</button>
+                <button class="btn btn-secondary btn-sm" onclick="openPersonaModal()">🎭 Kit Sock Puppet</button>
+              </div>
+            </div>
+
+            <!-- TARJETAS DE ADICIÓN RÁPIDA POR CATEGORÍA -->
+            <div class="account-category-cards">
+              <!-- Tarjeta 1: Redes Sociales -->
+              <div class="acc-cat-card card-social" onclick="openNewAccountModal('social')" title="Añadir cuenta o bot en redes sociales">
+                <div class="acc-cat-header">
+                  <div class="acc-cat-icon icon-social">🌐</div>
+                  <div>
+                    <div class="acc-cat-title">Redes Sociales & Mensajería</div>
+                    <div class="acc-cat-sub">Tokens de API, sesiones y cuentas bot</div>
+                  </div>
+                </div>
+                <div class="acc-cat-tags">
+                  <span class="pill pill-cyan">Twitter / X</span>
+                  <span class="pill pill-cyan">Telegram</span>
+                  <span class="pill pill-cyan">Discord</span>
+                  <span class="pill pill-cyan">Reddit</span>
+                  <span class="pill pill-cyan">Bluesky</span>
+                  <span class="pill pill-cyan">LinkedIn</span>
+                  <span class="pill pill-cyan">VK</span>
+                  <span class="pill pill-cyan">Session</span>
+                </div>
+                <div class="acc-cat-footer">
+                  <span class="acc-cat-action">+ Añadir Red Social →</span>
+                </div>
+              </div>
+
+              <!-- Tarjeta 2: Foros Underground & Ciberseguridad -->
+              <div class="acc-cat-card card-forum" onclick="openNewAccountModal('forum')" title="Añadir sesión para foros underground">
+                <div class="acc-cat-header">
+                  <div class="acc-cat-icon icon-forum">💀</div>
+                  <div>
+                    <div class="acc-cat-title">Foros Ciber & Underground</div>
+                    <div class="acc-cat-sub">Cookies de sesión (xf_user/session) + Tor SOCKS5</div>
+                  </div>
+                </div>
+                <div class="acc-cat-tags">
+                  <span class="pill pill-err">BreachForums</span>
+                  <span class="pill pill-err">Exploit.in</span>
+                  <span class="pill pill-err">XSS.is</span>
+                  <span class="pill pill-err">RaidForums</span>
+                  <span class="pill pill-err">Dread (.onion)</span>
+                  <span class="pill pill-err">Nulled</span>
+                  <span class="pill pill-err">Cracked</span>
+                  <span class="pill pill-err">RAMP</span>
+                </div>
+                <div class="acc-cat-footer">
+                  <span class="acc-cat-action">+ Añadir Foro Ciber →</span>
+                </div>
+              </div>
+
+              <!-- Tarjeta 3: Mercados Dark Web & Data Leaks -->
+              <div class="acc-cat-card card-market" onclick="openNewAccountModal('market')" title="Añadir cuenta para mercados darknet o servicios de leaks">
+                <div class="acc-cat-header">
+                  <div class="acc-cat-icon icon-market">🛒</div>
+                  <div>
+                    <div class="acc-cat-title">Mercados Dark Web & Leaks</div>
+                    <div class="acc-cat-sub">Espejos .onion, credenciales & APIs de filtraciones</div>
+                  </div>
+                </div>
+                <div class="acc-cat-tags">
+                  <span class="pill pill-warn">Intelligence X</span>
+                  <span class="pill pill-warn">Russian Market</span>
+                  <span class="pill pill-warn">2easy</span>
+                  <span class="pill pill-warn">DeHashed</span>
+                  <span class="pill pill-warn">Leak-Lookup</span>
+                  <span class="pill pill-warn">Snusbase</span>
+                  <span class="pill pill-warn">DnmX</span>
+                </div>
+                <div class="acc-cat-footer">
+                  <span class="acc-cat-action">+ Añadir Mercado / Leaks →</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- BARRA DE FILTROS Y BÚSQUEDA -->
+            <div class="accounts-filter-bar">
+              <div class="filter-pills" id="acc-filter-pills">
+                <button type="button" class="pill active" onclick="filterAccountsByCategory('all', this)">Todas (<span id="cnt-acc-all">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('social', this)">🌐 Redes Sociales (<span id="cnt-acc-social">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('forum', this)">💀 Foros Ciber (<span id="cnt-acc-forum">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('market', this)">🛒 Mercados & Leaks (<span id="cnt-acc-market">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('email', this)">✉️ Buzones (<span id="cnt-acc-email">0</span>)</button>
+              </div>
+              <div class="table-search-box">
+                <input type="text" class="input input-sm mono" id="accounts-search-input" placeholder="🔍 Filtrar por handle, ID o dominio..." oninput="filterAccountsSearch(this.value)">
               </div>
             </div>
 
@@ -145,8 +237,8 @@
                 <thead>
                   <tr>
                     <th>Identidad / ID</th>
-                    <th>Plataforma</th>
-                    <th>Ámbito</th>
+                    <th>Categoría & Plataforma</th>
+                    <th>Ámbito & Enrutamiento</th>
                     <th>Estado de Secreto</th>
                     <th>Cuota / Cooldown</th>
                     <th>Estado</th>
@@ -516,79 +608,145 @@
   <div class="modal-overlay" id="modal-account">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="panel-title">Registrar Cuenta en la Bóveda</div>
+        <div class="panel-title" id="modal-account-title">Registrar Cuenta en la Bóveda</div>
         <button class="btn btn-secondary btn-sm" onclick="closeNewAccountModal()">✕</button>
       </div>
       <form id="form-account" onsubmit="submitNewAccount(event)">
         <div class="modal-body">
+          <!-- SELECTOR DE CATEGORÍA ACTIVA -->
+          <div class="modal-category-tabs">
+            <button type="button" class="modal-cat-tab active" data-cat="social" onclick="selectModalCategory('social')">
+              <span>🌐</span> Red Social
+            </button>
+            <button type="button" class="modal-cat-tab" data-cat="forum" onclick="selectModalCategory('forum')">
+              <span>💀</span> Foro Ciber
+            </button>
+            <button type="button" class="modal-cat-tab" data-cat="market" onclick="selectModalCategory('market')">
+              <span>🛒</span> Mercado / Leaks
+            </button>
+            <button type="button" class="modal-cat-tab" data-cat="generic" onclick="selectModalCategory('generic')">
+              <span>⚙️</span> Genérica / Tor
+            </button>
+          </div>
+          <input type="hidden" name="acc_category" id="acc_category" value="social">
+
+          <!-- BANNER CONSEJO OPSEC DINÁMICO -->
+          <div class="opsec-tip-box" id="modal-opsec-tip">
+            <span>🛡️</span>
+            <div id="modal-opsec-text">Para redes sociales, utiliza cuentas de investigación dedicadas o tokens de bot para evitar exponer tu identidad personal o sufrir baneos en cuentas principales.</div>
+          </div>
+
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Plataforma</label>
-              <select class="select" name="acc_platform" required>
-                <option value="github">GitHub</option>
-                <option value="reddit">Reddit</option>
-                <option value="bluesky">Bluesky</option>
-                <option value="onion">Dark Web (.onion)</option>
-                <option value="tor">Tor General</option>
-                <option value="intelx">Intelligence X</option>
-                <option value="telegram">Telegram</option>
-                <option value="discord">Discord</option>
-                <option value="mastodon">Mastodon</option>
-                <option value="generic">Otra / Genérica</option>
+              <label class="form-label">Plataforma / Servicio</label>
+              <select class="select" name="acc_platform" id="acc_platform" required onchange="onPlatformChanged(this.value)">
+                <optgroup label="🌐 Redes Sociales" id="optgroup-social">
+                  <option value="twitter">Twitter / X</option>
+                  <option value="telegram">Telegram (Bot / MTProto)</option>
+                  <option value="discord">Discord (Bot / Webhook)</option>
+                  <option value="reddit">Reddit</option>
+                  <option value="bluesky">Bluesky</option>
+                  <option value="linkedin">LinkedIn</option>
+                  <option value="mastodon">Mastodon</option>
+                  <option value="vk">VKontakte (VK)</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="github">GitHub</option>
+                  <option value="gitlab">GitLab</option>
+                  <option value="session">Session / Matrix</option>
+                </optgroup>
+                <optgroup label="💀 Foros Ciber & Hacking Underground" id="optgroup-forum">
+                  <option value="breachforums">BreachForums (.onion / mirror)</option>
+                  <option value="exploit_in">Exploit.in (CTI Ruso/Inglés)</option>
+                  <option value="xss_is">XSS.is (Malware & Exploit)</option>
+                  <option value="raidforums">RaidForums (Archivo Histórico)</option>
+                  <option value="dread">Dread (.onion Darknet)</option>
+                  <option value="nulled">Nulled.to</option>
+                  <option value="cracked_to">Cracked.to</option>
+                  <option value="ramp">RAMP (Ransomware & Access)</option>
+                  <option value="antichat">Antichat</option>
+                  <option value="hackforums">HackForums</option>
+                  <option value="forum">Otro Foro Underground</option>
+                </optgroup>
+                <optgroup label="🛒 Mercados Dark Web & Data Leaks" id="optgroup-market">
+                  <option value="intelx">Intelligence X (IntelX API)</option>
+                  <option value="dnmx">DnmX (.onion Mail & Market)</option>
+                  <option value="russian_market">Russian Market (Stealer Logs)</option>
+                  <option value="2easy">2easy (Bots & Logs)</option>
+                  <option value="dehashed">DeHashed (Breach DB)</option>
+                  <option value="leak_lookup">Leak-Lookup API</option>
+                  <option value="snusbase">Snusbase API</option>
+                  <option value="genesis_mirror">Genesis Market Mirror</option>
+                  <option value="darknet_market">Mercado Darknet Genérico (.onion)</option>
+                </optgroup>
+                <optgroup label="⚙️ Otras / Genéricas" id="optgroup-generic">
+                  <option value="generic">Genérica / Web API</option>
+                  <option value="tor">Tor SOCKS5 General</option>
+                  <option value="onion">Sitio .onion Aislado</option>
+                </optgroup>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Identificador / ID (Opcional)</label>
-              <input class="input mono" name="acc_id" placeholder="auto: sp-github-01">
+              <label class="form-label">Identificador / ID Bóveda</label>
+              <input class="input mono" name="acc_id" id="acc_id" placeholder="auto: sp-twitter-01">
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Usuario / Handle</label>
-              <input class="input" name="acc_username" placeholder="ej. shadow_sec" required>
+              <label class="form-label" id="lbl-acc-username">Usuario / Handle / Alias</label>
+              <input class="input" name="acc_username" id="acc_username" placeholder="ej. @shadow_sec o Puppet_01" required>
             </div>
             <div class="form-group">
               <label class="form-label">Límite RPM (Peticiones/min)</label>
-              <input type="number" class="input mono" name="acc_rpm" value="30" min="1" max="600">
+              <input type="number" class="input mono" name="acc_rpm" id="acc_rpm" value="30" min="1" max="600">
             </div>
           </div>
 
-          <div class="form-group">
+          <div class="form-group" id="group-acc-token">
             <label class="form-label">Token de Acceso / API Key</label>
-            <input type="password" class="input mono" name="acc_token" placeholder="Token Bearer o Personal Access Token">
+            <input type="password" class="input mono" name="acc_token" id="acc_token" placeholder="Token Bearer, API Key o Bot Token">
             <div class="form-hint">O introduce el nombre de la variable de entorno abajo.</div>
           </div>
 
-          <div class="form-group">
+          <div class="form-group" id="group-acc-token-env">
             <label class="form-label">Variable de Entorno (token_env)</label>
-            <input class="input mono" name="acc_token_env" placeholder="ej. GITHUB_TOKEN, REDDIT_TOKEN">
+            <input class="input mono" name="acc_token_env" id="acc_token_env" placeholder="ej. TWITTER_BEARER_TOKEN, INTELX_API_KEY">
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Cookie de Sesión (Requerido para foros .onion)</label>
-            <textarea class="textarea mono" rows="2" name="acc_cookie" placeholder="xf_user=...; xf_session=..."></textarea>
+          <div class="form-group" id="group-acc-cookie">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+              <label class="form-label" style="margin-bottom:0;">Cookie de Sesión (SessionID / xf_user)</label>
+              <span class="pill pill-muted" style="font-size:10px;">Esencial para Foros y Mercados Web</span>
+            </div>
+            <textarea class="textarea mono" rows="2" name="acc_cookie" id="acc_cookie" placeholder="xf_user=...; xf_session=... o auth_token=..."></textarea>
+            <div class="form-hint">Copia la cookie desde DevTools (F12 > Almacenamiento/Cookies) de tu Tor Browser o navegador aislado.</div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Sitio Destino (.onion o dominio)</label>
-              <input class="input mono" name="acc_target_site" placeholder="ej. exploit.in o breachforums22...onion">
+              <input class="input mono" name="acc_target_site" id="acc_target_site" placeholder="ej. exploit.in o breachforums...onion">
             </div>
             <div class="form-group">
-              <label class="form-label">Proxy Dedicado</label>
-              <input class="input mono" name="acc_proxy" placeholder="ej. socks5h://127.0.0.1:9050">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+                <label class="form-label" style="margin-bottom:0;">Proxy Dedicado</label>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="setTorProxyPreset()" style="font-size:10px; padding:2px 6px;">
+                  🧅 Usar Tor (127.0.0.1:9050)
+                </button>
+              </div>
+              <input class="input mono" name="acc_proxy" id="acc_proxy" placeholder="ej. socks5h://127.0.0.1:9050">
             </div>
           </div>
 
           <div class="form-group">
             <label class="form-label">User-Agent Personalizado</label>
-            <input class="input" name="acc_user_agent" placeholder="Mozilla/5.0...">
+            <input class="input" name="acc_user_agent" id="acc_user_agent" placeholder="Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0">
           </div>
 
           <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
             <input type="checkbox" id="acc_enabled" name="acc_enabled" checked>
-            <label for="acc_enabled" style="font-size:13px; font-weight:500;">Habilitar cuenta inmediatamente en el pool</label>
+            <label for="acc_enabled" style="font-size:13px; font-weight:500;">Habilitar cuenta inmediatamente en el pool de rotación</label>
           </div>
         </div>
         <div class="modal-footer">

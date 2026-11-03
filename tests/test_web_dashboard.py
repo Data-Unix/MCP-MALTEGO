@@ -37,18 +37,28 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     r_dash = client.get("/dashboard")
     assert r_dash.status_code == 200
     assert "Bóveda & Sock Puppets" in r_dash.text
+    assert "account-category-cards" in r_dash.text
+    assert "Redes Sociales & Mensajería" in r_dash.text
+    assert "Foros Ciber & Underground" in r_dash.text
+    assert "Mercados Dark Web & Leaks" in r_dash.text
+    assert "modal-category-tabs" in r_dash.text
 
     # 2. Ficheros estáticos
     r_css = client.get("/dashboard.css")
     assert r_css.status_code == 200
     assert "--bg-base" in r_css.text
     assert ".graph-filter-drawer" in r_css.text
+    assert ".account-category-cards" in r_css.text
+    assert ".modal-category-tabs" in r_css.text
 
     r_js = client.get("/dashboard.js")
     assert r_js.status_code == 200
     assert "initBackgroundCanvas" in r_js.text
     assert "applyAllGraphFilters" in r_js.text
     assert "drawNodeGlyph" in r_js.text
+    assert "selectModalCategory" in r_js.text
+    assert "setTorProxyPreset" in r_js.text
+    assert "filterAccountsByCategory" in r_js.text
 
     r_worker = client.get("/bg-worker.js")
     assert r_worker.status_code == 200
@@ -108,7 +118,7 @@ def test_api_accounts_crud_and_masking(tmp_path: Path) -> None:
     assert r_init.status_code == 200
     assert isinstance(r_init.json()["accounts"], list)
 
-    # 2. Crear cuenta nueva
+    # 2. Crear cuenta nueva (Red Social)
     payload = {
         "id": "test-bot-01",
         "platform": "github",
@@ -121,21 +131,66 @@ def test_api_accounts_crud_and_masking(tmp_path: Path) -> None:
     assert r_post.status_code == 200
     assert r_post.json()["ok"] is True
 
-    # 3. Listar y verificar enmascaramiento estricto
+    # 2b. Crear cuenta de Foro Underground con Cookie y Tor Proxy
+    payload_forum = {
+        "id": "forum-puppet-01",
+        "platform": "breachforums",
+        "category": "forum",
+        "username": "shadow_op",
+        "cookie": "xf_user=987654; xf_session=abcdef123456",
+        "target_site": "breachforums.is",
+        "proxy": "socks5h://127.0.0.1:9050",
+        "rate_limit_rpm": 15,
+        "enabled": True,
+    }
+    r_forum = client.post("/api/accounts", json=payload_forum)
+    assert r_forum.status_code == 200
+    assert r_forum.json()["ok"] is True
+
+    # 2c. Crear cuenta de Mercado / Leaks
+    payload_market = {
+        "id": "market-intelx-01",
+        "platform": "intelx",
+        "category": "market",
+        "username": "intel_collector",
+        "token": "IX-token-secret-99999",
+        "rate_limit_rpm": 10,
+        "enabled": True,
+    }
+    r_market = client.post("/api/accounts", json=payload_market)
+    assert r_market.status_code == 200
+    assert r_market.json()["ok"] is True
+
+    # 3. Listar y verificar categorías y enmascaramiento estricto
     r_list = client.get("/api/accounts")
     assert r_list.status_code == 200
     accounts = r_list.json()["accounts"]
     found = next((a for a in accounts if a["id"] == "test-bot-01"), None)
     assert found is not None
     assert found["rate_limit_rpm"] == 45
+    assert found["category"] == "social"
     # El secreto en texto plano NUNCA debe viajar al frontend
     assert "test_token_secret_1234567890" not in str(r_list.text)
     assert "test_token_secret_1234567890" not in str(found["status_text"])
 
-    # 4. Eliminar cuenta
-    r_del = client.delete("/api/accounts/test-bot-01")
-    assert r_del.status_code == 200
-    assert r_del.json()["ok"] is True
+    found_forum = next((a for a in accounts if a["id"] == "forum-puppet-01"), None)
+    assert found_forum is not None
+    assert found_forum["category"] == "forum"
+    assert found_forum["has_cookie"] is True
+    assert found_forum["proxy"] == "socks5h://127.0.0.1:9050"
+    assert "xf_session=abcdef123456" not in str(r_list.text)
+
+    found_market = next((a for a in accounts if a["id"] == "market-intelx-01"), None)
+    assert found_market is not None
+    assert found_market["category"] == "market"
+    assert found_market["has_token"] is True
+    assert "IX-token-secret-99999" not in str(r_list.text)
+
+    # 4. Eliminar cuentas
+    for aid in ("test-bot-01", "forum-puppet-01", "market-intelx-01"):
+        r_del = client.delete(f"/api/accounts/{aid}")
+        assert r_del.status_code == 200
+        assert r_del.json()["ok"] is True
 
     # 5. Confirmar eliminación
     r_after = client.get("/api/accounts")

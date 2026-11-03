@@ -265,6 +265,24 @@ def default_uv() -> str:
         home_dir / ".local" / "bin" / exe,
         home_dir / ".cargo" / "bin" / exe,
     ]
+    if sys.platform == "darwin":
+        candidates.extend(
+            [
+                Path("/opt/homebrew/bin/uv"),  # Homebrew Apple Silicon (M1/M2/M3/M4)
+                Path("/usr/local/bin/uv"),  # Homebrew Intel y estándar Unix
+            ]
+        )
+    elif sys.platform.startswith("linux"):
+        candidates.append(Path("/home/linuxbrew/.linuxbrew/bin/uv"))
+    if sys.platform == "darwin":
+        candidates.extend(
+            [
+                Path("/opt/homebrew/bin/uv"),  # Homebrew Apple Silicon (M1/M2/M3/M4)
+                Path("/usr/local/bin/uv"),  # Homebrew Intel y estándar Unix
+            ]
+        )
+    elif sys.platform.startswith("linux"):
+        candidates.append(Path("/home/linuxbrew/.linuxbrew/bin/uv"))
     local_app = os.environ.get("LOCALAPPDATA", "").strip()
     if sys.platform == "win32" and local_app:
         candidates.append(Path(local_app) / "uv" / exe)

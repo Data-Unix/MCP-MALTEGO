@@ -68,6 +68,13 @@ function uvCandidates(env = process.env) {
     path.join(h, ".local", "bin", exe),
     path.join(h, ".cargo", "bin", exe),
   );
+  if (!IS_WIN) {
+    list.push(
+      "/opt/homebrew/bin/uv", // Homebrew en Apple Silicon (M1/M2/M3/M4)
+      "/usr/local/bin/uv", // Homebrew en macOS Intel y estándar Unix
+      "/home/linuxbrew/.linuxbrew/bin/uv", // Linuxbrew
+    );
+  }
   if (IS_WIN && env.LOCALAPPDATA) list.push(path.join(env.LOCALAPPDATA, "uv", exe));
   return list;
 }
@@ -251,15 +258,24 @@ function ensureUserPath(binDir = defaultGlobalBinDir(), env = process.env, isWin
     }
   } else {
     const homeUser = env.HOME || os.homedir();
-    const rcFiles = [path.join(homeUser, ".bashrc"), path.join(homeUser, ".zshrc"), path.join(homeUser, ".profile")];
+    const isDarwin = process.platform === "darwin";
+    const rcFiles = [
+      path.join(homeUser, ".zshrc"),
+      path.join(homeUser, ".zprofile"),
+      path.join(homeUser, ".bashrc"),
+      path.join(homeUser, ".profile"),
+    ];
     const marker = "# mcp-maltego global bin";
     const line = `\n${marker}\nexport PATH="${binDir}:$PATH"\n`;
     for (const rc of rcFiles) {
       try {
-        if (isFile(rc) || rc.endsWith(".profile")) {
+        const shouldTouch = isDarwin
+          ? (rc.endsWith(".zshrc") || rc.endsWith(".zprofile"))
+          : rc.endsWith(".profile");
+        if (isFile(rc) || shouldTouch) {
           const existing = isFile(rc) ? fs.readFileSync(rc, "utf8") : "";
           if (!existing.includes(marker) && !existing.includes(binDir)) {
-            fs.writeFileSync(rc, existing + line, "utf8");
+            fs.writeFileSync(rc, (existing ? existing.trimEnd() + "\n" : "") + line, "utf8");
             updated.push(rc);
           }
         }

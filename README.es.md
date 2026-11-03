@@ -39,7 +39,7 @@
 | :--- | :--- | :--- |
 | **Capa 0: Núcleo Gratuito** | CLI y Servidor MCP | Ejecución directa (`npx mcp-maltego`). Genera y lee archivos `.mtgx` para **Maltego Community Edition (CE)**. Incluye **28 transforms integrados sin API key** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan) y motor de plugins comunitarios (`@custom_transform`). **100% Local y Gratuito.** |
 | **Capa 1: Memoria de Casos** | Memoria de Grafo y Copiloto | Almacenamiento local determinista de casos (`~/.maltego-mcp/graph.json`), fusión de identidades, auditoría forense de pasos, Machines autónomas y copiloto `osint_investigate`. |
-| **Capa 2: Plataforma Avanzada** | Consola Web y Bóveda CTI | Web Dashboard interactivo (`maltegoctl dashboard`) con aceleración por Web Worker y 4 layouts (Orgánico, Jerárquico, Radial, Por Categoría), filtrado multidimensional (aristas, entidades, certeza continua, saltos y buscador en vivo), renderizado vectorial Impeccable (iconos en canvas, anillos de confianza y aristas Bézier), Bóveda de Sock Puppets OPSEC con buzones efímeros (Mail.tm + extractor OTP), feeds CTI Tor/Dark Web y persistencia opcional en clúster Azure Cosmos DB Gremlin. |
+| **Capa 2: Plataforma Avanzada** | Consola Web y Bóveda CTI | Web Dashboard interactivo (`maltegoctl dashboard`) con aceleración por Web Worker y 4 layouts (Orgánico, Jerárquico, Radial, Por Categoría), filtrado multidimensional (aristas, entidades, certeza continua, saltos y buscador en vivo), renderizado vectorial Impeccable (iconos en canvas, anillos de confianza y aristas Bézier), Bóveda de Cuentas categorizadas (Redes, Foros Underground y Mercados Dark Web) con cookies y enrutamiento Tor SOCKS5, buzones efímeros (Mail.tm + extractor OTP), feeds CTI Tor/Dark Web y persistencia opcional en clúster Azure Cosmos DB Gremlin. |
 
 ---
 
@@ -95,6 +95,178 @@ Configuración estándar, válida para la mayoría de clientes MCP:
 Y pide a tu agente:
 
 > Investiga example.com, dame el resumen del caso y expórtalo para Maltego.
+
+<details>
+<summary><b>📦 Guía de Instalación y Primer Despliegue por Sistema Operativo</b></summary>
+
+### 🍏 macOS (Apple Silicon M1/M2/M3/M4 & Mac Intel Core)
+
+Compatible nativamente con arquitecturas `arm64` (Apple Silicon) y `x86_64` (Intel). No requiere Xcode ni compiladores C locales.
+
+1. **Requisito inicial**: [Node.js](https://nodejs.org) 18 o superior (`brew install node` o instalador oficial).
+2. **Auto-despliegue en 1 solo comando**:
+   ```bash
+   npx -y mcp-maltego setup
+   ```
+   *Este comando auto-detecta tu procesador (Intel o Apple Silicon), descarga uv nativo, crea el runtime aislado Python 3.12 en `~/.maltego-mcp`, genera `.env`, el paquete `.mtz` de Maltego y añade los comandos globales (`maltegoctl`, `mcp-maltego`) a tu shell `zsh` (`~/.zshrc` y `~/.zprofile`).*
+3. **Lanzar el Centro de Mando / Dashboard interactivo**:
+   ```bash
+   maltegoctl dashboard
+   ```
+   *(Abre automáticamente `http://127.0.0.1:8000/dashboard` en Safari / Chrome con el visualizador gráfico de casos y la bóveda).*
+4. **Verificar estado y diagnóstico**:
+   ```bash
+   maltegoctl doctor
+   ```
+5. **Integración con Maltego Desktop CE para Mac (`/Applications/Maltego.app`)**:
+   - Genera el paquete de configuración local: `maltegoctl mtz`
+   - En Maltego Desktop: Menú **Import \| Export → Import Config** y selecciona `~/.maltego-mcp/maltego-mcp-local.mtz`.
+
+---
+
+### 🪟 Windows (Windows 10 / 11 · PowerShell & Terminal)
+
+1. **Requisito inicial**: [Node.js](https://nodejs.org) 18 o superior (`winget install OpenJS.NodeJS` o instalador oficial).
+2. **Auto-despliegue en 1 solo comando**:
+   ```powershell
+   npx -y mcp-maltego setup
+   ```
+   *Instala `uv.exe` de forma autónoma en `%USERPROFILE%\.maltego-mcp\bin`, crea los ejecutables globales `.cmd` y `.ps1` en `%USERPROFILE%\.local\bin`, y actualiza el PATH de usuario de Windows y el perfil de PowerShell.*
+3. **Lanzar el Dashboard interactivo**:
+   ```powershell
+   maltegoctl dashboard
+   ```
+   *(Abre `http://127.0.0.1:8000/dashboard` en tu navegador predeterminado).*
+
+---
+
+### 🐧 Linux (Ubuntu, Debian, Kali Linux, Arch, Fedora)
+
+1. **Requisito inicial**: Node.js 18+ y `curl`.
+2. **Auto-despliegue en 1 solo comando**:
+   ```bash
+   npx -y mcp-maltego setup
+   ```
+   *Configura el entorno en `~/.maltego-mcp`, los ejecutables en `~/.local/bin` y exporta la ruta a tu `~/.bashrc` o `~/.profile`.*
+3. **Lanzar el Dashboard**:
+   ```bash
+   maltegoctl dashboard
+   ```
+</details>
+
+<details>
+<summary><b>🤖 Guía de Configuración con Agentes de IA en diferentes IDEs</b></summary>
+
+### 🚀 Antigravity IDE
+Para integrar el servidor MCP de Maltego con tus agentes en **Antigravity IDE**:
+
+1. Abre la configuración de extensiones MCP o el archivo `.gemini/settings.json`:
+   ```json
+   {
+     "mcpServers": {
+       "maltego": {
+         "command": "mcp-maltego"
+       }
+     }
+   }
+   ```
+   *O de forma directa y portátil con npx:*
+   ```json
+   {
+     "mcpServers": {
+       "maltego": {
+         "command": "npx",
+         "args": ["-y", "mcp-maltego"]
+       }
+     }
+   }
+   ```
+2. **Ejemplo de prompt operativo para el agente en Antigravity**:
+   > *"Inicia un caso OSINT sobre `example.com`, ejecuta la Machine `DomainRecon` para mapear subdominios y servidores DNS, y guarda las entidades en el grafo para que pueda analizarlas en el visualizador web de `maltegoctl dashboard`."*
+
+---
+
+### 💻 Cursor IDE
+En Cursor (**Settings → Features → MCP → Add New MCP Server**):
+- **Name**: `maltego`
+- **Type**: `command`
+- **Command**: `npx -y mcp-maltego`
+
+O en `~/.cursor/mcp.json` / `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "maltego": {
+      "command": "npx",
+      "args": ["-y", "mcp-maltego"]
+    }
+  }
+}
+```
+
+---
+
+### ⚡ Claude Code (CLI) y Claude Desktop
+- **Claude Code**:
+  ```bash
+  claude mcp add maltego -- npx -y mcp-maltego
+  ```
+- **Claude Desktop**:
+  En `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
+  ```json
+  {
+    "mcpServers": {
+      "maltego": {
+        "command": "npx",
+        "args": ["-y", "mcp-maltego"]
+      }
+    }
+  }
+  ```
+
+---
+
+### 🧠 Codex CLI
+```bash
+codex mcp add maltego -- npx -y mcp-maltego
+```
+O en `~/.codex/config.toml`:
+```toml
+[mcp_servers.maltego]
+command = "npx"
+args = ["-y", "mcp-maltego"]
+```
+
+---
+
+### ♊ Gemini CLI
+En `~/.gemini/settings.json` o `.gemini/settings.json`:
+```json
+{
+  "mcpServers": {
+    "maltego": {
+      "command": "npx",
+      "args": ["-y", "mcp-maltego"]
+    }
+  }
+}
+```
+
+---
+
+### 🐙 VS Code / Copilot CLI
+En `.vscode/mcp.json` o `.copilot/mcp-config.json`:
+```json
+{
+  "servers": {
+    "maltego": {
+      "command": "npx",
+      "args": ["-y", "mcp-maltego"]
+    }
+  }
+}
+```
+</details>
 
 | Cliente | Dónde va la configuración |
 |---|---|

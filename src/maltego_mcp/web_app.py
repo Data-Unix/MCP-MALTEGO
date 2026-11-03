@@ -30,6 +30,7 @@ from maltego_mcp import __version__
 from maltego_mcp.accounts import (
     PLATFORM_ENV_VARS,
     SocialAccount,
+    ensure_accounts_template,
     generate_sockpuppet_persona,
     load_account_pool,
     remove_account_from_toml,
@@ -69,6 +70,12 @@ def _check_host(request: Request) -> bool:
 
 def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Settings) -> Starlette:
     """Registra las rutas de la interfaz web y APIs REST en la aplicación Starlette."""
+    # Asegurar plantillas y bases iniciales de forma desatendida y tolerante a fallos
+    try:
+        ensure_accounts_template(settings.home)
+        ensure_seed_cti_db(settings.home)
+    except Exception as _e:
+        logger.debug("Inicialización previa silenciosa: %s", _e)
 
     async def root_view(request: Request) -> Response:
         if not _check_host(request):
@@ -132,11 +139,31 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         pool = load_account_pool(settings.home, service.env)
         tor_proxy = pool.env.get("TOR_SOCKS_PROXY", "socks5h://127.0.0.1:9050")
         tor_active = False
-        if "127.0.0.1:9050" in tor_proxy or "localhost:9050" in tor_proxy:
-            try:
-                with socket.create_connection(("127.0.0.1", 9050), timeout=0.15):
-                    tor_active = True
-            except OSError:
+        target_host = "127.0.0.1"
+        target_port = 9050
+        try:
+            cleaned = tor_proxy.split("://")[-1] if "://" in tor_proxy else tor_proxy
+            host_port = cleaned.split("/")[0]
+            if ":" in host_port:
+                h_str, p_str = host_port.rsplit(":", 1)
+                target_host = h_str.strip() or "127.0.0.1"
+                target_port = int(p_str)
+        except Exception:
+            target_host = "127.0.0.1"
+            target_port = 9050
+
+        try:
+            with socket.create_connection((target_host, target_port), timeout=0.15):
+                tor_active = True
+        except OSError:
+            # Fallback tolerante si en macOS/Windows se usa el bundle gráfico de Tor Browser (puerto 9150)
+            if target_host in ("127.0.0.1", "localhost") and target_port == 9050:
+                try:
+                    with socket.create_connection(("127.0.0.1", 9150), timeout=0.15):
+                        tor_active = True
+                except OSError:
+                    tor_active = False
+            else:
                 tor_active = False
 
         cti_summary: dict[str, int] = {"active_sources": 0, "purged_sources": 0}
@@ -174,6 +201,7 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
             {
                 "id": acc.id,
                 "platform": acc.platform,
+                "category": acc.category,
                 "username": acc.username,
                 "handle": acc.handle,
                 "target_site": acc.target_site,
@@ -197,10 +225,12 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         try:
             body = await request.json()
             plat = str(body.get("platform") or "generic").strip().lower()[:40]
+            cat = str(body.get("category") or "").strip().lower()[:40]
             acc_id = str(body.get("id") or f"sp-{plat}-{int(time.time())}").strip()[:80]
             account = SocialAccount(
                 id=acc_id,
                 platform=plat,
+                category=cat,
                 username=str(body.get("username") or "").strip()[:80],
                 handle=str(body.get("handle") or body.get("username") or "").strip()[:80],
                 token=str(body.get("token") or "").strip(),

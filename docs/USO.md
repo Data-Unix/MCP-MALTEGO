@@ -171,7 +171,10 @@ uv run maltegoctl dashboard --port 8000
   - Aristas con curvas cuadráticas Bézier automáticas para conexiones paralelas y bidireccionales.
   - Modo de enfoque (*Focus Mode*): atenuación de nodos y enlaces no conectados al pasar el cursor o seleccionar.
   - Micro-tarjeta flotante (*Tooltip*) con información de inteligencia al vuelo.
-- **Bóveda de Sock Puppets & Buzones Efímeros**:
+- **Bóveda de Cuentas, Sock Puppets & Buzones Efímeros**:
+  - Modal y panel categorizado para **Redes Sociales** (Twitter/X, Telegram, Discord, Reddit, Bluesky, Mastodon, LinkedIn, VK, Session), **Foros Ciber & Underground** (BreachForums, Exploit.in, XSS.is, Dread .onion, RaidForums, Nulled, Cracked, RAMP) y **Mercados Dark Web & Leaks** (IntelX, Russian Market, 2easy, DeHashed, Leak-Lookup, Snusbase, DnmX).
+  - Soporte integrado para Cookies de sesión de foros/mercados (`xf_user`, `xf_session`), claves API y botón de 1 clic para enrutamiento Tor SOCKS5 local (`socks5h://127.0.0.1:9050`).
+  - Filtro dinámico multidimensional en la bóveda (`[Todas]`, `[🌐 Redes Sociales]`, `[💀 Foros Ciber]`, `[🛒 Mercados & Leaks]`, `[✉️ Buzones]`) y buscador en tiempo real.
   - Generador de buzones temporales con `Mail.tm` sin registro previo.
   - Extractor automático de códigos 2FA/OTP y enlaces de activación por regex multilingüe.
   - Catálogo OPSEC con 10 proveedores clasificados por nivel de privacidad (*Proton Mail, Tuta, Disroot, Onionmail, Addy.io, SimpleLogin*, etc.).

@@ -11,6 +11,7 @@ const {
   findUv,
   ensureEnvTemplate,
   installGlobalShims,
+  ensureUserPath,
   parseSetupOptions,
   clientConfigSnippet,
   COMMANDS,
@@ -100,4 +101,22 @@ test("installGlobalShims genera lanzadores Windows y POSIX y parseSetupOptions s
     binDir: "",
   });
   assert.match(clientConfigSnippet("all", "global"), /maltegoctl transforms/);
+});
+
+test("ensureUserPath añade el directorio global a los perfiles de shell POSIX y zsh", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-userpath-"));
+  const binDir = path.join(tmpHome, ".local", "bin");
+  const env = { HOME: tmpHome, PATH: "" };
+
+  const res = ensureUserPath(binDir, env, false);
+  assert.equal(res.binDir, binDir);
+  assert.ok(res.updated.length >= 1);
+
+  // Verificar que el marcador está escrito en los ficheros generados
+  const zshrc = path.join(tmpHome, ".zshrc");
+  const profile = path.join(tmpHome, ".profile");
+  assert.ok(fs.existsSync(zshrc) || fs.existsSync(profile));
+  const content = fs.readFileSync(fs.existsSync(zshrc) ? zshrc : profile, "utf8");
+  assert.match(content, /# mcp-maltego global bin/);
+  assert.match(content, /export PATH=/);
 });

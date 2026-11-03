@@ -29,7 +29,13 @@ PLATFORM_ENV_VARS: dict[str, tuple[str, ...]] = {
     "discord": ("DISCORD_BOT_TOKEN",),
     "mastodon": ("MASTODON_TOKEN",),
     "bluesky": ("BLUESKY_TOKEN",),
+    "twitter": ("TWITTER_BEARER_TOKEN", "X_BEARER_TOKEN"),
+    "linkedin": ("LINKEDIN_TOKEN", "LINKEDIN_COOKIE"),
+    "vk": ("VK_SERVICE_TOKEN", "VK_ACCESS_TOKEN"),
     "intelx": ("INTELX_API_KEY",),
+    "dehashed": ("DEHASHED_API_KEY",),
+    "snusbase": ("SNUSBASE_API_KEY",),
+    "leak_lookup": ("LEAK_LOOKUP_KEY",),
     "tor": ("TOR_SOCKS_PROXY",),
     "onion": ("TOR_SOCKS_PROXY",),
 }
@@ -101,6 +107,7 @@ REGION_TIMEZONES: dict[str, tuple[str, str]] = {
 class SocialAccount:
     id: str
     platform: str
+    category: str = ""
     handle: str = ""
     username: str = ""
     token: str = ""
@@ -123,6 +130,54 @@ class SocialAccount:
             self.target_site = self.site
         elif not self.site and self.target_site:
             self.site = self.target_site
+        if not self.category:
+            self.category = self._infer_category()
+
+    def _infer_category(self) -> str:
+        plat = self.platform.lower().strip()
+        tgt = (self.target_site or self.site).lower().strip()
+        if (
+            plat
+            in (
+                "breachforums",
+                "exploit_in",
+                "exploit",
+                "xss_is",
+                "xss",
+                "raidforums",
+                "nulled",
+                "cracked_to",
+                "dread",
+                "ramp",
+                "antichat",
+                "hackforums",
+                "forum",
+                "onion_forum",
+            )
+            or "forum" in plat
+        ):
+            return "forum"
+        if (
+            plat
+            in (
+                "intelx",
+                "darknet_market",
+                "market",
+                "russian_market",
+                "2easy",
+                "dehashed",
+                "snusbase",
+                "leak_lookup",
+                "genesis_mirror",
+                "leak",
+            )
+            or "market" in plat
+            or "leak" in plat
+        ):
+            return "market"
+        if plat in ("mailtm", "mail_tm", "email", "inbox") or "mail.tm" in tgt:
+            return "email"
+        return "social"
 
     def is_ready(self, env: dict[str, str] | None = None) -> bool:
         if not self.enabled:
@@ -190,6 +245,7 @@ class SocialAccount:
         return {
             "id": self.id,
             "platform": self.platform,
+            "category": self.category,
             "username": uname,
             "handle": uname,
             "site": st,
@@ -331,6 +387,7 @@ def load_account_pool(home: Path, env: dict[str, str] | None = None) -> AccountP
                     continue
                 acc_id = str(item.get("id") or item.get("username") or item.get("handle") or "sp").strip()[:80]
                 plat = str(item.get("platform") or "generic").strip().lower()[:40]
+                cat_val = str(item.get("category") or "").strip().lower()[:40]
                 tenv = str(item.get("token_env") or "").strip()[:80]
                 handle_val = str(item.get("handle") or item.get("username") or "").strip()[:80]
                 token_val = str(item.get("token") or "").strip()
@@ -342,6 +399,7 @@ def load_account_pool(home: Path, env: dict[str, str] | None = None) -> AccountP
                     SocialAccount(
                         id=acc_id,
                         platform=plat,
+                        category=cat_val,
                         handle=handle_val,
                         username=handle_val,
                         token=token_val,
@@ -503,6 +561,7 @@ def _format_account_toml(acc: SocialAccount) -> str:
         "[[accounts]]",
         f'id = "{acc.id}"',
         f'platform = "{acc.platform}"',
+        f'category = "{acc.category or acc._infer_category()}"',
         f'username = "{acc.username}"',
         f'handle = "{acc.handle or acc.username}"',
     ]

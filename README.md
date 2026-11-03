@@ -39,7 +39,7 @@
 | :--- | :--- | :--- |
 | **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)**. Includes **28 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
 | **Layer 1: Investigation Memory** | Graph Memory & Copilot | Local deterministic case storage (`~/.maltego-mcp/graph.json`), entity fusion, step auditing, autonomous multi-round Machines, and `osint_investigate` copilot. |
-| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Sock Puppet OPSEC vault with burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
+| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Categorized Accounts Vault (Social Networks, Underground Forums, Darknet Markets) with session cookies & Tor SOCKS5 routing, burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
 
 ---
 
@@ -113,6 +113,94 @@ Standard configuration, valid for most MCP clients:
 Then ask your agent:
 
 > Investigate example.com, give me the summary of the case and export it for Maltego.
+
+<details>
+<summary><b>📦 Installation & First Deploy by Operating System</b></summary>
+
+### 🍏 macOS (Apple Silicon M1/M2/M3/M4 & Intel Core)
+
+Native support for `arm64` (Apple Silicon) and `x86_64` (Intel). Zero C/C++ compilation or Xcode Command Line Tools required.
+
+1. **Prerequisite**: [Node.js](https://nodejs.org) 18+ (`brew install node` or official package).
+2. **One-Command Autonomous Setup**:
+   ```bash
+   npx -y mcp-maltego setup
+   ```
+   *Auto-detects your CPU architecture, installs standalone `uv`, provisions isolated Python 3.12 runtime inside `~/.maltego-mcp`, creates `.env` template, generates Maltego Desktop `.mtz` configuration, and links global CLI commands (`maltegoctl`, `mcp-maltego`) into `~/.zshrc` and `~/.zprofile`.*
+3. **Launch the Interactive Command Center / Dashboard**:
+   ```bash
+   maltegoctl dashboard
+   ```
+   *(Automatically launches `http://127.0.0.1:8000/dashboard` in Safari / Chrome with interactive graph visualization and CTI vault).*
+4. **Environment Health Check**:
+   ```bash
+   maltegoctl doctor
+   ```
+5. **Maltego Desktop CE Integration (`/Applications/Maltego.app`)**:
+   - Generate local transforms: `maltegoctl mtz`
+   - In Maltego Desktop: Go to **Import \| Export → Import Config** and select `~/.maltego-mcp/maltego-mcp-local.mtz`.
+
+---
+
+### 🪟 Windows (Windows 10 / 11 · PowerShell & Terminal)
+
+1. **Prerequisite**: [Node.js](https://nodejs.org) 18+ (`winget install OpenJS.NodeJS` or official installer).
+2. **One-Command Setup**:
+   ```powershell
+   npx -y mcp-maltego setup
+   ```
+   *Provisions standalone `uv.exe` in `%USERPROFILE%\.maltego-mcp\bin`, installs global `.cmd` / `.ps1` shims in `%USERPROFILE%\.local\bin`, and updates Windows User PATH and PowerShell profiles.*
+3. **Launch Dashboard**:
+   ```powershell
+   maltegoctl dashboard
+   ```
+
+---
+
+### 🐧 Linux (Ubuntu, Debian, Kali Linux, Arch, Fedora)
+
+1. **Prerequisite**: Node.js 18+ and `curl`.
+2. **One-Command Setup**:
+   ```bash
+   npx -y mcp-maltego setup
+   ```
+3. **Launch Dashboard**:
+   ```bash
+   maltegoctl dashboard
+   ```
+</details>
+
+<details>
+<summary><b>Antigravity IDE (Google Deepmind)</b></summary>
+
+Add to `.gemini/settings.json` or project MCP tool configuration:
+
+```json
+{
+  "mcpServers": {
+    "maltego": {
+      "command": "mcp-maltego"
+    }
+  }
+}
+```
+
+or portable via npx without prior installation:
+
+```json
+{
+  "mcpServers": {
+    "maltego": {
+      "command": "npx",
+      "args": ["-y", "mcp-maltego"]
+    }
+  }
+}
+```
+
+**Example Agent prompt in Antigravity**:
+> *"Start an OSINT case for `example.com`, run the `DomainRecon` machine to discover subdomains and DNS records, and store the entities in graph memory so I can explore them in `maltegoctl dashboard`."*
+</details>
 
 <details>
 <summary><b>Claude Code</b></summary>

@@ -1251,4 +1251,267 @@ body {
   padding-top: 3px;
 }
 
+/* Tarjetas de Categorías de Cuentas (Redes, Foros Underground, Mercados) */
+.account-category-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.acc-cat-card {
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  cursor: pointer;
+  transition: all 180ms ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.acc-cat-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 180ms ease;
+}
+
+.acc-cat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.acc-cat-card.card-social:hover::before {
+  background: var(--accent-cyan);
+}
+.acc-cat-card.card-forum:hover::before {
+  background: var(--accent-crimson);
+}
+.acc-cat-card.card-market:hover::before {
+  background: var(--accent-amber);
+}
+
+.acc-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.acc-cat-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.acc-cat-icon.icon-social {
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.acc-cat-icon.icon-forum {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.acc-cat-icon.icon-market {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.acc-cat-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.acc-cat-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.acc-cat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.acc-cat-tags .pill {
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.acc-cat-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.6rem;
+  margin-top: auto;
+}
+
+.acc-cat-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  transition: color 120ms ease;
+}
+
+.acc-cat-card.card-forum .acc-cat-action {
+  color: #f87171;
+}
+.acc-cat-card.card-market .acc-cat-action {
+  color: #fbbf24;
+}
+
+.acc-cat-card:hover .acc-cat-action {
+  text-decoration: underline;
+}
+
+/* Barra de Filtros y Búsqueda de Cuentas */
+.accounts-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  padding: 0.4rem 0.2rem;
+}
+
+.accounts-filter-bar .filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.accounts-filter-bar .filter-pills .pill {
+  cursor: pointer;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  transition: all 120ms ease;
+}
+
+.accounts-filter-bar .filter-pills .pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.accounts-filter-bar .filter-pills .pill.active {
+  background: var(--accent-cyan);
+  color: #0b0e19;
+  border-color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.accounts-filter-bar .filter-pills .pill.active::before {
+  background: #0b0e19;
+}
+
+.table-search-box {
+  min-width: 240px;
+}
+
+.input-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 12px;
+}
+
+/* Pestañas de categoría en el Modal de Cuenta */
+.modal-category-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 1.15rem;
+  background: var(--bg-base);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.modal-cat-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.4rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 140ms ease;
+  font-family: inherit;
+}
+
+.modal-cat-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-raised);
+}
+
+.modal-cat-tab.active {
+  background: var(--bg-surface-raised);
+  color: var(--accent-cyan);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-strong);
+}
+
+.modal-cat-tab[data-cat="forum"].active {
+  color: #f87171;
+}
+
+.modal-cat-tab[data-cat="market"].active {
+  color: #fbbf24;
+}
+
+/* Caja de sugerencias OPSEC en el modal */
+.opsec-tip-box {
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  line-height: 1.45;
+}
+
+.opsec-tip-box.tip-forum {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.opsec-tip-box.tip-market {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+/* Píldora Púrpura (Tor / Onion) */
+.pill-purple {
+  background: rgba(168, 85, 247, 0.14);
+  color: #c084fc;
+}
+
 

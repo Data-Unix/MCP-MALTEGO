@@ -212,7 +212,11 @@ async function loadStatus() {
   }
 }
 
-// 5. Cuentas y Sock Puppets
+// 5. Cuentas y Sock Puppets (Redes, Foros Underground, Mercados Dark Web)
+let allLoadedAccounts = [];
+let currentAccountCategoryFilter = "all";
+let accountsSearchQuery = "";
+
 async function loadAccounts() {
   const tbody = document.getElementById("accounts-tbody");
   if (!tbody) return;
@@ -220,70 +224,174 @@ async function loadAccounts() {
   try {
     const res = await fetch("/api/accounts");
     const data = await res.json();
-    const accounts = data.accounts || [];
+    allLoadedAccounts = data.accounts || [];
 
     const badge = document.getElementById("badge-accounts-count");
-    if (badge) badge.textContent = accounts.length;
+    if (badge) badge.textContent = allLoadedAccounts.length;
 
-    if (accounts.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 2rem; color: var(--text-muted);">
-        Sin cuentas registradas. Utiliza <strong>Nuevo Registro</strong> o el <strong>Generador de Sock Puppets</strong> para añadir una.
-      </td></tr>`;
-      return;
-    }
+    // Actualizar contadores por categoría
+    const cntAll = allLoadedAccounts.length;
+    const cntSocial = allLoadedAccounts.filter((a) => (a.category || "social") === "social").length;
+    const cntForum = allLoadedAccounts.filter((a) => (a.category || "").includes("forum")).length;
+    const cntMarket = allLoadedAccounts.filter((a) => (a.category || "").includes("market")).length;
+    const cntEmail = allLoadedAccounts.filter((a) => (a.category || "") === "email").length;
 
-    tbody.innerHTML = accounts
-      .map((acc) => {
-        const isCooldown = acc.cooldown_until && acc.cooldown_until > Date.now() / 1000;
-        const cooldownBadge = isCooldown
-          ? `<span class="pill pill-warn">Enfriamiento (${Math.round(
-              acc.cooldown_until - Date.now() / 1000
-            )}s)</span>`
-          : "";
-        const enabledPill = acc.enabled
-          ? `<span class="pill pill-ok">Habilitada</span>`
-          : `<span class="pill pill-muted">Deshabilitada</span>`;
-        const isOnion = acc.platform === "onion" || acc.platform === "tor" || (acc.target_site || "").includes(".onion");
-        const realmPill = isOnion
-          ? `<span class="pill pill-cyan">Dark Web (.onion)</span>`
-          : `<span class="pill pill-muted">Clearnet</span>`;
+    const elAll = document.getElementById("cnt-acc-all");
+    const elSocial = document.getElementById("cnt-acc-social");
+    const elForum = document.getElementById("cnt-acc-forum");
+    const elMarket = document.getElementById("cnt-acc-market");
+    const elEmail = document.getElementById("cnt-acc-email");
 
-        return `
-        <tr id="row-acc-${escapeHtml(acc.id)}">
-          <td>
-            <div style="font-weight:600;">${escapeHtml(acc.handle || acc.username || "Sin alias")}</div>
-            <div class="mono" style="font-size:11px; color:var(--text-muted);">${escapeHtml(acc.id)}</div>
-          </td>
-          <td><strong>${escapeHtml(acc.platform)}</strong></td>
-          <td>${realmPill}</td>
-          <td>
-            <div class="mono" style="font-size:11px;">${escapeHtml(acc.status_text || "Activa")}</div>
-            ${acc.target_site ? `<div class="mono" style="font-size:10px; color:var(--text-muted);">Destino: ${escapeHtml(acc.target_site)}</div>` : ""}
-          </td>
-          <td>
-            <span class="mono">${acc.rate_limit_rpm} RPM</span>
-            ${cooldownBadge}
-          </td>
-          <td>${enabledPill}</td>
-          <td>
-            <div style="display:flex; gap:0.35rem;">
-              <button class="btn btn-secondary btn-sm" onclick="verifyAccount('${escapeHtml(acc.id)}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                Verificar
-              </button>
-              <button class="btn btn-danger btn-sm" onclick="deleteAccount('${escapeHtml(acc.id)}')">
-                Eliminar
-              </button>
-            </div>
-          </td>
-        </tr>`;
-      })
-      .join("");
+    if (elAll) elAll.textContent = cntAll;
+    if (elSocial) elSocial.textContent = cntSocial;
+    if (elForum) elForum.textContent = cntForum;
+    if (elMarket) elMarket.textContent = cntMarket;
+    if (elEmail) elEmail.textContent = cntEmail;
+
+    renderAccountsTable();
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="7" style="color:var(--accent-crimson); padding:1rem;">Error al cargar cuentas: ${escapeHtml(
       err.message
     )}</td></tr>`;
   }
+}
+
+function filterAccountsByCategory(category, btnElement) {
+  currentAccountCategoryFilter = category;
+  const pillContainer = document.getElementById("acc-filter-pills");
+  if (pillContainer) {
+    pillContainer.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
+  }
+  if (btnElement) {
+    btnElement.classList.add("active");
+  }
+  renderAccountsTable();
+}
+
+function filterAccountsSearch(query) {
+  accountsSearchQuery = (query || "").toLowerCase().trim();
+  renderAccountsTable();
+}
+
+function renderAccountsTable() {
+  const tbody = document.getElementById("accounts-tbody");
+  if (!tbody) return;
+
+  let filtered = allLoadedAccounts;
+
+  // Filtrado por categoría
+  if (currentAccountCategoryFilter !== "all") {
+    filtered = filtered.filter((acc) => {
+      const cat = (acc.category || "social").toLowerCase();
+      if (currentAccountCategoryFilter === "social") return cat === "social";
+      if (currentAccountCategoryFilter === "forum") return cat === "forum";
+      if (currentAccountCategoryFilter === "market") return cat === "market";
+      if (currentAccountCategoryFilter === "email") return cat === "email";
+      return true;
+    });
+  }
+
+  // Filtrado por búsqueda en tiempo real
+  if (accountsSearchQuery) {
+    filtered = filtered.filter((acc) => {
+      const q = accountsSearchQuery;
+      return (
+        (acc.id || "").toLowerCase().includes(q) ||
+        (acc.handle || "").toLowerCase().includes(q) ||
+        (acc.username || "").toLowerCase().includes(q) ||
+        (acc.platform || "").toLowerCase().includes(q) ||
+        (acc.target_site || "").toLowerCase().includes(q)
+      );
+    });
+  }
+
+  if (filtered.length === 0) {
+    const msg =
+      allLoadedAccounts.length === 0
+        ? `Sin cuentas registradas. Utiliza <strong>+ Red Social</strong>, <strong>+ Foro Ciber</strong> o <strong>+ Mercado</strong> para registrar una.`
+        : `No se encontraron cuentas para la categoría o filtro actual.`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 2rem; color: var(--text-muted);">${msg}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered
+    .map((acc) => {
+      const isCooldown = acc.cooldown_until && acc.cooldown_until > Date.now() / 1000;
+      const cooldownBadge = isCooldown
+        ? `<span class="pill pill-warn">Enfriamiento (${Math.round(
+            acc.cooldown_until - Date.now() / 1000
+          )}s)</span>`
+        : "";
+      const enabledPill = acc.enabled
+        ? `<span class="pill pill-ok">Habilitada</span>`
+        : `<span class="pill pill-muted">Deshabilitada</span>`;
+
+      const isOnion =
+        acc.platform === "onion" ||
+        acc.platform === "tor" ||
+        Boolean(acc.proxy && acc.proxy.includes("9050")) ||
+        (acc.target_site || "").includes(".onion");
+
+      const realmPill = isOnion
+        ? `<span class="pill pill-purple" title="${escapeHtml(acc.proxy || 'Tor SOCKS5 127.0.0.1:9050')}">🧅 Tor (.onion)</span>`
+        : `<span class="pill pill-muted">🌐 Clearnet</span>`;
+
+      // Insignia de categoría
+      const cat = (acc.category || "social").toLowerCase();
+      let catPill = `<span class="pill pill-cyan">🌐 Red Social</span>`;
+      if (cat === "forum") {
+        catPill = `<span class="pill pill-err">💀 Foro Ciber</span>`;
+      } else if (cat === "market") {
+        catPill = `<span class="pill pill-warn">🛒 Mercado / Leaks</span>`;
+      } else if (cat === "email") {
+        catPill = `<span class="pill pill-ok">✉️ Buzón</span>`;
+      }
+
+      // Credenciales
+      const credBadges = [];
+      if (acc.has_token) credBadges.push(`<span class="pill pill-ok" style="font-size:10px; padding:1px 5px;" title="Token de acceso configurado">🔑 Token</span>`);
+      if (acc.has_cookie) credBadges.push(`<span class="pill pill-purple" style="font-size:10px; padding:1px 5px;" title="Cookie de sesión configurada">🍪 Cookie</span>`);
+
+      return `
+      <tr id="row-acc-${escapeHtml(acc.id)}">
+        <td>
+          <div style="font-weight:600; display:flex; align-items:center; gap:0.4rem;">
+            ${escapeHtml(acc.handle || acc.username || "Sin alias")}
+          </div>
+          <div class="mono" style="font-size:11px; color:var(--text-muted);">${escapeHtml(acc.id)}</div>
+        </td>
+        <td>
+          <div>${catPill}</div>
+          <div style="margin-top:3px;"><strong class="mono" style="font-size:12px;">${escapeHtml(acc.platform)}</strong></div>
+        </td>
+        <td>
+          <div>${realmPill}</div>
+          ${acc.proxy ? `<div class="mono" style="font-size:10px; color:var(--text-muted); margin-top:2px;">${escapeHtml(acc.proxy)}</div>` : ""}
+          ${acc.target_site ? `<div class="mono" style="font-size:10px; color:var(--text-secondary); margin-top:2px;">🔗 ${escapeHtml(acc.target_site)}</div>` : ""}
+        </td>
+        <td>
+          <div class="mono" style="font-size:11px;">${escapeHtml(acc.status_text || "Activa")}</div>
+          <div style="display:flex; gap:0.25rem; margin-top:3px;">${credBadges.join(" ")}</div>
+        </td>
+        <td>
+          <span class="mono">${acc.rate_limit_rpm} RPM</span>
+          ${cooldownBadge}
+        </td>
+        <td>${enabledPill}</td>
+        <td>
+          <div style="display:flex; gap:0.35rem;">
+            <button class="btn btn-secondary btn-sm" onclick="verifyAccount('${escapeHtml(acc.id)}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Verificar
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAccount('${escapeHtml(acc.id)}')">
+              Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>`;
+    })
+    .join("");
 }
 
 async function verifyAccount(accountId) {
@@ -302,18 +410,7 @@ async function verifyAccount(accountId) {
       body: JSON.stringify({ account_id: accountId }),
     });
     const report = await res.json();
-    triggerVisualPulse(report.ok ? 0.7 : 0.4);
-
-    let statusPill = "";
-    if (report.status === "ok") {
-      statusPill = `<span class="pill pill-ok">Válida (${report.latency_ms}ms)</span>`;
-    } else if (report.status === "rate_limited") {
-      statusPill = `<span class="pill pill-warn">Rate Limit (429)</span>`;
-    } else if (report.status === "tor_unreachable") {
-      statusPill = `<span class="pill pill-err">Tor Inaccesible</span>`;
-    } else {
-      statusPill = `<span class="pill pill-err">${escapeHtml(report.status)}</span>`;
-    }
+    triggerVisualPulse(report.status === "ok" ? 0.7 : 0.4);
 
     alert(`Resultado de verificación para ${accountId}:\n\nEstado: ${report.status.toUpperCase()}\nDiagnóstico: ${report.message}\nLatencia: ${report.latency_ms} ms`);
     loadAccounts();
@@ -347,13 +444,140 @@ async function deleteAccount(accountId) {
   }
 }
 
-// Modal Nueva Cuenta
-function openNewAccountModal() {
-  document.getElementById("modal-account").classList.add("open");
+// Modal Nueva Cuenta con Categorías Especializadas
+function openNewAccountModal(category = "social") {
+  const modal = document.getElementById("modal-account");
+  if (!modal) return;
+  modal.classList.add("open");
+  selectModalCategory(category);
 }
 
 function closeNewAccountModal() {
-  document.getElementById("modal-account").classList.remove("open");
+  document.getElementById("modal-account")?.classList.remove("open");
+}
+
+function selectModalCategory(cat) {
+  const normCat = ["social", "forum", "market", "generic"].includes(cat) ? cat : "social";
+
+  // Actualizar campo oculto
+  const hiddenInput = document.getElementById("acc_category");
+  if (hiddenInput) hiddenInput.value = normCat;
+
+  // Actualizar botones de pestaña
+  document.querySelectorAll(".modal-cat-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.getAttribute("data-cat") === normCat);
+  });
+
+  // Actualizar banner OPSEC contextual
+  const tipBox = document.getElementById("modal-opsec-tip");
+  const tipText = document.getElementById("modal-opsec-text");
+  if (tipBox && tipText) {
+    tipBox.className = "opsec-tip-box";
+    if (normCat === "forum") {
+      tipBox.classList.add("tip-forum");
+      tipText.textContent =
+        "Para foros underground (BreachForums, Exploit.in, XSS), inicia sesión en tu Tor Browser o máquina aislada y copia la cookie de sesión (xf_user/session). Utiliza siempre el proxy Tor SOCKS5 local (127.0.0.1:9050) para salvaguardar tu IP real.";
+    } else if (normCat === "market") {
+      tipBox.classList.add("tip-market");
+      tipText.textContent =
+        "Para mercados darknet y servicios de filtraciones (IntelX, Russian Market, DeHashed), mantén claves de API en variables de entorno o usa Tor SOCKS5 para evitar correlaciones de IP.";
+    } else if (normCat === "generic") {
+      tipText.textContent =
+        "Configura endpoints y proxies para APIs generales o servicios que requieren rotación estricta de peticiones.";
+    } else {
+      tipText.textContent =
+        "Para redes sociales, utiliza cuentas de investigación dedicadas o tokens de bot para evitar exponer tu identidad personal o sufrir suspensiones en cuentas personales.";
+    }
+  }
+
+  // Preseleccionar una plataforma adecuada
+  const platSelect = document.getElementById("acc_platform");
+  if (platSelect) {
+    if (normCat === "forum") {
+      platSelect.value = "breachforums";
+    } else if (normCat === "market") {
+      platSelect.value = "intelx";
+    } else if (normCat === "generic") {
+      platSelect.value = "generic";
+    } else {
+      platSelect.value = "twitter";
+    }
+    onPlatformChanged(platSelect.value);
+  }
+}
+
+function onPlatformChanged(platform) {
+  const plat = (platform || "").toLowerCase().trim();
+  const rpmInput = document.getElementById("acc_rpm");
+  const idInput = document.getElementById("acc_id");
+  const tokenEnvInput = document.getElementById("acc_token_env");
+  const targetSiteInput = document.getElementById("acc_target_site");
+  const proxyInput = document.getElementById("acc_proxy");
+  const usernameInput = document.getElementById("acc_username");
+
+  if (idInput && !idInput.value) {
+    idInput.placeholder = `auto: sp-${plat}-${Date.now().toString().slice(-4)}`;
+  }
+
+  // Ajustes de foros underground
+  const isForum = [
+    "breachforums",
+    "exploit_in",
+    "xss_is",
+    "raidforums",
+    "dread",
+    "nulled",
+    "cracked_to",
+    "ramp",
+    "antichat",
+    "hackforums",
+    "forum",
+  ].includes(plat);
+
+  const isMarket = [
+    "intelx",
+    "dnmx",
+    "russian_market",
+    "2easy",
+    "dehashed",
+    "leak_lookup",
+    "snusbase",
+    "genesis_mirror",
+    "darknet_market",
+  ].includes(plat);
+
+  if (isForum) {
+    if (rpmInput && (!rpmInput.value || rpmInput.value === "30")) rpmInput.value = "15";
+    if (usernameInput) usernameInput.placeholder = "ej. ForumMember_99 o shadow_handle";
+    if (plat === "exploit_in" && targetSiteInput) targetSiteInput.placeholder = "exploit.in";
+    if (plat === "xss_is" && targetSiteInput) targetSiteInput.placeholder = "xss.is";
+    if (plat === "breachforums" && targetSiteInput) targetSiteInput.placeholder = "breachforums.is o mirror .onion";
+    if (plat === "dread" && targetSiteInput) targetSiteInput.placeholder = "dreadytofatroptsdj6io...onion";
+    if (proxyInput && !proxyInput.value) proxyInput.value = "socks5h://127.0.0.1:9050";
+  } else if (isMarket) {
+    if (rpmInput && (!rpmInput.value || rpmInput.value === "30")) rpmInput.value = "10";
+    if (plat === "intelx" && tokenEnvInput) tokenEnvInput.placeholder = "INTELX_API_KEY";
+    if (plat === "dehashed" && tokenEnvInput) tokenEnvInput.placeholder = "DEHASHED_API_KEY";
+    if (plat === "leak_lookup" && tokenEnvInput) tokenEnvInput.placeholder = "LEAK_LOOKUP_KEY";
+    if (plat === "russian_market" && proxyInput && !proxyInput.value) proxyInput.value = "socks5h://127.0.0.1:9050";
+    if (plat === "dnmx" && proxyInput && !proxyInput.value) proxyInput.value = "socks5h://127.0.0.1:9050";
+  } else {
+    if (plat === "twitter" && tokenEnvInput) tokenEnvInput.placeholder = "TWITTER_BEARER_TOKEN";
+    if (plat === "telegram" && tokenEnvInput) tokenEnvInput.placeholder = "TELEGRAM_BOT_TOKEN";
+    if (plat === "discord" && tokenEnvInput) tokenEnvInput.placeholder = "DISCORD_BOT_TOKEN";
+    if (plat === "reddit" && tokenEnvInput) tokenEnvInput.placeholder = "REDDIT_TOKEN";
+    if (plat === "github" && tokenEnvInput) tokenEnvInput.placeholder = "GITHUB_TOKEN";
+    if (usernameInput) usernameInput.placeholder = "ej. @shadow_sec";
+  }
+}
+
+function setTorProxyPreset() {
+  const proxyInput = document.getElementById("acc_proxy");
+  if (proxyInput) {
+    proxyInput.value = "socks5h://127.0.0.1:9050";
+    proxyInput.focus();
+    triggerVisualPulse(0.5);
+  }
 }
 
 async function submitNewAccount(e) {
@@ -362,6 +586,7 @@ async function submitNewAccount(e) {
   const payload = {
     id: form.acc_id.value.trim() || undefined,
     platform: form.acc_platform.value.trim().toLowerCase(),
+    category: form.acc_category ? form.acc_category.value.trim().toLowerCase() : undefined,
     username: form.acc_username.value.trim(),
     token: form.acc_token.value.trim() || undefined,
     cookie: form.acc_cookie.value.trim() || undefined,
