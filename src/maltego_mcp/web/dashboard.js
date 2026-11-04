@@ -127,7 +127,7 @@ function switchTab(tab) {
   } else if (tab === "mitre-matrix") {
     renderMitreMatrix();
   } else if (tab === "geo-map") {
-    renderGeoMap();
+    setTimeout(() => renderGeoMap(), 30);
   } else if (tab === "rules-generator") {
     renderRulesGenerator();
   } else if (tab === "threat-watchtower") {
@@ -5195,14 +5195,18 @@ const KNOWN_GEO_COORDS = {
 };
 
 function renderGeoMap() {
+  buildGeoModelFromActiveCase();
   geoMapCanvas = document.getElementById("geomap-canvas");
   if (!geoMapCanvas) return;
   geoMapCtx = geoMapCanvas.getContext("2d");
 
   initGeoMapEvents();
   resizeGeoMapCanvas();
-  buildGeoModelFromActiveCase();
   startGeoMapLoop();
+}
+
+function drawGeoMap() {
+  drawGeoWorldMap();
 }
 
 function initGeoMapEvents() {
@@ -5249,10 +5253,21 @@ function buildGeoModelFromActiveCase() {
 
     if (isIP || isLoc || isHost) {
       let matchedCoord = null;
-      for (const [k, coord] of Object.entries(KNOWN_GEO_COORDS)) {
-        if (val.includes(k) || String(props.country || "").toLowerCase().includes(k) || String(props.region || "").toLowerCase().includes(k)) {
-          matchedCoord = coord;
-          break;
+      const rawLat = parseFloat(props.latitude ?? props.lat ?? props.latitud);
+      const rawLon = parseFloat(props.longitude ?? props.lon ?? props.longitud);
+      if (!isNaN(rawLat) && !isNaN(rawLon)) {
+        matchedCoord = {
+          lat: rawLat,
+          lon: rawLon,
+          country: props.country || "Ubicacion",
+          city: props.city || props.region || n.value,
+        };
+      } else {
+        for (const [k, coord] of Object.entries(KNOWN_GEO_COORDS)) {
+          if (val.includes(k) || String(props.country || "").toLowerCase().includes(k) || String(props.region || "").toLowerCase().includes(k)) {
+            matchedCoord = coord;
+            break;
+          }
         }
       }
 

@@ -40,6 +40,9 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "modal-path-trace" in r_root.text
     assert "modal-bgp-trace" in r_root.text
     assert "table-toolbar-tactical" in r_root.text
+    assert "geomap-canvas" in r_root.text
+    assert "geomap-container" in r_root.text
+    assert "geomap-nodes-table" in r_root.text
 
     r_dash = client.get("/dashboard")
     assert r_dash.status_code == 200
@@ -80,6 +83,10 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "traceAmlTransaction" in r_js.text
     assert "openPathTracerModal" in r_js.text
     assert "traceBgpRoute" in r_js.text
+    assert "renderGeoMap" in r_js.text
+    assert "drawGeoMap" in r_js.text
+    assert "buildGeoModelFromActiveCase" in r_js.text
+    assert "populateGeoNodesTable" in r_js.text
 
     r_worker = client.get("/bg-worker.js")
     assert r_worker.status_code == 200

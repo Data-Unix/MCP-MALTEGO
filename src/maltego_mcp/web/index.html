@@ -1090,53 +1090,84 @@
                   <select class="select select-sm module-case-select" id="geo-case-select" onchange="onModuleCaseChanged('geo', this.value)"></select>
                 </div>
               </div>
-              <div class="table-toolbar-tactical" id="geomap-nodes-table-toolbar">
-                <div class="table-toolbar-left">
-                  <span class="mono" style="font-weight:700; color:var(--accent-cyan);">INFRAESTRUCTURA GEORREFERENCIADA</span>
-                  <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
-                  <div class="table-density-btn-group" data-table="geomap-nodes-table">
-                    <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('geomap-nodes-table', 'compact')" title="Filas compactas">Compacto</button>
-                    <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('geomap-nodes-table', 'normal')" title="Filas estandar">Normal</button>
-                    <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('geomap-nodes-table', 'expanded')" title="Filas amplias">Ampliado</button>
-                  </div>
-                  <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
-                  <select class="table-limit-select" onchange="setTableLimit('geomap-nodes-table', this.value)">
-                    <option value="5">5</option>
-                    <option value="10" selected>10</option>
-                    <option value="25">25</option>
-                    <option value="all">Todas</option>
-                  </select>
-                </div>
-                <div class="table-toolbar-right">
-                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('geomap-nodes-table', true)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
-                    Expandir Todo
-                  </button>
-                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('geomap-nodes-table', false)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
-                    Contraer Todo
-                  </button>
-                  <input type="text" class="table-search-input" id="geomap-table-filter" placeholder="Filtrar infraestructura..." oninput="filterTableGeneric('geomap-nodes-table', this.value)">
-                </div>
+            </div>
+
+            <!-- Contenedor del Canvas Cartografico Geoespacial -->
+            <div class="geomap-container">
+              <canvas id="geomap-canvas"></canvas>
+              <div class="geomap-hud-bar" id="geomap-hud-bar">PROYECCION: EQUIRRECTANGULAR VECTOR | ARRASTRE: NAVEGACION | RUEDA: ZOOM | CLICK: SELECCION</div>
+              <div class="geomap-tooltip" id="geomap-tooltip" style="display:none;"></div>
+            </div>
+
+            <!-- Toolbar Tactica de Cartografia y BGP -->
+            <div class="geomap-toolbar">
+              <div class="geomap-controls-group">
+                <span class="mono" style="font-size:10.5px; color:var(--text-muted); font-weight:600;">CAPAS:</span>
+                <button type="button" class="geomap-btn active" id="btn-geolayer-dark" onclick="setGeoMapLayer('dark')">Oscuro</button>
+                <button type="button" class="geomap-btn" id="btn-geolayer-bgp" onclick="setGeoMapLayer('bgp')">BGP Routing</button>
+                <button type="button" class="geomap-btn" id="btn-geolayer-threat" onclick="setGeoMapLayer('threat')">Threat Intel</button>
+                <span class="mono" style="font-size:10.5px; color:var(--text-muted); font-weight:600; margin-left:8px;">FILTRO:</span>
+                <button type="button" class="geomap-btn active" id="btn-geofilter-all" onclick="filterGeoNodesByRole('all')">Todos (<span id="cnt-geo-all">0</span>)</button>
+                <button type="button" class="geomap-btn" id="btn-geofilter-c2" onclick="filterGeoNodesByRole('c2')">C2 (<span id="cnt-geo-c2">0</span>)</button>
+                <button type="button" class="geomap-btn" id="btn-geofilter-proxy" onclick="filterGeoNodesByRole('proxy')">Proxy/Tor (<span id="cnt-geo-proxy">0</span>)</button>
+                <button type="button" class="geomap-btn" id="btn-geofilter-target" onclick="filterGeoNodesByRole('target')">Objetivo (<span id="cnt-geo-target">0</span>)</button>
               </div>
-              <div style="overflow-x:auto;">
-                <table class="data-table" id="geomap-nodes-table">
-                  <thead>
-                    <tr>
-                      <th style="width:30px; text-align:center;"></th>
-                      <th>Identificador / IP</th>
-                      <th>Ubicacion Geografica</th>
-                      <th>ASN & Proveedor de Red</th>
-                      <th>Coordenadas Lat / Lon</th>
-                      <th>Rol Operativo</th>
-                      <th>Accion</th>
-                    </tr>
-                  </thead>
-                  <tbody id="geomap-nodes-body">
-                    <!-- Dynamic rows from active case -->
-                  </tbody>
-                </table>
+              <div class="geomap-controls-group">
+                <button type="button" class="geomap-btn" id="btn-geo-arcs-toggle" onclick="toggleGeoArcs()">Arcos Geodesicos: ON</button>
+                <button type="button" class="geomap-btn" onclick="zoomGeoMap(1.25)" title="Acercar mapa">+</button>
+                <button type="button" class="geomap-btn" onclick="zoomGeoMap(0.8)" title="Alejar mapa">-</button>
+                <button type="button" class="geomap-btn" onclick="centerGeoMapOnCase()" title="Centrar mapa en infraestructura del caso">Centrar Caso</button>
+                <button type="button" class="geomap-btn" onclick="resetGeoMapProjection()" title="Restablecer proyeccion global">Restablecer</button>
+                <button type="button" class="geomap-btn" onclick="promptAddGeoNode()" title="Geolocalizar IP manual">+ GeoNode</button>
               </div>
+            </div>
+
+            <div class="table-toolbar-tactical" id="geomap-nodes-table-toolbar">
+              <div class="table-toolbar-left">
+                <span class="mono" style="font-weight:700; color:var(--accent-cyan);">INFRAESTRUCTURA GEORREFERENCIADA</span>
+                <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                <div class="table-density-btn-group" data-table="geomap-nodes-table">
+                  <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('geomap-nodes-table', 'compact')" title="Filas compactas">Compacto</button>
+                  <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('geomap-nodes-table', 'normal')" title="Filas estandar">Normal</button>
+                  <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('geomap-nodes-table', 'expanded')" title="Filas amplias">Ampliado</button>
+                </div>
+                <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                <select class="table-limit-select" onchange="setTableLimit('geomap-nodes-table', this.value)">
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="all">Todas</option>
+                </select>
+              </div>
+              <div class="table-toolbar-right">
+                <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('geomap-nodes-table', true)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                  Expandir Todo
+                </button>
+                <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('geomap-nodes-table', false)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                  Contraer Todo
+                </button>
+                <input type="text" class="table-search-input" id="geomap-table-filter" placeholder="Filtrar infraestructura..." oninput="filterTableGeneric('geomap-nodes-table', this.value)">
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table" id="geomap-nodes-table">
+                <thead>
+                  <tr>
+                    <th style="width:30px; text-align:center;"></th>
+                    <th>Identificador / IP</th>
+                    <th>Ubicacion Geografica</th>
+                    <th>ASN & Proveedor de Red</th>
+                    <th>Coordenadas Lat / Lon</th>
+                    <th>Rol Operativo</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody id="geomap-nodes-body">
+                  <!-- Dynamic rows from active case -->
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
