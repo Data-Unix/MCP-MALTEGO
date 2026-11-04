@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Multi-Case Isolation & Modular Project Scoping**: Global project selector synchronized in the Topbar and live graph canvas, paired with per-module focus selectors (defaulting to `[Follow Active Case]`), strictly preventing cross-contamination between independent forensic cases.
+- **Forensic Case Deletion & Atomic Purging**: Interactive confirmation modal for secure deletion of ad-hoc or temporary investigations, atomic purging of entities, edges, and step history from the graph store via `DELETE /api/cases/{case_id}`, and local cache/evidence destruction with automatic fallback.
+- **Cryptoforensics & Blockchain AML Traceability**: Native cryptocurrency ontology (`maltego.CryptoCluster`, `maltego.VASPExchange`, `maltego.MixerContract`, `maltego.DeFiBridge`), multi-hop transaction flow tracing, peeling chain and tumbler heuristics, OFAC SDN sanctions screening, and VASP deposit touchpoint detection.
+- **Universal Table Suite & HUD Notifications**: Table density controls (compact, normal, expanded), pagination, expandable accordion detail cards, and persistent tactical HUD notification system.
+
+### Fixed
+- **CI Pipeline & Cross-Platform Ruff Formatting**: Aligned `AGENTS.md` verification guidelines with GitHub Actions workflow, enforcing `ruff format --check .` across Ubuntu, Windows, and macOS runners.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added
