@@ -298,6 +298,9 @@ function renderAccountsTable() {
 
   let filtered = allLoadedAccounts;
 
+  const limitSelect = document.querySelector("#view-accounts .table-limit-select");
+  const limit = limitSelect ? limitSelect.value : "all";
+
   // Filtrado por categoría
   if (currentAccountCategoryFilter !== "all") {
     filtered = filtered.filter((acc) => {
@@ -324,12 +327,19 @@ function renderAccountsTable() {
     });
   }
 
+  if (limit !== "all") {
+    const num = parseInt(limit, 10);
+    if (!isNaN(num) && num > 0) {
+      filtered = filtered.slice(0, num);
+    }
+  }
+
   if (filtered.length === 0) {
     const msg =
       allLoadedAccounts.length === 0
         ? `Sin cuentas registradas. Utiliza <strong>+ Red Social</strong>, <strong>+ Foro Ciber</strong> o <strong>+ Mercado</strong> para registrar una.`
         : `No se encontraron cuentas para la categoría o filtro actual.`;
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 2rem; color: var(--text-muted);">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: var(--text-muted);">${msg}</td></tr>`;
     return;
   }
 
@@ -373,6 +383,11 @@ function renderAccountsTable() {
 
       return `
       <tr id="row-acc-${escapeHtml(acc.id)}">
+        <td style="width:30px; text-align:center;">
+          <button class="row-expand-btn" id="acc-row-${escapeHtml(acc.id)}-expand-btn" onclick="toggleRowDetail(this, 'acc-row-${escapeHtml(acc.id)}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </td>
         <td>
           <div style="font-weight:600; display:flex; align-items:center; gap:0.4rem;">
             ${escapeHtml(acc.handle || acc.username || "Sin alias")}
@@ -406,6 +421,22 @@ function renderAccountsTable() {
             <button class="btn btn-danger btn-sm" onclick="deleteAccount('${escapeHtml(acc.id)}')">
               Eliminar
             </button>
+          </div>
+        </td>
+      </tr>
+      <tr id="acc-row-${escapeHtml(acc.id)}-detail" class="row-detail-container" style="display:none;">
+        <td colspan="8">
+          <div class="row-detail-card" style="padding:0.75rem 1rem; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:4px; font-size:12px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+              <strong style="color:var(--accent-cyan);">Ficha de Boveda: ${escapeHtml(acc.id)}</strong>
+              <span class="mono" style="font-size:10px; color:var(--text-muted);">${escapeHtml(acc.updated_at || "Registrada en TOML")}</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.5rem;">
+              <div><span style="color:var(--text-muted);">Enrutador Proxy:</span> <span class="mono">${escapeHtml(acc.proxy || "Conexion directa Clearnet")}</span></div>
+              <div><span style="color:var(--text-muted);">Sitio Objetivo:</span> <span class="mono">${escapeHtml(acc.target_site || "Plataforma oficial")}</span></div>
+              <div><span style="color:var(--text-muted);">Token Configurado:</span> <span>${acc.has_token ? "[SI] Almacenado de forma segura" : "[NO] Inexistente"}</span></div>
+              <div><span style="color:var(--text-muted);">Cookie de Sesion:</span> <span>${acc.has_cookie ? "[SI] Configurada" : "[NO] No requerida"}</span></div>
+            </div>
           </div>
         </td>
       </tr>`;
@@ -467,12 +498,14 @@ async function deleteAccount(accountId) {
 function openNewAccountModal(category = "social") {
   const modal = document.getElementById("modal-account");
   if (!modal) return;
-  modal.classList.add("open");
+  modal.classList.add("open", "active");
+  modal.style.display = "grid";
   selectModalCategory(category);
 }
 
 function closeNewAccountModal() {
-  document.getElementById("modal-account")?.classList.remove("open");
+  const m = document.getElementById("modal-account");
+  if (m) { m.classList.remove("open", "active"); m.style.display = "none"; }
 }
 
 function selectModalCategory(cat) {
@@ -640,12 +673,14 @@ async function submitNewAccount(e) {
 
 // Modal Generador de Sock Puppets
 function openPersonaModal() {
-  document.getElementById("modal-persona").classList.add("open");
+  const m = document.getElementById("modal-persona");
+  if (m) { m.classList.add("open", "active"); m.style.display = "grid"; }
   generatePersonaPreview();
 }
 
 function closePersonaModal() {
-  document.getElementById("modal-persona").classList.remove("open");
+  const m = document.getElementById("modal-persona");
+  if (m) { m.classList.remove("open", "active"); m.style.display = "none"; }
   if (totpTimer) clearInterval(totpTimer);
 }
 
@@ -809,22 +844,36 @@ async function loadCTIFeeds() {
   try {
     const res = await fetch("/api/cti-feeds");
     const data = await res.json();
-    const sources = data.sources || [];
+    let sources = data.sources || [];
 
     document.getElementById("cti-active-count") &&
       (document.getElementById("cti-active-count").textContent = data.active_count || 0);
     document.getElementById("cti-purged-count") &&
       (document.getElementById("cti-purged-count").textContent = data.purged_count || 0);
 
+    const limitSelect = document.querySelector("#view-cti .table-limit-select");
+    const limit = limitSelect ? limitSelect.value : "all";
+    if (limit !== "all") {
+      const num = parseInt(limit, 10);
+      if (!isNaN(num) && num > 0) {
+        sources = sources.slice(0, num);
+      }
+    }
+
     if (sources.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:1.5rem; color:var(--text-muted);">Sin fuentes indexadas. Pulsa 'Sincronizar Feeds CTI'.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:1.5rem; color:var(--text-muted);">Sin fuentes indexadas. Pulsa 'Sincronizar Feeds CTI'.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = sources
       .map(
-        (s) => `
+        (s, idx) => `
       <tr>
+        <td style="width:30px; text-align:center;">
+          <button class="row-expand-btn" id="cti-row-${idx}-expand-btn" onclick="toggleRowDetail(this, 'cti-row-${idx}')">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </td>
         <td style="font-weight:600;">${escapeHtml(s.name)}</td>
         <td><span class="pill pill-cyan">${escapeHtml(s.category)}</span></td>
         <td class="mono" style="font-size:11px; max-width:240px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(
@@ -833,11 +882,29 @@ async function loadCTIFeeds() {
         <td><span class="pill pill-ok">${escapeHtml(s.status)}</span></td>
         <td class="mono" style="font-size:10px; color:var(--text-muted);">${escapeHtml(s.updated_at || "-")}</td>
       </tr>
+      <tr id="cti-row-${idx}-detail" class="row-detail-container" style="display:none;">
+        <td colspan="6">
+          <div class="row-detail-card" style="padding:0.75rem 1rem; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:4px; font-size:12px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem;">
+              <strong style="color:var(--accent-cyan);">${escapeHtml(s.name)} [${escapeHtml(s.category)}]</strong>
+              <span class="mono" style="font-size:10px; color:var(--text-muted);">Estado: ${escapeHtml(s.status)}</span>
+            </div>
+            <div style="margin-bottom:0.4rem;">
+              <span style="color:var(--text-muted);">URL Completa / Endpoint:</span>
+              <div class="mono" style="font-size:11px; word-break:break-all; margin-top:2px;">${escapeHtml(s.url)}</div>
+            </div>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('${escapeHtml(s.url)}', 'URL de fuente CTI')">Copiar URL</button>
+              <span style="font-size:11px; color:var(--text-muted);">Ultima actualizacion verificada: ${escapeHtml(s.updated_at || "Reciente")}</span>
+            </div>
+          </div>
+        </td>
+      </tr>
     `
       )
       .join("");
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--accent-crimson);">Error al cargar CTI: ${escapeHtml(
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--accent-crimson);">Error al cargar CTI: ${escapeHtml(
       err.message
     )}</td></tr>`;
   }
@@ -1233,6 +1300,8 @@ let selectedImportFile = null;
 function openImportModal() {
   const modal = document.getElementById("modal-import");
   if (!modal) return;
+  modal.classList.add("open", "active");
+  modal.style.display = "grid";
   selectedImportFile = null;
   const fileInput = document.getElementById("import-file-input");
   if (fileInput) fileInput.value = "";
@@ -1255,7 +1324,7 @@ function openImportModal() {
 
 function closeImportModal() {
   const modal = document.getElementById("modal-import");
-  if (modal) modal.classList.remove("open");
+  if (modal) { modal.classList.remove("open", "active"); modal.style.display = "none"; }
 }
 
 function toggleImportMode(mode) {
@@ -3575,6 +3644,106 @@ function playTacticalClick(freq = 720, duration = 0.035) {
   }
 }
 
+// --- Sistema Universal de Notificaciones Tacticas (Toast) ---
+function showToast(message, type = "info", duration = 3600) {
+  let container = document.getElementById("tactical-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "tactical-toast-container";
+    container.className = "tactical-toast-container";
+    document.body.appendChild(container);
+  }
+
+  const normType = String(type || "info").toLowerCase();
+  let badgeClass = "toast-info";
+  let iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+
+  if (normType === "ok" || normType === "success") {
+    badgeClass = "toast-ok";
+    iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+  } else if (normType === "error" || normType === "err" || normType === "danger") {
+    badgeClass = "toast-error";
+    iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
+  } else if (normType === "warning" || normType === "warn") {
+    badgeClass = "toast-warn";
+    iconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `tactical-toast ${badgeClass}`;
+  toast.innerHTML = `
+    <div class="toast-icon">${iconSvg}</div>
+    <div class="toast-body">${escapeHtml(String(message || ""))}</div>
+    <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+  `;
+
+  container.appendChild(toast);
+
+  if (normType === "ok") playTacticalClick(880, 0.025);
+  else if (normType === "error" || normType === "err") playTacticalClick(320, 0.04);
+  else playTacticalClick(640, 0.02);
+
+  setTimeout(() => {
+    toast.classList.add("toast-leaving");
+    setTimeout(() => {
+      toast.remove();
+      if (container.children.length === 0) {
+        container.remove();
+      }
+    }, 250);
+  }, duration);
+}
+
+// --- Conmutacion Rapida de Vistas (Alias Ergonomico) ---
+function switchView(viewId) {
+  if (!viewId) return;
+  const tab = viewId.replace(/^view-/, "");
+  switchTab(tab);
+}
+
+// --- Alias de Modulos y Modales ---
+function renderCTI() {
+  loadCTIFeeds();
+}
+
+function closeNewPersonaModal() {
+  closePersonaModal();
+}
+
+// --- Persistencia y Sincronizacion de Grafos Modificados ---
+async function saveCurrentCaseGraph() {
+  applyAllGraphFilters();
+  updateGraphStatusBar();
+  drawGraph();
+
+  if (!currentCaseId) return;
+  try {
+    const payload = {
+      entities: graphNodes.map((n) => ({
+        type: n.type || "maltego.Phrase",
+        value: n.value || n.label || n.id,
+        properties: n.properties || {}
+      })),
+      edges: graphLinks.map((l) => ({
+        source: l.sourceNode?.value || l.sourceNode?.id || l.source,
+        target: l.targetNode?.value || l.targetNode?.id || l.target,
+        label: l.label || "relacionado_con"
+      }))
+    };
+    await fetch("/api/cases/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        case_id: currentCaseId,
+        filename: `trace_update_${currentCaseId}.json`,
+        content: JSON.stringify(payload)
+      })
+    });
+  } catch (err) {
+    console.warn("Sincronizacion de traza diferida:", err);
+  }
+}
+
 // --- C. Actualizacion de HUD Tactico ---
 function updateTacticalHud() {
   const caseEl = document.getElementById("hud-active-case");
@@ -5495,7 +5664,7 @@ function setTableLimit(tableId, limit) {
   } else if (tableId === "watchtower-targets-table") {
     renderWatchtower();
   } else if (tableId === "accounts-table") {
-    filterAccountsByCategory(currentAccountCategory);
+    filterAccountsByCategory(currentAccountCategoryFilter);
   } else if (tableId === "cti-table") {
     renderCTI();
   }
@@ -6124,14 +6293,6 @@ function projectCurrentBgpOnGeoMap() {
   closeBgpTraceModal();
   switchView("view-geo-map");
   showToast("Traza de enrutamiento BGP proyectada secuencialmente sobre la cartografia", "ok");
-}
-
-function traceEvidenceLineage(evId) {
-  playTacticalClick(900, 0.03);
-  const ev = (custodyEvidenceLog || []).find((x) => x.id === evId);
-  if (!ev) return;
-
-  showToast(`Trazando cadena de procedencia pericial para ${ev.id}: Origen en perito '${ev.examiner}' [SHA-256 verificado]`, "ok");
 }
 
 function traceWatchtowerTarget(target) {
