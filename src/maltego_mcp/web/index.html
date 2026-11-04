@@ -209,6 +209,10 @@
               <option value="">Cargando proyectos...</option>
             </select>
             <button class="btn btn-secondary btn-sm" onclick="promptCreateCase()" title="Crear nueva investigacion">+ Proyecto</button>
+            <button class="btn btn-secondary btn-sm" onclick="openDeleteCaseModal()" id="btn-topbar-delete-project" title="Eliminar investigacion o proyecto puntual" style="color:var(--accent-rose); border-color:rgba(244,63,94,0.35);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+              Eliminar
+            </button>
             <button class="btn btn-secondary btn-sm" onclick="reloadCurrentGraph()" title="Sincronizar y recargar caso activo">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>
@@ -693,6 +697,10 @@
                 <button class="btn btn-primary btn-sm" onclick="promptCreateCase()" id="btn-new-case">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   Nuevo Caso
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="openDeleteCaseModal()" id="btn-delete-case" title="Eliminar investigacion activa y purgar entidades">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                  Eliminar Caso
                 </button>
               </div>
 
@@ -1684,6 +1692,59 @@
           <button type="button" class="btn btn-primary" onclick="exportEvidenceManifest()">Exportar Manifiesto Firmado (.JSON)</button>
           <button type="button" class="btn btn-secondary" onclick="closeEvidenceTraceModal()">Cerrar</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE ELIMINACION DE CASO / PROYECTO -->
+  <div class="modal-overlay" id="modal-delete-case" onclick="if(event.target===this) closeDeleteCaseModal()">
+    <div class="modal-card" style="max-width:520px; border-color:rgba(244,63,94,0.4); box-shadow:0 8px 32px rgba(0,0,0,0.6), 0 0 15px rgba(244,63,94,0.15);">
+      <div class="modal-header">
+        <div>
+          <div class="panel-title" style="color:var(--accent-rose); display:flex; align-items:center; gap:0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            Eliminar Proyecto de Investigacion
+          </div>
+          <div class="panel-subtitle">Purgado forense irreversible de grafo, evidencias y memoria operativa</div>
+        </div>
+        <button type="button" class="btn-icon" onclick="closeDeleteCaseModal()" title="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem; font-size:12px; color:var(--text-main);">
+          <strong>Atencion:</strong> Esta operacion eliminara definitivamente el caso seleccionado de la base de datos de grafos, purgando todas sus entidades, relaciones, historial de transforms y memoria de custodia local. <strong>Esta accion no se puede deshacer.</strong>
+        </div>
+
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label class="form-label">Seleccionar Proyecto a Eliminar:</label>
+          <select class="select" id="delete-case-select" onchange="onDeleteCaseSelectChanged(this.value)" style="width:100%;"></select>
+        </div>
+
+        <div id="delete-case-summary-box" style="background:var(--bg-main); border:1px solid var(--border-subtle); border-radius:6px; padding:0.75rem 1rem; margin-bottom:1.25rem;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:12px;">
+            <span style="color:var(--text-muted);">Identificador:</span>
+            <span class="mono" id="delete-case-id-display" style="color:var(--accent-cyan); font-weight:700;">-</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:12px;">
+            <span style="color:var(--text-muted);">Entidades en grafo:</span>
+            <span class="mono" id="delete-case-entities-count" style="color:var(--text-main); font-weight:600;">0</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;">
+            <span style="color:var(--text-muted);">Relaciones / Aristas:</span>
+            <span class="mono" id="delete-case-edges-count" style="color:var(--text-main); font-weight:600;">0</span>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0.5rem;">
+          <label class="form-label" style="font-size:11px; color:var(--text-muted);">Para confirmar, escribe el ID exacto del caso (<code id="delete-case-confirm-prompt" style="color:var(--accent-rose);">-</code>):</label>
+          <input type="text" id="delete-case-confirm-input" class="input" placeholder="Escribe el ID del caso para habilitar borrado" oninput="checkDeleteCaseConfirmation(this.value)" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteCaseModal()">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-delete-case" onclick="executeDeleteCase()" disabled style="opacity:0.5; cursor:not-allowed;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          Purgar y Eliminar Definitivamente
+        </button>
       </div>
     </div>
   </div>

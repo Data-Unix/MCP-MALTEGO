@@ -388,3 +388,51 @@ def test_api_case_export_and_import(tmp_path: Path) -> None:
     assert g_data["ok"] is True
     assert len(g_data["nodes"]) == 3  # domain, ip, email
     assert len(g_data["links"]) == 1
+
+
+def test_api_case_deletion_and_cleanup(tmp_path: Path) -> None:
+    app = _create_test_app(tmp_path)
+    client = TestClient(app)
+
+    # 1. Crear un caso puntual para investigacion temporal
+    r_create = client.post(
+        "/api/cases",
+        json={"case_id": "caso-temporal-para-borrar", "description": "Investigacion puntual sin relevancia"},
+    )
+    assert r_create.status_code == 200
+    assert r_create.json()["ok"] is True
+
+    # 2. Agregar entidades mediante importacion
+    json_data = '{"entities": [{"type": "maltego.Domain", "value": "temp-target.org", "confidence": 0.9}], "edges": []}'
+    r_imp = client.post(
+        "/api/cases/import",
+        files={"file": ("temp.json", json_data.encode("utf-8"), "application/json")},
+        data={"case_id": "caso-temporal-para-borrar"},
+    )
+    assert r_imp.status_code == 200
+    assert r_imp.json()["ok"] is True
+
+    # 3. Comprobar que aparece en la lista de casos
+    r_list = client.get("/api/cases")
+    assert r_list.status_code == 200
+    case_ids = [c["case_id"] for c in r_list.json()["cases"]]
+    assert "caso-temporal-para-borrar" in case_ids
+
+    # 4. Eliminar el caso mediante DELETE
+    r_del = client.delete("/api/cases/caso-temporal-para-borrar")
+    assert r_del.status_code == 200
+    del_data = r_del.json()
+    assert del_data["ok"] is True
+    assert del_data["case_id"] == "caso-temporal-para-borrar"
+    assert del_data["deleted_entities"] >= 1
+
+    # 5. Comprobar que ya no existe en el sistema
+    r_list_post = client.get("/api/cases")
+    assert r_list_post.status_code == 200
+    post_ids = [c["case_id"] for c in r_list_post.json()["cases"]]
+    assert "caso-temporal-para-borrar" not in post_ids
+
+    # 6. Intentar borrar un caso inexistente debe responder error 400
+    r_del_nonexistent = client.delete("/api/cases/caso-inexistente-xyz")
+    assert r_del_nonexistent.status_code == 400
+    assert r_del_nonexistent.json()["ok"] is False

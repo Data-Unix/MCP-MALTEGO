@@ -1338,6 +1338,176 @@ async function promptCreateCase() {
   }
 }
 
+let _currentCaseToDelete = null;
+
+function openDeleteCaseModal(targetCaseId = null) {
+  const modal = document.getElementById("modal-delete-case");
+  if (!modal) return;
+
+  const select = document.getElementById("delete-case-select");
+  if (!select) return;
+
+  select.innerHTML = "";
+  if (!allLoadedCases || allLoadedCases.length === 0) {
+    showHudNotification("SIN CASOS", "No existen casos registrados para eliminar.", "info");
+    return;
+  }
+
+  allLoadedCases.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.case_id;
+    opt.textContent = `${c.case_id} (${c.entities_count || 0} ents)`;
+    select.appendChild(opt);
+  });
+
+  const preferredId = targetCaseId || currentCaseId || (allLoadedCases[0] ? allLoadedCases[0].case_id : "");
+  if (preferredId && allLoadedCases.some((c) => c.case_id === preferredId)) {
+    select.value = preferredId;
+  } else if (allLoadedCases[0]) {
+    select.value = allLoadedCases[0].case_id;
+  }
+
+  onDeleteCaseSelectChanged(select.value);
+  modal.classList.add("open");
+  playTacticalClick(700, 0.04);
+}
+
+function closeDeleteCaseModal() {
+  const modal = document.getElementById("modal-delete-case");
+  if (modal) modal.classList.remove("open");
+  _currentCaseToDelete = null;
+}
+
+function onDeleteCaseSelectChanged(selectedId) {
+  _currentCaseToDelete = selectedId;
+  const idDisplay = document.getElementById("delete-case-id-display");
+  const promptCode = document.getElementById("delete-case-confirm-prompt");
+  const entsCount = document.getElementById("delete-case-entities-count");
+  const edgesCount = document.getElementById("delete-case-edges-count");
+  const confirmInput = document.getElementById("delete-case-confirm-input");
+  const btn = document.getElementById("btn-confirm-delete-case");
+
+  if (idDisplay) idDisplay.textContent = selectedId || "-";
+  if (promptCode) promptCode.textContent = selectedId || "-";
+
+  const caseObj = allLoadedCases.find((c) => c.case_id === selectedId);
+  const localNodes = getNodesForCase(selectedId);
+  const localEdges = getLinksForCase(selectedId);
+
+  const eCount = localNodes.length > 0 ? localNodes.length : (caseObj ? caseObj.entities_count : 0);
+  const edgeCount = localEdges.length > 0 ? localEdges.length : (caseObj ? caseObj.edges_count : 0);
+
+  if (entsCount) entsCount.textContent = eCount;
+  if (edgesCount) edgesCount.textContent = edgeCount;
+
+  if (confirmInput) {
+    confirmInput.value = "";
+    confirmInput.focus();
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+    btn.style.cursor = "not-allowed";
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Purgar y Eliminar Definitivamente`;
+  }
+}
+
+function checkDeleteCaseConfirmation(val) {
+  const btn = document.getElementById("btn-confirm-delete-case");
+  if (!btn) return;
+  const target = (_currentCaseToDelete || "").trim().toLowerCase();
+  const inputVal = (val || "").trim().toLowerCase();
+
+  if (target && inputVal === target) {
+    btn.disabled = false;
+    btn.style.opacity = "1";
+    btn.style.cursor = "pointer";
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+    btn.style.cursor = "not-allowed";
+  }
+}
+
+async function executeDeleteCase() {
+  const cid = _currentCaseToDelete;
+  if (!cid) return;
+
+  const btn = document.getElementById("btn-confirm-delete-case");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg> Purgando caso...`;
+  }
+
+  try {
+    const res = await fetch(`/api/cases/${encodeURIComponent(cid)}`, {
+      method: "DELETE"
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert(`Error al eliminar caso: ${data.error || "Fallo desconocido"}`);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `Reintentar Eliminacion`;
+      }
+      return;
+    }
+
+    // 1. Limpieza de memoria y cache
+    delete caseDataCache[cid];
+    delete caseEvidenceVault[cid];
+    try { localStorage.removeItem("maltego_evidence_" + cid); } catch(e){}
+    delete caseWatchTargets[cid];
+    delete caseWatchAlerts[cid];
+    try { localStorage.removeItem("maltego_watchtower_" + cid); } catch(e){}
+
+    for (const mod in moduleCaseOverrides) {
+      if (moduleCaseOverrides[mod] === cid) {
+        moduleCaseOverrides[mod] = "__global__";
+      }
+    }
+
+    // 2. Actualizar lista local de casos
+    allLoadedCases = allLoadedCases.filter((c) => c.case_id !== cid);
+
+    closeDeleteCaseModal();
+
+    showHudNotification(
+      "PROYECTO PURGADO",
+      `El caso '${cid}' fue eliminado definitivamente (${data.deleted_entities || 0} entidades, ${data.deleted_edges || 0} aristas purgadas).`,
+      "warning"
+    );
+
+    // 3. Conmutar caso si el eliminado era el activo
+    let nextCase = null;
+    if (currentCaseId === cid) {
+      nextCase = allLoadedCases.length > 0 ? allLoadedCases[0].case_id : null;
+    } else {
+      nextCase = currentCaseId;
+    }
+
+    if (nextCase) {
+      await loadCasesList(nextCase);
+    } else {
+      currentCaseId = "";
+      syncAllProjectSelectors();
+      if (graphStore) {
+        graphStore.nodes = [];
+        graphStore.links = [];
+        graphStore.nodeMap = new Map();
+        renderGraph();
+      }
+      refreshActiveModuleView();
+    }
+  } catch (err) {
+    alert(`Error de red al eliminar el caso: ${err.message}`);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `Reintentar Eliminacion`;
+    }
+  }
+}
+
 function onCaseSelected(caseId) {
   if (!caseId) return;
   switchActiveProject(caseId);
@@ -3993,6 +4163,8 @@ function buildDefaultCommands() {
     { cat: "Vistas y Modulos", name: "Reglas Sigma & YARA", desc: "Generador de firmas SIEM / IDS", action: () => switchTab("rules-generator") },
     { cat: "Vistas y Modulos", name: "Vigilancia & Alertas", desc: "Monitor de drift DNS y certificados", action: () => switchTab("threat-watchtower") },
     { cat: "Vistas y Modulos", name: "Puente Maltego Desktop", desc: "Sincronizacion local TRX y exportacion .mtz", action: () => switchTab("desktop-bridge") },
+    { cat: "Operaciones de Caso", name: "Eliminar Proyecto / Caso Activo", desc: "Purgar la investigacion puntual activa y liberar memoria", action: () => openDeleteCaseModal() },
+    { cat: "Operaciones de Caso", name: "Crear Nuevo Caso", desc: "Iniciar una nueva investigacion en blanco", action: () => promptCreateCase() },
     { cat: "Operaciones de Caso", name: "Exportar como .mtgx (Maltego)", desc: "Descarga de archivo nativo", action: () => exportCaseAs("mtgx") },
     { cat: "Operaciones de Caso", name: "Exportar como JSON Forense", desc: "Entidades y relaciones estructuradas", action: () => exportCaseAs("json") },
     { cat: "Operaciones de Caso", name: "Exportar como CSV", desc: "Tabla relacional para auditorias", action: () => exportCaseAs("csv") },
