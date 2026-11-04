@@ -531,13 +531,15 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         if not _check_host(request):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         cid = str(request.path_params.get("case_id") or "").strip()
-        fmt = str(request.path_params.get("format") or request.query_params.get("format") or "mtgx").strip().lower()
-        if fmt not in ("mtgx", "json", "csv", "graphml", "report_md", "report_html"):
+        fmt = str(request.path_params.get("format") or request.query_params.get("format") or "mcpcase").strip().lower()
+        if fmt not in ("mcpcase", "mtgx", "json", "csv", "graphml", "report_md", "report_html"):
             return JSONResponse({"ok": False, "error": f"Formato no soportado: {fmt}"}, status_code=400)
         try:
             path, _n, _m = await service.export_case(cid, fmt)  # type: ignore[arg-type]
             media_type = "application/octet-stream"
-            if fmt == "mtgx":
+            if fmt == "mcpcase":
+                media_type = "application/vnd.maltego-mcp.case+json"
+            elif fmt == "mtgx":
                 media_type = "application/vnd.maltego.graph"
             elif fmt == "json":
                 media_type = "application/json"
@@ -651,6 +653,7 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
                     "links": res.links,
                     "steps": res.steps,
                     "skipped": res.skipped,
+                    "format": "mcpcase" if filename.lower().endswith(".mcpcase") else Path(filename).suffix.lstrip("."),
                 }
             )
         except Exception as exc:

@@ -466,7 +466,7 @@ async def test_exportar_e_importar_mtgx_y_csv(service: OsintService, tmp_path: P
             "transforms": ["EmailToDomain", "DomainToWebsite"],
         },
     )
-    for fmt in ("mtgx", "csv"):
+    for fmt in ("mcpcase", "mtgx", "csv"):
         msg = await ok(service, "osint_export_case", {"case_id": "orig", "format": fmt})
         assert "4 entidades y 3 relaciones" in msg
         exported = next((tmp_path / "exports").glob(f"*.{fmt}"))
@@ -477,6 +477,22 @@ async def test_exportar_e_importar_mtgx_y_csv(service: OsintService, tmp_path: P
         assert "4 entidades (4 nuevas), 3 relaciones" in text, text
         s = await service.case_summary(f"copia-{fmt}", 0)
         assert (s.entity_count, s.edge_count) == (4, 3)
+
+    # Verificar recuperacion de pasos procedimentales en .mcpcase
+    mcp_steps = await service.store.list_steps("copia-mcpcase", 0, 100)
+    assert len(mcp_steps) == 4
+    actions = [s.action for s in mcp_steps]
+    assert "EmailToDomain" in actions
+    assert "DomainToWebsite" in actions
+    assert any(s.kind == "import" for s in mcp_steps)
+
+    # Verificar deteccion de corrupcion SHA-256 en .mcpcase alterado
+    mcp_raw = json.loads((imports / "desde-maltego.mcpcase").read_text(encoding="utf-8"))
+    mcp_raw["graph"]["entities"][0]["value"] = "tampered-hacker.com"
+    (imports / "corrupto.mcpcase").write_text(json.dumps(mcp_raw), encoding="utf-8")
+    err_corrupt = await err(service, "osint_import_graph", {"case_id": "test-corrupt", "file_name": "corrupto.mcpcase"})
+    assert "checksum SHA-256 no coincide" in err_corrupt or "corrupto" in err_corrupt
+
     # también desde la carpeta de exportación directamente
     assert "Importado" in await ok(service, "osint_import_graph", {"case_id": "orig", "file_name": exported.name})
 

@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 import httpx
@@ -87,9 +87,9 @@ from maltego_mcp.transforms.client import run_remote_transform
 from maltego_mcp.transforms.protocol import TransformResponse
 
 logger = logging.getLogger(__name__)
-ExportFormat = Literal["json", "graphml", "csv", "mtgx", "report_md", "report_html"]
+ExportFormat = Literal["mcpcase", "json", "graphml", "csv", "mtgx", "report_md", "report_html"]
 MAX_SIDECAR_STEPS = 5000
-IMPORT_SUFFIXES = (".mtgx", ".csv", ".json")
+IMPORT_SUFFIXES = (".mcpcase", ".mtgx", ".csv", ".json")
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 CSV_HEADER = ["source_type", "source_value", "relation", "target_type", "target_value", "confidence"]
 MAX_EXPORT_ITEMS = 10_000
@@ -1187,7 +1187,41 @@ class OsintService:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         self.export_dir.mkdir(parents=True, exist_ok=True)
         path = self.export_dir / f"{cid}-{stamp}-{secrets.token_hex(3)}.{fmt}"
-        if fmt == "json":
+        if fmt == "mcpcase":
+            steps = await self.store.list_steps(cid, 0, MAX_SIDECAR_STEPS)
+            case_rec = await self.store.get_case(cid)
+            case_info = {
+                "case_id": cid,
+                "description": case_rec.description if case_rec else "",
+                "created_at": (case_rec.created or stamp) if case_rec else stamp,
+                "updated_at": (case_rec.updated or stamp) if case_rec else stamp,
+                "stats": {
+                    "entity_count": len(entities),
+                    "edge_count": len(edges),
+                    "step_count": len(steps),
+                },
+            }
+            graph_data = {
+                "entities": [e.to_dict() for e in entities],
+                "edges": [e.to_dict() for e in edges],
+            }
+            memory_data = {
+                "steps": [s.to_dict() for s in steps],
+            }
+            checksum_val = compute_mcpcase_checksum(case_info, graph_data, memory_data)
+            bundle = {
+                "$schema": "https://maltego-mcp.local/schemas/case-v1.json",
+                "format": "maltego-mcp-case/v1",
+                "version": "1.0.0",
+                "generator": "maltego-mcp/0.2.0",
+                "exported_at": datetime.now(UTC).isoformat(),
+                "checksum": checksum_val,
+                "case": case_info,
+                "graph": graph_data,
+                "memory": memory_data,
+            }
+            content = json.dumps(bundle, ensure_ascii=False, indent=2).encode("utf-8")
+        elif fmt == "json":
             content = json.dumps(
                 {
                     "case_id": cid,
@@ -1224,7 +1258,9 @@ class OsintService:
             resolved = option.resolve()
             if any(resolved.is_relative_to(d) for d in allowed) and resolved.is_file():
                 if resolved.suffix.lower() not in IMPORT_SUFFIXES:
-                    raise InvalidInput("Formato no soportado: usa un fichero .mtgx (Maltego), .csv o .json.")
+                    raise InvalidInput(
+                        "Formato no soportado: usa un paquete .mcpcase (Recomendado), .mtgx (Maltego), .csv o .json."
+                    )
                 return resolved
         available = sorted(
             p.name for d in allowed if d.is_dir() for p in d.iterdir() if p.suffix.lower() in IMPORT_SUFFIXES
@@ -1240,13 +1276,28 @@ class OsintService:
         if path.stat().st_size > MAX_IMPORT_BYTES:
             raise InvalidInput("El fichero supera 20 MB.")
         data = path.read_bytes()
-        if path.suffix.lower() == ".mtgx":
+        if path.suffix.lower() == ".mcpcase":
+            graph = _read_mcpcase(data)
+        elif path.suffix.lower() == ".mtgx":
             graph = read_mtgx(data)
         elif path.suffix.lower() == ".json":
-            graph = _read_json(data)
+            try:
+                peek = json.loads(data.decode("utf-8-sig"))
+                if isinstance(peek, dict) and peek.get("format") == "maltego-mcp-case/v1":
+                    graph = _read_mcpcase(data)
+                else:
+                    graph = _read_json(data)
+            except Exception:
+                graph = _read_json(data)
         else:
             graph = _read_csv(data)
         await self.store.ensure_case(cid)
+        if graph.sidecar.get("case"):
+            pkg_case = graph.sidecar["case"]
+            if isinstance(pkg_case, dict) and pkg_case.get("description"):
+                case_rec = await self.store.get_case(cid)
+                if case_rec and not case_rec.description:
+                    case_rec.description = str(pkg_case["description"])
         result = ImportResult(path)
         origin = f"import:{path.name}"[:120]
         ids: dict[str, str] = {}
@@ -1306,6 +1357,102 @@ class OsintService:
         if graph.skipped:
             result.skipped.append(f"{graph.skipped} nodos sin tipo o sin valor")
         return result
+
+
+def compute_mcpcase_checksum(case_info: dict[str, Any], graph_data: dict[str, Any], memory_data: dict[str, Any]) -> str:
+    """Calcula hash criptográfico SHA-256 sobre la información canónica del paquete .mcpcase."""
+    raw = json.dumps(
+        {"case": case_info, "graph": graph_data, "memory": memory_data},
+        sort_keys=True,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(raw).hexdigest()}"
+
+
+def _read_mcpcase(data: bytes) -> ImportedGraph:
+    """Lee y valida un paquete de caso dedicado .mcpcase (maltego-mcp-case/v1) verificando su integridad."""
+    try:
+        payload = json.loads(data.decode("utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise InvalidInput("El paquete .mcpcase no contiene JSON válido en UTF-8.") from exc
+
+    if not isinstance(payload, dict):
+        raise InvalidInput("El paquete .mcpcase debe ser un objeto JSON estructurado.")
+
+    fmt = str(payload.get("format") or "").strip()
+    if fmt != "maltego-mcp-case/v1":
+        raise InvalidInput(f"Formato no reconocido: '{fmt}'. Se esperaba 'maltego-mcp-case/v1'.")
+
+    stored_checksum = str(payload.get("checksum") or "").strip()
+    raw_case = payload.get("case")
+    case_info: dict[str, Any] = raw_case if isinstance(raw_case, dict) else {}
+    raw_graph = payload.get("graph")
+    graph_data: dict[str, Any] = raw_graph if isinstance(raw_graph, dict) else {}
+    raw_memory = payload.get("memory")
+    memory_data: dict[str, Any] = raw_memory if isinstance(raw_memory, dict) else {}
+
+    if stored_checksum:
+        expected = compute_mcpcase_checksum(case_info, graph_data, memory_data)
+        if stored_checksum != expected:
+            raise InvalidInput(
+                f"Fallo de integridad criptográfica: el hash SHA-256 no coincide (archivo corrupto o modificado). "
+                f"Esperado: {expected}, Registrado: {stored_checksum}"
+            )
+
+    raw_entities = graph_data.get("entities") or []
+    raw_edges = graph_data.get("edges") or []
+    raw_steps = memory_data.get("steps") or []
+
+    graph = ImportedGraph()
+    key_map: dict[str, str] = {}
+
+    for item in raw_entities:
+        if not isinstance(item, dict):
+            graph.skipped += 1
+            continue
+        mtype = str(item.get("maltego_type") or item.get("type") or "auto").strip()
+        val = str(item.get("value") or "").strip()
+        if not val:
+            graph.skipped += 1
+            continue
+        k = f"n{len(graph.entities)}"
+        orig_id = str(item.get("id") or "")
+        if orig_id:
+            key_map[orig_id] = k
+        key_map[val] = k
+        try:
+            conf = float(item.get("confidence", 0.5))
+        except (ValueError, TypeError):
+            conf = 0.5
+        props = item.get("properties")
+        clean_props = {str(pk): str(pv) for pk, pv in props.items()} if isinstance(props, dict) else {}
+        graph.entities.append(ImportedEntity(k, mtype, val, clean_props, conf))
+
+    for edge in raw_edges:
+        if not isinstance(edge, dict):
+            continue
+        src = str(edge.get("source") or edge.get("out_id") or edge.get("from") or "").strip()
+        tgt = str(edge.get("target") or edge.get("in_id") or edge.get("to") or "").strip()
+        k_src = key_map.get(src)
+        k_tgt = key_map.get(tgt)
+        if not k_src or not k_tgt or k_src == k_tgt:
+            continue
+        lbl = str(edge.get("label") or edge.get("relation") or "related_to").strip()
+        try:
+            conf = float(edge.get("confidence", 0.5))
+        except (ValueError, TypeError):
+            conf = 0.5
+        props = edge.get("properties")
+        clean_props = {str(pk): str(pv) for pk, pv in props.items()} if isinstance(props, dict) else {}
+        graph.links.append(ImportedLink(k_src, k_tgt, lbl, conf, clean_props))
+
+    graph.sidecar = {
+        "format": "maltego-mcp-case/v1",
+        "case": case_info,
+        "steps": raw_steps,
+        "dashboard_state": payload.get("dashboard_state") or {},
+    }
+    return graph
 
 
 def _read_csv(data: bytes) -> ImportedGraph:

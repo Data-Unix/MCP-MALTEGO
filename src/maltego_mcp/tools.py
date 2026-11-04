@@ -1127,9 +1127,14 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
     async def osint_export_case(
         case_id: CaseId,
         format: Annotated[
-            Literal["mtgx", "json", "graphml", "csv", "report_md", "report_html"],
-            Field(description="mtgx, json, graphml, csv, report_md o report_html."),
-        ] = "mtgx",
+            Literal["mcpcase", "mtgx", "json", "graphml", "csv", "report_md", "report_html"],
+            Field(
+                description=(
+                    "Formato: mcpcase (paquete nativo verificado SHA-256 con memoria procedimental), "
+                    "mtgx, json, graphml, csv, report_md o report_html."
+                )
+            ),
+        ] = "mcpcase",
         layout: Annotated[
             Literal["hierarchical", "radial", "force"], Field(description="Disposición del .mtgx.")
         ] = "hierarchical",
@@ -1143,11 +1148,10 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
 
     @mcp.tool(
         name="osint_import_graph",
-        title="Importar grafo de Maltego o CSV",
+        title="Importar caso o grafo (mcpcase, mtgx, csv, json)",
         description=(
-            "Importa (fusiona) en un caso un grafo .mtgx guardado en Maltego —con su memoria si la trae— o un CSV "
-            "(source_type,source_value,relation,target_type,target_value,confidence). El fichero debe estar en "
-            "~/.maltego-mcp/imports o exports."
+            "Importa en un caso un paquete .mcpcase (con memoria e integridad SHA-256), "
+            ".mtgx de Maltego o CSV/JSON. El fichero debe estar en ~/.maltego-mcp/imports o exports."
         ),
         annotations=WRITE_IDEMPOTENT,
         structured_output=False,

@@ -1552,6 +1552,7 @@ async function exportCaseAs(format) {
   }
 
   const formatNames = {
+    mcpcase: ".mcpcase (Paquete MCP Maltego)",
     mtgx: ".mtgx (Maltego Desktop)",
     json: ".json (JSON Forense)",
     csv: ".csv (Tabla Relacional)",
@@ -1689,7 +1690,7 @@ function handleImportFile(file) {
 async function submitImportCase(e) {
   if (e) e.preventDefault();
   if (!selectedImportFile) {
-    showToast("Por favor selecciona un archivo (.mtgx, .json, .csv) para importar", "warning");
+    showToast("Por favor selecciona un archivo (.mcpcase, .mtgx, .json, .csv) para importar", "warning");
     return;
   }
 
@@ -1750,11 +1751,15 @@ async function submitImportCase(e) {
       fb.style.background = "rgba(16, 185, 129, 0.1)";
       fb.style.border = "1px solid rgba(16, 185, 129, 0.3)";
       fb.style.color = "#34d399";
+      const isMcpCase = data.format === "mcpcase" || (data.filename && data.filename.endsWith(".mcpcase"));
+      const titleBadge = isMcpCase
+        ? "<strong>[OK] Paquete .mcpcase verificado (Integridad SHA-256 valida)</strong>"
+        : "<strong>[OK] Importacion completada</strong>";
       fb.innerHTML = `
-        <strong>[OK] ¡Importacion completada!</strong><br>
+        ${titleBadge}<br>
         Caso: <span class="mono">${data.case_id}</span><br>
         Entidades: <strong>${data.entities}</strong> (+${data.new_entities} nuevas)<br>
-        Relaciones: <strong>${data.links}</strong> | Pasos: ${data.steps}
+        Relaciones: <strong>${data.links}</strong> | Pasos de investigacion: ${data.steps}
       `;
     }
 
@@ -4165,6 +4170,7 @@ function buildDefaultCommands() {
     { cat: "Vistas y Modulos", name: "Puente Maltego Desktop", desc: "Sincronizacion local TRX y exportacion .mtz", action: () => switchTab("desktop-bridge") },
     { cat: "Operaciones de Caso", name: "Eliminar Proyecto / Caso Activo", desc: "Purgar la investigacion puntual activa y liberar memoria", action: () => openDeleteCaseModal() },
     { cat: "Operaciones de Caso", name: "Crear Nuevo Caso", desc: "Iniciar una nueva investigacion en blanco", action: () => promptCreateCase() },
+    { cat: "Operaciones de Caso", name: "Exportar como Paquete .mcpcase (Nativo)", desc: "Exportacion completa verificada SHA-256", action: () => exportCaseAs("mcpcase") },
     { cat: "Operaciones de Caso", name: "Exportar como .mtgx (Maltego)", desc: "Descarga de archivo nativo", action: () => exportCaseAs("mtgx") },
     { cat: "Operaciones de Caso", name: "Exportar como JSON Forense", desc: "Entidades y relaciones estructuradas", action: () => exportCaseAs("json") },
     { cat: "Operaciones de Caso", name: "Exportar como CSV", desc: "Tabla relacional para auditorias", action: () => exportCaseAs("csv") },

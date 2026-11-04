@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -347,14 +348,45 @@ def test_api_case_export_and_import(tmp_path: Path) -> None:
     assert r_create.status_code == 200
     assert r_create.json()["ok"] is True
 
-    # 2. Probar exportación en todos los formatos soportados
-    for fmt in ("mtgx", "json", "csv", "graphml", "report_html", "report_md"):
+    # 2. Probar exportación en todos los formatos soportados, incluido .mcpcase
+    for fmt in ("mcpcase", "mtgx", "json", "csv", "graphml", "report_html", "report_md"):
         r_exp = client.get(f"/api/cases/caso-test-export/export/{fmt}")
         assert r_exp.status_code == 200, f"Fallo al exportar formato {fmt}"
         assert len(r_exp.content) > 0
         assert "Content-Disposition" in r_exp.headers
 
-    # 3. Probar importación creando una nueva investigación desde cero con CSV
+    # 3. Probar exportacion e importacion de paquete nativo .mcpcase con verificacion criptografica
+    r_mcpcase = client.get("/api/cases/caso-test-export/export/mcpcase")
+    assert r_mcpcase.status_code == 200
+    mcpcase_bytes = r_mcpcase.content
+    mcpcase_payload = json.loads(mcpcase_bytes.decode("utf-8"))
+    assert mcpcase_payload["format"] == "maltego-mcp-case/v1"
+    assert mcpcase_payload["checksum"].startswith("sha256:")
+
+    # Importar el .mcpcase autentico creando nuevo caso
+    r_imp_mcp = client.post(
+        "/api/cases/import",
+        files={"file": ("investigacion.mcpcase", mcpcase_bytes, "application/vnd.maltego-mcp.case+json")},
+        data={"case_id": "caso-desde-mcpcase", "create_new": "true"},
+    )
+    assert r_imp_mcp.status_code == 200
+    assert r_imp_mcp.json()["ok"] is True
+    assert r_imp_mcp.json()["format"] == "mcpcase"
+
+    # Verificar rechazo de integridad criptografica ante corrupcion o manipulacion
+    tampered_payload = dict(mcpcase_payload)
+    tampered_payload["case"] = dict(tampered_payload["case"])
+    tampered_payload["case"]["description"] = "Descripcion manipulada maliciosamente"
+    tampered_bytes = json.dumps(tampered_payload).encode("utf-8")
+    r_tampered = client.post(
+        "/api/cases/import",
+        files={"file": ("tampered.mcpcase", tampered_bytes, "application/vnd.maltego-mcp.case+json")},
+        data={"case_id": "caso-tampered", "create_new": "true"},
+    )
+    assert r_tampered.status_code == 400
+    assert "checksum" in r_tampered.json()["error"].lower() or "corrupto" in r_tampered.json()["error"].lower()
+
+    # 4. Probar importación creando una nueva investigación desde cero con CSV
     csv_data = (
         "source_type,source_value,relation,target_type,target_value,confidence\n"
         "maltego.Domain,target.com,has_ip,maltego.IPv4Address,1.2.3.4,0.9\n"
