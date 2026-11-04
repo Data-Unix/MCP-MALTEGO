@@ -89,7 +89,7 @@ from maltego_mcp.transforms.protocol import TransformResponse
 logger = logging.getLogger(__name__)
 ExportFormat = Literal["json", "graphml", "csv", "mtgx", "report_md", "report_html"]
 MAX_SIDECAR_STEPS = 5000
-IMPORT_SUFFIXES = (".mtgx", ".csv")
+IMPORT_SUFFIXES = (".mtgx", ".csv", ".json")
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 CSV_HEADER = ["source_type", "source_value", "relation", "target_type", "target_value", "confidence"]
 MAX_EXPORT_ITEMS = 10_000
@@ -1224,7 +1224,7 @@ class OsintService:
             resolved = option.resolve()
             if any(resolved.is_relative_to(d) for d in allowed) and resolved.is_file():
                 if resolved.suffix.lower() not in IMPORT_SUFFIXES:
-                    raise InvalidInput("Formato no soportado: usa un fichero .mtgx (Maltego) o .csv.")
+                    raise InvalidInput("Formato no soportado: usa un fichero .mtgx (Maltego), .csv o .json.")
                 return resolved
         available = sorted(
             p.name for d in allowed if d.is_dir() for p in d.iterdir() if p.suffix.lower() in IMPORT_SUFFIXES
@@ -1240,7 +1240,12 @@ class OsintService:
         if path.stat().st_size > MAX_IMPORT_BYTES:
             raise InvalidInput("El fichero supera 20 MB.")
         data = path.read_bytes()
-        graph = read_mtgx(data) if path.suffix.lower() == ".mtgx" else _read_csv(data)
+        if path.suffix.lower() == ".mtgx":
+            graph = read_mtgx(data)
+        elif path.suffix.lower() == ".json":
+            graph = _read_json(data)
+        else:
+            graph = _read_csv(data)
         await self.store.ensure_case(cid)
         result = ImportResult(path)
         origin = f"import:{path.name}"[:120]
@@ -1336,6 +1341,104 @@ def _read_csv(data: bytes) -> ImportedGraph:
         if has_target:
             b = key_for(row.get("target_type") or "", row["target_value"], 0.5)
             graph.links.append(ImportedLink(a, b, (row.get("relation") or "").strip(), confidence))
+    return graph
+
+
+def _read_json(data: bytes) -> ImportedGraph:
+    """Importa grafo desde JSON: formato maltego-mcp o genérico (nodes/links, entities/edges)."""
+    try:
+        raw = json.loads(data.decode("utf-8-sig"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise InvalidInput("El fichero JSON no es válido o no está en UTF-8.") from exc
+    if not isinstance(raw, (dict, list)):
+        raise InvalidInput("El JSON debe contener un objeto o lista de entidades y relaciones.")
+
+    graph = ImportedGraph()
+    key_map: dict[str, str] = {}
+
+    if isinstance(raw, dict):
+        raw_entities = raw.get("entities") or raw.get("nodes") or []
+        raw_edges = raw.get("edges") or raw.get("links") or raw.get("relations") or []
+        if not isinstance(raw_entities, list) or not isinstance(raw_edges, list):
+            raise InvalidInput("El JSON debe contener listas 'entities' (o 'nodes') y 'edges' (o 'links').")
+
+        for item in raw_entities:
+            if not isinstance(item, dict):
+                graph.skipped += 1
+                continue
+            mtype = str(item.get("maltego_type") or item.get("type") or "auto").strip()
+            val = str(item.get("value") or "").strip()
+            if not val:
+                graph.skipped += 1
+                continue
+            k = f"n{len(graph.entities)}"
+            orig_id = str(item.get("id") or item.get("key") or "")
+            if orig_id:
+                key_map[orig_id] = k
+            key_map[val] = k
+            try:
+                conf = float(item.get("confidence", 0.5))
+            except (ValueError, TypeError):
+                conf = 0.5
+            props = item.get("properties")
+            clean_props = {str(pk): str(pv) for pk, pv in props.items()} if isinstance(props, dict) else {}
+            graph.entities.append(ImportedEntity(k, mtype, val, clean_props, conf))
+
+        for edge in raw_edges:
+            if not isinstance(edge, dict):
+                continue
+            src = str(edge.get("source") or edge.get("out_id") or edge.get("from") or "").strip()
+            tgt = str(edge.get("target") or edge.get("in_id") or edge.get("to") or "").strip()
+            k_src = key_map.get(src)
+            k_tgt = key_map.get(tgt)
+            if not k_src or not k_tgt or k_src == k_tgt:
+                continue
+            lbl = str(edge.get("label") or edge.get("relation") or "related_to").strip()
+            try:
+                conf = float(edge.get("confidence", 0.5))
+            except (ValueError, TypeError):
+                conf = 0.5
+            props = edge.get("properties")
+            clean_props = {str(pk): str(pv) for pk, pv in props.items()} if isinstance(props, dict) else {}
+            graph.links.append(ImportedLink(k_src, k_tgt, lbl, conf, clean_props))
+
+        if isinstance(raw.get("sidecar"), dict):
+            graph.sidecar = raw["sidecar"]
+    elif isinstance(raw, list):
+        for row in raw:
+            if not isinstance(row, dict):
+                graph.skipped += 1
+                continue
+            s_val = str(row.get("source_value") or row.get("source") or "").strip()
+            if not s_val:
+                graph.skipped += 1
+                continue
+            s_type = str(row.get("source_type") or "auto").strip()
+            t_val = str(row.get("target_value") or row.get("target") or "").strip()
+            t_type = str(row.get("target_type") or "auto").strip()
+            rel = str(row.get("relation") or row.get("label") or "related_to").strip()
+            try:
+                conf = float(row.get("confidence", 0.5))
+            except (ValueError, TypeError):
+                conf = 0.5
+
+            if s_val not in key_map:
+                k_s = f"n{len(graph.entities)}"
+                key_map[s_val] = k_s
+                graph.entities.append(ImportedEntity(k_s, s_type, s_val, {}, conf))
+            else:
+                k_s = key_map[s_val]
+
+            if t_val:
+                if t_val not in key_map:
+                    k_t = f"n{len(graph.entities)}"
+                    key_map[t_val] = k_t
+                    graph.entities.append(ImportedEntity(k_t, t_type, t_val, {}, conf))
+                else:
+                    k_t = key_map[t_val]
+                if k_s != k_t:
+                    graph.links.append(ImportedLink(k_s, k_t, rel, conf, {}))
+
     return graph
 
 

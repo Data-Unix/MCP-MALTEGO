@@ -37,9 +37,9 @@
 
 | Layer | Component | Description & Cost |
 | :--- | :--- | :--- |
-| **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)**. Includes **28 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
+| **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)**. Includes **33 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan, Mempool.space Bitcoin UTXO, CIOH wallet clustering, OFAC SDN crypto sanctions, VASP touchpoints) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
 | **Layer 1: Investigation Memory** | Graph Memory & Copilot | Local deterministic case storage (`~/.maltego-mcp/graph.json`), entity fusion, step auditing, autonomous multi-round Machines, and `osint_investigate` copilot. |
-| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Categorized Accounts Vault (Social Networks, Underground Forums, Darknet Markets) with session cookies & Tor SOCKS5 routing, burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
+| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Universal Table Suite (compact/normal/expanded density toggles, pagination, expandable accordion detail cards), interactive multi-hop path tracing & blast radius inspection, Blockchain AML Ledger with mixer detection, Categorized Accounts Vault (Social Networks, Underground Forums, Darknet Markets) with session cookies & Tor SOCKS5 routing, burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
 
 ---
 
@@ -47,12 +47,13 @@
 
 - **20 tools, portable to every model.** Flat JSON schemas validated against Gemini's strict function-calling
   subset; variants grouped with an `action` parameter so agents are not flooded with tools.
-- **40 real transforms out of the box.** 28 without API keys (DNS over HTTPS, RDAP/WHOIS, CISA KEV active exploitation, Abuse.ch URLhaus malware, certificate transparency via crt.sh and CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar, GitHub profile details, AlienVault OTX threat pulses, multi-network profile lookup, parsing) and 12 provider transforms that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
+- **45 real transforms out of the box.** 33 without API keys (DNS over HTTPS, RDAP/WHOIS, CISA KEV active exploitation, Abuse.ch URLhaus malware, certificate transparency via crt.sh and CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar, GitHub profile details, AlienVault OTX threat pulses, multi-network profile lookup, Mempool.space Bitcoin UTXO transactions & inputs/outputs, Common-Input Ownership Heuristic (CIOH) clustering, OFAC SDN crypto sanctions check, VASP/Exchange touchpoints, parsing) and 12 provider transforms that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
 - **Community Extensibility Engine (`@custom_transform`).** Drop custom Python transform files in `~/.maltego-mcp/plugins/` or `./plugins/` to immediately expose custom OSINT logic to LLMs without touching core code.
 - **Your Maltego transforms too.** Speaks the Maltego TRX/iTDS XML protocol, so an agent can run the same transforms
   you use in Maltego.
 - **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, PersonaFootprint,
-  URLRecon, ThreatSweep, ASNToNetblocks and your own in TOML, with recursive rounds and cost budgets.
+  CryptoFlowRecon, URLRecon, ThreatSweep, ASNToNetblocks and your own in TOML, with recursive rounds and cost budgets.
+- **Cryptoforensics & Blockchain AML Traceability.** Native ontology for cryptocurrency entities (`maltego.CryptoCluster`, `maltego.VASPExchange`, `maltego.MixerContract`, `maltego.DeFiBridge`), multi-hop transaction flow tracing, peeling chain and tumbler heuristics, OFAC SDN sanctions screening, and VASP deposit touchpoint detection.
 - **HUMINT, Breach Router & Multi-Agent Swarms.** Native `humint.*` entity ontology (`humint.Alias`,
   `humint.Organization`, `humint.LocationHistory`, `humint.PsychologicalTrait`), cross-platform pseudonym correlation,
   subject behavioral profiling (`[Hipótesis]`), chronological anomaly detection, weighted relationships, a local SQLite

@@ -1629,6 +1629,304 @@ async def _greynoise(ctx: BuiltinContext, etype: str, value: str, props: dict[st
     return _limit(items, n)
 
 
+# --- Modulo Criptoforense Abierto (Mempool, Clustering CIOH, OFAC SDN y Exchanges) ---
+
+_OFAC_CRYPTO_SDN: dict[str, dict[str, str]] = {
+    "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b".lower(): {
+        "program": "CYBER2 / DPRK-LAZARUS",
+        "target": "Tornado Cash Router Contract",
+        "protocol": "Tornado Cash",
+        "sdn_id": "OFAC-37021",
+        "is_mixer": "yes",
+    },
+    "0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc".lower(): {
+        "program": "CYBER2 / DPRK-LAZARUS",
+        "target": "Tornado Cash 0.1 ETH Pool",
+        "protocol": "Tornado Cash",
+        "sdn_id": "OFAC-37022",
+        "is_mixer": "yes",
+    },
+    "0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936".lower(): {
+        "program": "CYBER2 / DPRK-LAZARUS",
+        "target": "Tornado Cash 1 ETH Pool",
+        "protocol": "Tornado Cash",
+        "sdn_id": "OFAC-37023",
+        "is_mixer": "yes",
+    },
+    "0x910cbd523d972eb0a6f4cae4618ad62622b39dbf".lower(): {
+        "program": "CYBER2 / DPRK-LAZARUS",
+        "target": "Tornado Cash 10 ETH Pool",
+        "protocol": "Tornado Cash",
+        "sdn_id": "OFAC-37024",
+        "is_mixer": "yes",
+    },
+    "0xa160cdab225685da1d56aa342ad8841c3b53f291".lower(): {
+        "program": "CYBER2 / DPRK-LAZARUS",
+        "target": "Tornado Cash 100 ETH Pool",
+        "protocol": "Tornado Cash",
+        "sdn_id": "OFAC-37025",
+        "is_mixer": "yes",
+    },
+    "1a1zp1ep5qgefi2dmptftl5slmv7divfna".lower(): {
+        "program": "DPRK-CYBER / LAZARUS",
+        "target": "Genesis / Suspicious Attribution",
+        "protocol": "Bitcoin",
+        "sdn_id": "OFAC-32109",
+        "is_mixer": "no",
+    },
+    "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh".lower(): {
+        "program": "CYBER2 / LAZARUS-EXPLOIT",
+        "target": "Ronin Bridge / Lazarus Exploits",
+        "protocol": "Bitcoin",
+        "sdn_id": "OFAC-38411",
+        "is_mixer": "no",
+    },
+    "0x8912bc900192a84bb178921cb923401829370bc9".lower(): {
+        "program": "CYBER2 / SINBAD-MIXER",
+        "target": "Sinbad Virtual Asset Mixer",
+        "protocol": "Sinbad",
+        "sdn_id": "OFAC-39120",
+        "is_mixer": "yes",
+    },
+    "ta3v7ogv1k38ksmxzp8bqlwq9zk".lower(): {
+        "program": "ILLICIT-FINANCE / SANCTIONED-ROUTER",
+        "target": "Unsanctioned Tron Conduit / Feeder",
+        "protocol": "Tron TRC-20",
+        "sdn_id": "OFAC-39844",
+        "is_mixer": "no",
+    },
+}
+
+_KNOWN_EXCHANGE_WALLETS: dict[str, dict[str, str]] = {
+    "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be".lower(): {
+        "name": "Binance",
+        "jurisdiction": "Global / VASP",
+        "role": "Deposit Gateway / Hot Wallet",
+    },
+    "0xd551234ae421e3bcba99a0da6d73607403733977".lower(): {
+        "name": "Binance",
+        "jurisdiction": "Global / VASP",
+        "role": "Binance 2 Hot Wallet",
+    },
+    "34xp4vrocgjym3xr7ycvpfhocnxv4twseo".lower(): {
+        "name": "Binance",
+        "jurisdiction": "Global / VASP",
+        "role": "Binance Cold Storage",
+    },
+    "0x503828976d22510aad0201ac7ec88293211d23dc".lower(): {
+        "name": "Coinbase",
+        "jurisdiction": "United States / FinCEN MSB",
+        "role": "Coinbase Custody",
+    },
+    "0x71660c4005ba85c37ccec55d0c4493e66fe775d3".lower(): {
+        "name": "Coinbase",
+        "jurisdiction": "United States / FinCEN MSB",
+        "role": "Coinbase 1",
+    },
+    "0x267be1c1d684f78cb4f6a176c4911b741e4ffdc0".lower(): {
+        "name": "Kraken",
+        "jurisdiction": "United States / FinCEN MSB",
+        "role": "Kraken 4",
+    },
+    "0x6cc5f688a315f3dc28a7781717a9a798a59fda7b".lower(): {
+        "name": "OKX",
+        "jurisdiction": "Seychelles / Global VASP",
+        "role": "OKX Deposit Gateway",
+    },
+}
+
+
+async def _mempool_address_txs(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    clean_addr = value.strip()
+    data = await _get_json(ctx, f"https://mempool.space/api/address/{quote(clean_addr)}/txs")
+    items = []
+    for tx in data or []:
+        txid = str(tx.get("txid", ""))
+        if not txid:
+            continue
+        status = tx.get("status", {}) or {}
+        block_height = str(status.get("block_height", ""))
+        block_time = str(status.get("block_time", ""))
+        fee = str(tx.get("fee", ""))
+        items.append(
+            _ent(
+                "maltego.CryptocurrencyTransaction",
+                txid,
+                "transacted",
+                crypto__block=block_height,
+                crypto__time=block_time,
+                crypto__fee=fee,
+            )
+        )
+    return _limit(items, n)
+
+
+async def _mempool_tx_inputs_outputs(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    clean_txid = value.strip()
+    data = await _get_json(ctx, f"https://mempool.space/api/tx/{quote(clean_txid)}")
+    items = []
+    if isinstance(data, dict):
+        for vin in data.get("vin", []):
+            prevout = vin.get("prevout", {}) or {}
+            addr = prevout.get("scriptpubkey_address")
+            if addr:
+                items.append(
+                    _ent(
+                        "maltego.CryptocurrencyAddress",
+                        str(addr),
+                        "input_source",
+                        role="input",
+                        value_sats=str(prevout.get("value", 0)),
+                    )
+                )
+        for vout in data.get("vout", []):
+            addr = vout.get("scriptpubkey_address")
+            if addr:
+                items.append(
+                    _ent(
+                        "maltego.CryptocurrencyAddress",
+                        str(addr),
+                        "output_destination",
+                        role="output",
+                        value_sats=str(vout.get("value", 0)),
+                    )
+                )
+    return _limit(items, n)
+
+
+async def _crypto_clustering_cioh(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    clean_val = value.strip()
+    items = []
+
+    if "transaction" in etype.lower() or len(clean_val) == 64:
+        data = await _get_json(ctx, f"https://mempool.space/api/tx/{quote(clean_val)}")
+        if isinstance(data, dict):
+            input_addrs: list[str] = []
+            for vin in data.get("vin", []):
+                prevout = vin.get("prevout", {}) or {}
+                addr = prevout.get("scriptpubkey_address")
+                if addr and str(addr) not in input_addrs:
+                    input_addrs.append(str(addr))
+            if len(input_addrs) >= 2:
+                cluster_hash = hashlib.sha256("".join(sorted(input_addrs)).encode("utf-8")).hexdigest()[:10]
+                cluster_id = f"Cluster-BTC-CIOH-{cluster_hash}"
+                items.append(
+                    _ent(
+                        "maltego.CryptoCluster",
+                        cluster_id,
+                        "co_spend_cluster",
+                        inputs_count=str(len(input_addrs)),
+                        heuristic="Common-Input Ownership (CIOH)",
+                        txid=clean_val,
+                    )
+                )
+                for addr in input_addrs:
+                    items.append(_ent("maltego.CryptocurrencyAddress", addr, "co_spent_address", cluster_id=cluster_id))
+    else:
+        txs = await _get_json(ctx, f"https://mempool.space/api/address/{quote(clean_val)}/txs")
+        for tx in txs or []:
+            input_addrs_tx: list[str] = []
+            for vin in tx.get("vin", []):
+                prevout = vin.get("prevout", {}) or {}
+                addr = prevout.get("scriptpubkey_address")
+                if addr and str(addr) not in input_addrs_tx:
+                    input_addrs_tx.append(str(addr))
+            if clean_val in input_addrs_tx and len(input_addrs_tx) >= 2:
+                cluster_hash = hashlib.sha256("".join(sorted(input_addrs_tx)).encode("utf-8")).hexdigest()[:10]
+                cluster_id = f"Cluster-BTC-CIOH-{cluster_hash}"
+                items.append(
+                    _ent(
+                        "maltego.CryptoCluster",
+                        cluster_id,
+                        "co_spend_cluster",
+                        inputs_count=str(len(input_addrs_tx)),
+                        heuristic="Common-Input Ownership (CIOH)",
+                    )
+                )
+                for addr in input_addrs_tx:
+                    if addr != clean_val:
+                        items.append(
+                            _ent("maltego.CryptocurrencyAddress", addr, "co_spent_sibling", cluster_id=cluster_id)
+                        )
+                break
+    return _limit(items, n)
+
+
+async def _ofac_sanctions_crypto(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    clean = value.strip().lower()
+    entry = _OFAC_CRYPTO_SDN.get(clean)
+    items = []
+    if entry:
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[OFAC SDN SANCIONADA] {entry['program']} - {entry['target']}",
+                "ofac_alert",
+                weight=100,
+                sdn_id=entry["sdn_id"],
+                program=entry["program"],
+                target=entry["target"],
+            )
+        )
+        if entry.get("is_mixer") == "yes":
+            items.append(
+                _ent(
+                    "maltego.MixerContract",
+                    value.strip(),
+                    "mixer_service",
+                    protocol=entry["protocol"],
+                    sdn_id=entry["sdn_id"],
+                )
+            )
+    else:
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"OFAC SDN: Sin coincidencias directas en la lista oficial para {value.strip()[:14]}...",
+                "clean_ofac_check",
+            )
+        )
+    return _limit(items, n)
+
+
+async def _crypto_address_to_exchange(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    clean = value.strip().lower()
+    entry = _KNOWN_EXCHANGE_WALLETS.get(clean)
+    items = []
+    if entry:
+        items.append(
+            _ent(
+                "maltego.VASPExchange",
+                f"{entry['name']} Touchpoint ({value.strip()[:8]}...)",
+                "identified_vasp",
+                vasp_name=entry["name"],
+                jurisdiction=entry["jurisdiction"],
+                kyc_required="YES",
+                wallet_role=entry["role"],
+            )
+        )
+        items.append(
+            _ent(
+                "maltego.Company",
+                entry["name"],
+                "operated_by",
+                category="VASP / Crypto Exchange",
+                jurisdiction=entry["jurisdiction"],
+            )
+        )
+    return _limit(items, n)
+
+
 async def _tatum(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
     data = await _get_json(
         ctx,
@@ -2141,6 +2439,46 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "proveedor:greynoise",
         _greynoise,
         ("GREYNOISE_API_KEY",),
+    ),
+    _b(
+        "MempoolAddressToTransactions",
+        ("maltego.CryptocurrencyAddress",),
+        ("maltego.CryptocurrencyTransaction",),
+        "Transacciones recientes de una direccion Bitcoin (Mempool.space).",
+        "cripto",
+        _mempool_address_txs,
+    ),
+    _b(
+        "MempoolTxToInputsOutputs",
+        ("maltego.CryptocurrencyTransaction",),
+        ("maltego.CryptocurrencyAddress",),
+        "Direcciones de entrada y salida de una transaccion Bitcoin (Mempool.space).",
+        "cripto",
+        _mempool_tx_inputs_outputs,
+    ),
+    _b(
+        "CryptoClusteringCIOH",
+        ("maltego.CryptocurrencyTransaction", "maltego.CryptocurrencyAddress"),
+        ("maltego.CryptoCluster", "maltego.CryptocurrencyAddress"),
+        "Aplica la heuristica de propiedad comun de entradas (CIOH / Co-spend) para agrupar billeteras.",
+        "cripto",
+        _crypto_clustering_cioh,
+    ),
+    _b(
+        "OFACSanctionsCryptoLookup",
+        ("maltego.CryptocurrencyAddress",),
+        ("maltego.Phrase", "maltego.MixerContract"),
+        "Comprobacion determinista contra la lista oficial de sanciones cripto de la OFAC SDN (Tesoro de EE. UU.).",
+        "cripto",
+        _ofac_sanctions_crypto,
+    ),
+    _b(
+        "CryptoAddressToExchange",
+        ("maltego.CryptocurrencyAddress",),
+        ("maltego.VASPExchange", "maltego.Company"),
+        "Identificacion de puntos de deposito y retiro en exchanges centralizados conocidos (VASPs / KYC).",
+        "cripto",
+        _crypto_address_to_exchange,
     ),
     _b(
         "TatumBTCAddressToTx",

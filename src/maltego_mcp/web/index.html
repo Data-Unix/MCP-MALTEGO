@@ -12,7 +12,7 @@
 </head>
 <body>
   <!-- Lienzo acelerado en segundo plano vía Web Worker -->
-  <canvas id="bg-canvas"></canvas>
+  <canvas id="bg-canvas" style="display:none;"></canvas>
 
   <div class="app-shell">
     <!-- Barra Lateral de Navegación -->
@@ -24,35 +24,73 @@
       </div>
 
       <nav class="nav-group">
-        <div class="nav-heading">Investigación</div>
+        <div class="nav-heading">OPERACIONES</div>
         <a class="nav-link active" data-tab="overview">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
           <span class="nav-label">Centro de Mando</span>
+        </a>
+        <a class="nav-link" data-tab="graph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          <span class="nav-label">Grafo & Casos en Vivo</span>
+          <span class="nav-badge" id="badge-graph-count">0</span>
+        </a>
+        <a class="nav-link" data-tab="threat-watchtower">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          <span class="nav-label">Vigilancia & Alertas</span>
+          <span class="nav-badge pulse">WCH</span>
+        </a>
+
+        <div class="nav-heading" style="margin-top:0.75rem;">RECON & TOPOLOGÍA</div>
+        <a class="nav-link" data-tab="geo-map">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          <span class="nav-label">Topología BGP & Geo</span>
+        </a>
+        <a class="nav-link" data-tab="providers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          <span class="nav-label">Claves de Proveedores</span>
+        </a>
+        <a class="nav-link" data-tab="transforms">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span class="nav-label">Transforms & Playground</span>
+        </a>
+
+        <div class="nav-heading" style="margin-top:0.75rem;">INTELIGENCIA DE AMENAZAS</div>
+        <a class="nav-link" data-tab="mitre-matrix">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          <span class="nav-label">Matriz MITRE ATT&CK</span>
+          <span class="nav-badge">v14</span>
+        </a>
+        <a class="nav-link" data-tab="cti-feeds">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <span class="nav-label">Feeds CTI Dark Web</span>
+        </a>
+        <a class="nav-link" data-tab="rules-generator">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          <span class="nav-label">Reglas Sigma & YARA</span>
+        </a>
+
+        <div class="nav-heading" style="margin-top:0.75rem;">CRIMEN FINANCIERO & FORENSE</div>
+        <a class="nav-link" data-tab="crypto-ledger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          <span class="nav-label">Blockchain & AML Ledger</span>
+          <span class="nav-badge pulse" style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.4);">AML</span>
+        </a>
+        <a class="nav-link" data-tab="forensics-vault">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          <span class="nav-label">Bóveda Cadena Custodia</span>
+          <span class="nav-badge">27037</span>
         </a>
         <a class="nav-link" data-tab="accounts">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
           <span class="nav-label">Bóveda & Sock Puppets</span>
           <span class="nav-badge" id="badge-accounts-count">0</span>
         </a>
-        <a class="nav-link" data-tab="providers">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-          <span class="nav-label">Claves de Proveedores</span>
-        </a>
-        <a class="nav-link" data-tab="cti-feeds">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-          <span class="nav-label">Feeds CTI Dark Web</span>
-          <span class="nav-badge pulse">CTI</span>
-        </a>
 
-        <div class="nav-heading" style="margin-top:0.75rem;">Herramientas MCP</div>
-        <a class="nav-link" data-tab="graph">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-          <span class="nav-label">Grafo & Casos en Vivo</span>
-          <span class="nav-badge" id="badge-graph-count">0</span>
-        </a>
-        <a class="nav-link" data-tab="transforms">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-          <span class="nav-label">Transforms & Playground</span>
+        <div class="nav-heading" style="margin-top:0.75rem;">INGENIERÍA & SISTEMA</div>
+        <a class="nav-link" data-tab="desktop-bridge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          <span class="nav-label">Puente Maltego Desktop</span>
+          <span class="nav-badge" id="badge-bridge-status">TRX</span>
         </a>
       </nav>
 
@@ -64,6 +102,101 @@
 
     <!-- Contenido Principal -->
     <div class="main-wrapper">
+      <div class="tactical-hud" id="tactical-hud">
+        <div class="tactical-hud-left">
+          <span class="hud-pill active">
+            <span class="hud-dot"></span>
+            <span>SISTEMA: OPERATIVO</span>
+          </span>
+          <span class="hud-pill">
+            <span style="color:var(--text-muted)">CASO ACTIVO:</span>
+            <strong id="hud-active-case" style="color:var(--accent-cyan); font-weight:700;">ninguno</strong>
+          </span>
+          <span class="hud-pill">
+            <span style="color:var(--text-muted)">NODOS:</span>
+            <span id="hud-nodes-count">0</span>
+            <span style="color:var(--text-muted); margin:0 2px;">|</span>
+            <span style="color:var(--text-muted)">ARISTAS:</span>
+            <span id="hud-edges-count">0</span>
+          </span>
+          <span class="hud-pill">
+            <span style="color:var(--text-muted)">LATENCIA:</span>
+            <span id="hud-latency" style="color:var(--accent-emerald);">8ms</span>
+          </span>
+        </div>
+        <div class="tactical-hud-right">
+          <!-- Dropdown Global de Exportacion -->
+          <div class="dropdown-wrapper">
+            <button class="hud-cmd-btn" id="hud-btn-export" onclick="toggleHudExportMenu(event)" title="Exportar caso activo en múltiples formatos">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>EXPORTAR</span>
+              <span class="keycap">&darr;</span>
+            </button>
+            <div class="dropdown-menu" id="hud-export-dropdown-menu">
+              <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('mtgx')">
+                <span class="dropdown-item-badge">.mtgx</span>
+                <div class="dropdown-item-text">
+                  <strong>Maltego Desktop</strong>
+                  <small>Grafo nativo con historial y sidecar</small>
+                </div>
+              </a>
+              <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('json')">
+                <span class="dropdown-item-badge">.json</span>
+                <div class="dropdown-item-text">
+                  <strong>JSON Forense</strong>
+                  <small>Entidades, aristas y propiedades</small>
+                </div>
+              </a>
+              <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('csv')">
+                <span class="dropdown-item-badge">.csv</span>
+                <div class="dropdown-item-text">
+                  <strong>Tabla Relacional</strong>
+                  <small>Compatible Excel e importadores</small>
+                </div>
+              </a>
+              <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('graphml')">
+                <span class="dropdown-item-badge">.graphml</span>
+                <div class="dropdown-item-text">
+                  <strong>Gephi / Cytoscape</strong>
+                  <small>Estándar XML de grafos</small>
+                </div>
+              </a>
+              <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('report_html')">
+                <span class="dropdown-item-badge">.html</span>
+                <div class="dropdown-item-text">
+                  <strong>Informe Ejecutivo</strong>
+                  <small>Reporte visual autónomo</small>
+                </div>
+              </a>
+              <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('report_md')">
+                <span class="dropdown-item-badge">.md</span>
+                <div class="dropdown-item-text">
+                  <strong>Informe Markdown</strong>
+                  <small>Documentación técnica para repositorios</small>
+                </div>
+              </a>
+            </div>
+          </div>
+
+          <button class="hud-cmd-btn" onclick="openImportModal()" title="Importar archivo (.mtgx, .json, .csv) de investigación">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <span>IMPORTAR</span>
+          </button>
+          <button class="hud-cmd-btn" id="hud-audio-btn" onclick="toggleAudioFeedback()" title="Activar/Desactivar micro-clicks de audio forense">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            <span id="hud-audio-label">AUDIO: ON</span>
+          </button>
+          <button class="hud-cmd-btn" onclick="copyGraphSnapshotToClipboard()" title="Copiar captura de pantalla del grafo al portapapeles">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            <span>SNAPSHOT PNG</span>
+          </button>
+          <button class="hud-cmd-btn" onclick="openCommandPalette()" title="Abrir paleta de comandos rápida">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span>COMANDOS</span>
+            <span class="keycap">Ctrl+K</span>
+          </button>
+        </div>
+      </div>
       <header class="topbar">
         <div class="topbar-left">
           <h1 class="view-title" id="current-view-title">Centro de Mando</h1>
@@ -136,11 +269,11 @@
               </div>
               <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
                 <button class="btn btn-secondary btn-sm" onclick="loadAccounts()">Actualizar</button>
-                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('social')"><span style="color:var(--accent-cyan)">🌐</span> + Red Social</button>
-                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('forum')"><span style="color:var(--accent-crimson)">💀</span> + Foro Ciber</button>
-                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('market')"><span style="color:var(--accent-amber)">🛒</span> + Mercado & Leaks</button>
+                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('social')"><span class="icon-tag">[SOC]</span> + Red Social</button>
+                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('forum')"><span class="icon-tag">[FRM]</span> + Foro Ciber</button>
+                <button class="btn btn-secondary btn-sm" onclick="openNewAccountModal('market')"><span class="icon-tag">[MKT]</span> + Mercado & Leaks</button>
                 <button class="btn btn-primary btn-sm" onclick="openNewAccountModal()">+ Nueva Cuenta</button>
-                <button class="btn btn-secondary btn-sm" onclick="openPersonaModal()">🎭 Kit Sock Puppet</button>
+                <button class="btn btn-secondary btn-sm" onclick="openPersonaModal()"><span class="icon-tag">[IDN]</span> Kit Sock Puppet</button>
               </div>
             </div>
 
@@ -149,7 +282,7 @@
               <!-- Tarjeta 1: Redes Sociales -->
               <div class="acc-cat-card card-social" onclick="openNewAccountModal('social')" title="Añadir cuenta o bot en redes sociales">
                 <div class="acc-cat-header">
-                  <div class="acc-cat-icon icon-social">🌐</div>
+                  <div class="acc-cat-icon icon-social"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div>
                   <div>
                     <div class="acc-cat-title">Redes Sociales & Mensajería</div>
                     <div class="acc-cat-sub">Tokens de API, sesiones y cuentas bot</div>
@@ -173,7 +306,7 @@
               <!-- Tarjeta 2: Foros Underground & Ciberseguridad -->
               <div class="acc-cat-card card-forum" onclick="openNewAccountModal('forum')" title="Añadir sesión para foros underground">
                 <div class="acc-cat-header">
-                  <div class="acc-cat-icon icon-forum">💀</div>
+                  <div class="acc-cat-icon icon-forum"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></div>
                   <div>
                     <div class="acc-cat-title">Foros Ciber & Underground</div>
                     <div class="acc-cat-sub">Cookies de sesión (xf_user/session) + Tor SOCKS5</div>
@@ -197,7 +330,7 @@
               <!-- Tarjeta 3: Mercados Dark Web & Data Leaks -->
               <div class="acc-cat-card card-market" onclick="openNewAccountModal('market')" title="Añadir cuenta para mercados darknet o servicios de leaks">
                 <div class="acc-cat-header">
-                  <div class="acc-cat-icon icon-market">🛒</div>
+                  <div class="acc-cat-icon icon-market"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg></div>
                   <div>
                     <div class="acc-cat-title">Mercados Dark Web & Leaks</div>
                     <div class="acc-cat-sub">Espejos .onion, credenciales & APIs de filtraciones</div>
@@ -222,20 +355,49 @@
             <div class="accounts-filter-bar">
               <div class="filter-pills" id="acc-filter-pills">
                 <button type="button" class="pill active" onclick="filterAccountsByCategory('all', this)">Todas (<span id="cnt-acc-all">0</span>)</button>
-                <button type="button" class="pill" onclick="filterAccountsByCategory('social', this)">🌐 Redes Sociales (<span id="cnt-acc-social">0</span>)</button>
-                <button type="button" class="pill" onclick="filterAccountsByCategory('forum', this)">💀 Foros Ciber (<span id="cnt-acc-forum">0</span>)</button>
-                <button type="button" class="pill" onclick="filterAccountsByCategory('market', this)">🛒 Mercados & Leaks (<span id="cnt-acc-market">0</span>)</button>
-                <button type="button" class="pill" onclick="filterAccountsByCategory('email', this)">✉️ Buzones (<span id="cnt-acc-email">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('social', this)">[SOC] Redes Sociales (<span id="cnt-acc-social">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('forum', this)">[FRM] Foros Ciber (<span id="cnt-acc-forum">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('market', this)">[MKT] Mercados & Leaks (<span id="cnt-acc-market">0</span>)</button>
+                <button type="button" class="pill" onclick="filterAccountsByCategory('email', this)">[MAIL] Buzones (<span id="cnt-acc-email">0</span>)</button>
               </div>
               <div class="table-search-box">
-                <input type="text" class="input input-sm mono" id="accounts-search-input" placeholder="🔍 Filtrar por handle, ID o dominio..." oninput="filterAccountsSearch(this.value)">
+                <input type="text" class="input input-sm mono" id="accounts-search-input" placeholder="Filtrar por handle, ID o dominio..." oninput="filterAccountsSearch(this.value)">
               </div>
             </div>
 
+            <div class="table-toolbar-tactical" id="accounts-table-toolbar">
+              <div class="table-toolbar-left">
+                <span class="mono" style="font-weight:700; color:var(--accent-cyan);">BOVEDA DE IDENTIDADES & CUENTAS</span>
+                <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                <div class="table-density-btn-group" data-table="accounts-table">
+                  <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('accounts-table', 'compact')">Compacto</button>
+                  <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('accounts-table', 'normal')">Normal</button>
+                  <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('accounts-table', 'expanded')">Ampliado</button>
+                </div>
+                <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                <select class="table-limit-select" onchange="setTableLimit('accounts-table', this.value)">
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="all">Todas</option>
+                </select>
+              </div>
+              <div class="table-toolbar-right">
+                <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('accounts-table', true)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                  Expandir Todo
+                </button>
+                <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('accounts-table', false)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                  Contraer Todo
+                </button>
+              </div>
+            </div>
             <div class="table-container">
-              <table class="data-table">
+              <table class="data-table" id="accounts-table">
                 <thead>
                   <tr>
+                    <th style="width:30px; text-align:center;"></th>
                     <th>Identidad / ID</th>
                     <th>Categoría & Plataforma</th>
                     <th>Ámbito & Enrutamiento</th>
@@ -288,7 +450,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
                   <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">Mensajes y Códigos Recibidos</span>
                   <button class="btn btn-secondary btn-sm" id="btn-refresh-inbox" onclick="refreshCurrentInboxMessages()" style="font-size:0.75rem; padding:0.25rem 0.5rem;">
-                    🔄 Consultar Mensajes
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg> Consultar Mensajes
                   </button>
                 </div>
                 <div id="inbox-messages-container" class="inbox-messages-box">
@@ -361,10 +523,40 @@
                 Sincronizar Feeds CTI
               </button>
             </div>
+            <div class="table-toolbar-tactical" id="cti-table-toolbar">
+              <div class="table-toolbar-left">
+                <span class="mono" style="font-weight:700; color:var(--accent-cyan);">FEEDS DE AMENAZAS & FUENTES CTI</span>
+                <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                <div class="table-density-btn-group" data-table="cti-table">
+                  <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('cti-table', 'compact')">Compacto</button>
+                  <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('cti-table', 'normal')">Normal</button>
+                  <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('cti-table', 'expanded')">Ampliado</button>
+                </div>
+                <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                <select class="table-limit-select" onchange="setTableLimit('cti-table', this.value)">
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="all">Todas</option>
+                </select>
+              </div>
+              <div class="table-toolbar-right">
+                <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('cti-table', true)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                  Expandir Todo
+                </button>
+                <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('cti-table', false)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                  Contraer Todo
+                </button>
+                <input type="text" class="table-search-input" id="cti-table-filter" placeholder="Filtrar feeds..." oninput="filterTableGeneric('cti-table', this.value)">
+              </div>
+            </div>
             <div class="table-container">
-              <table class="data-table">
+              <table class="data-table" id="cti-table">
                 <thead>
                   <tr>
+                    <th style="width:30px; text-align:center;"></th>
                     <th>Nombre de Fuente</th>
                     <th>Categoría</th>
                     <th>Endpoint .onion / URL</th>
@@ -425,10 +617,62 @@
                 <span class="panel-title" style="margin:0;">Caso:</span>
                 <select class="select" id="graph-case-select" onchange="onCaseSelected(this.value)" style="min-width:210px;"></select>
                 <button class="btn btn-secondary btn-sm" onclick="reloadCurrentGraph()" title="Recargar caso">Recargar</button>
-                <button class="btn btn-secondary btn-sm" onclick="exportCurrentCaseMtgx()" title="Descargar como archivo nativo .mtgx para Maltego Desktop">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                  Exportar .mtgx
+                <div class="dropdown-wrapper">
+                  <button class="btn btn-secondary btn-sm" id="btn-export-dropdown" onclick="toggleExportMenu(event)" title="Exportar caso en múltiples formatos">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Exportar Archivo ▾
+                  </button>
+                  <div class="dropdown-menu" id="export-dropdown-menu">
+                    <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('mtgx')">
+                      <span class="dropdown-item-badge">.mtgx</span>
+                      <div class="dropdown-item-text">
+                        <strong>Maltego Desktop</strong>
+                        <small>Grafo nativo con historial y sidecar</small>
+                      </div>
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('json')">
+                      <span class="dropdown-item-badge">.json</span>
+                      <div class="dropdown-item-text">
+                        <strong>JSON Forense</strong>
+                        <small>Entidades, aristas y propiedades</small>
+                      </div>
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('csv')">
+                      <span class="dropdown-item-badge">.csv</span>
+                      <div class="dropdown-item-text">
+                        <strong>Tabla Relacional</strong>
+                        <small>Compatible Excel e importadores</small>
+                      </div>
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('graphml')">
+                      <span class="dropdown-item-badge">.graphml</span>
+                      <div class="dropdown-item-text">
+                        <strong>Gephi / Cytoscape</strong>
+                        <small>Estándar XML de teoría de grafos</small>
+                      </div>
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('report_html')">
+                      <span class="dropdown-item-badge">.html</span>
+                      <div class="dropdown-item-text">
+                        <strong>Informe Ejecutivo</strong>
+                        <small>Reporte visual autónomo listo para entregar</small>
+                      </div>
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0)" onclick="exportCaseAs('report_md')">
+                      <span class="dropdown-item-badge">.md</span>
+                      <div class="dropdown-item-text">
+                        <strong>Informe Markdown</strong>
+                        <small>Documentación técnica para repositorios</small>
+                      </div>
+                    </a>
+                  </div>
+                </div>
+
+                <button class="btn btn-secondary btn-sm" onclick="openImportModal()" title="Importar archivo (.mtgx, .json, .csv) al caso actual o crear una nueva investigación desde cero">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  Importar Archivo
                 </button>
+
                 <button class="btn btn-primary btn-sm" onclick="promptCreateCase()" id="btn-new-case">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   Nuevo Caso
@@ -438,17 +682,17 @@
               <!-- BUSCADOR REACTIVO Y TOGGLE DE FILTROS -->
               <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                 <div class="graph-search-box">
-                  <input type="text" id="graph-search-input" class="input input-sm" placeholder="🔍 Buscar entidad, IP, relación..." oninput="onGraphSearchInput(this.value)">
-                  <button id="btn-clear-search" onclick="clearGraphSearch()" title="Limpiar búsqueda" style="display:none;">✕</button>
+                  <input type="text" id="graph-search-input" class="input input-sm" placeholder="Buscar entidad, IP, relación..." oninput="onGraphSearchInput(this.value)">
+                  <button id="btn-clear-search" onclick="clearGraphSearch()" title="Limpiar búsqueda" style="display:none;">&times;</button>
                 </div>
                 <button class="btn btn-secondary btn-sm" id="btn-toggle-filters" onclick="toggleGraphFilterDrawer()" title="Panel de filtros multidimensionales">
-                  🎛️ Filtros <span class="pill pill-cyan" id="badge-visible-count">0/0</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg> Filtros <span class="pill pill-cyan" id="badge-visible-count">0/0</span>
                 </button>
                 <div style="display:flex; gap:0.25rem;">
                   <button class="btn btn-secondary btn-sm" onclick="graphZoom(1.2)" title="Acercar">+</button>
                   <button class="btn btn-secondary btn-sm" onclick="graphZoom(0.8)" title="Alejar">-</button>
                   <button class="btn btn-secondary btn-sm" onclick="graphResetZoom()" title="Escala 1:1">1:1</button>
-                  <button class="btn btn-secondary btn-sm" onclick="fitGraphView()" title="Ajustar y centrar todo el grafo en pantalla">⛶ Centrar</button>
+                  <button class="btn btn-secondary btn-sm" onclick="fitGraphView()" title="Ajustar y centrar todo el grafo en pantalla"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg> Centrar</button>
                 </div>
               </div>
             </div>
@@ -499,11 +743,11 @@
               <div class="graph-filter-drawer" id="graph-filter-drawer">
                 <div class="drawer-header">
                   <div style="font-weight:700; font-size:12px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
-                    <span>🎛️ Filtros Avanzados</span>
+                    <span>Filtros Avanzados</span>
                   </div>
                   <div style="display:flex; gap:6px; align-items:center;">
                     <button class="btn btn-secondary btn-sm" style="font-size:10px; padding:2px 6px;" onclick="resetAllGraphFilters()">Restablecer</button>
-                    <button class="btn btn-secondary btn-sm" style="font-size:11px; padding:2px 6px;" onclick="toggleGraphFilterDrawer()">✕</button>
+                    <button class="btn btn-secondary btn-sm" style="font-size:11px; padding:2px 6px;" onclick="toggleGraphFilterDrawer()">&times;</button>
                   </div>
                 </div>
                 <div class="drawer-content">
@@ -580,6 +824,11 @@
                 <div class="legend-item"><span class="legend-dot" style="background:#38bdf8;"></span> Servicio / Conector</div>
                 <div class="legend-item"><span class="legend-dot" style="background:#f43f5e;"></span> Riesgo / Conflicto / Alerta</div>
               </div>
+              <!-- Radar Mini-Map HUD -->
+              <div id="radar-hud">
+                <div class="radar-hud-label">RADAR / VISTA GLOBAL</div>
+                <canvas id="radar-hud-canvas" width="170" height="110"></canvas>
+              </div>
               <div class="graph-status-bar" id="graph-status-bar">
                 Cargando grafo interactivo...
               </div>
@@ -600,7 +849,408 @@
             </div>
           </div>
         </section>
-      </main>
+      
+        <!-- VISTA 7: BLOCKCHAIN & AML LEDGER -->
+        <section class="view-section" id="view-crypto-ledger">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div>
+                <div class="panel-title">[AML] BLOCKCHAIN & CRYPTO LEDGER FORENSICS</div>
+                <div class="panel-subtitle">Trazabilidad multi-cadena (TRC-20, ERC-20, BTC), heurística de mixers (Tornado Cash, Sinbad), saltos cross-chain y listas OFAC SDN</div>
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-secondary btn-sm" onclick="runAmlMixerHeuristics()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  Escanear Mixers & Saltos
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="promptAddCryptoTrace()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Nueva Billetera / TXID
+                </button>
+              </div>
+            </div>
+
+            <!-- Metricas AML -->
+            <div class="aml-stat-grid" style="margin-top:1rem;">
+              <div class="aml-stat-box">
+                <div class="aml-stat-title">Saldo Total Rastreado</div>
+                <div class="aml-stat-val" id="aml-stat-volume">1,428,500.00 USDT</div>
+                <small style="color:var(--text-muted); font-size:11px;">Equivalente multired (TRC20 / ERC20)</small>
+              </div>
+              <div class="aml-stat-box alert">
+                <div class="aml-stat-title">Exposicion a Mixers / Tumblers</div>
+                <div class="aml-stat-val" style="color:var(--accent-gold);" id="aml-stat-mixer">68.4% (ALTO)</div>
+                <small style="color:var(--text-muted); font-size:11px;">Contratos Tornado Cash 10 ETH detectados</small>
+              </div>
+              <div class="aml-stat-box">
+                <div class="aml-stat-title">Saltos de Peeling Chain</div>
+                <div class="aml-stat-val" id="aml-stat-hops">7 Saltos Heuristicos</div>
+                <small style="color:var(--text-muted); font-size:11px;">Descomposicion UTXO y retiros fijos</small>
+              </div>
+              <div class="aml-stat-box">
+                <div class="aml-stat-title">Coincidencias OFAC / Sanctions</div>
+                <div class="aml-stat-val" style="color:var(--accent-crimson);" id="aml-stat-ofac">2 ALERTAS ACTIVAS</div>
+                <small style="color:var(--text-muted); font-size:11px;">Entidades de lista negra SDN</small>
+              </div>
+            </div>
+
+            <!-- Diagrama de Flujo Sankey -->
+            <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:1rem; margin-bottom:1.25rem;">
+              <div class="table-toolbar-tactical" id="aml-transactions-table-toolbar">
+                <div class="table-toolbar-left">
+                  <span class="mono" style="font-weight:700; color:var(--accent-cyan);">REGISTRO DE TRANSACCIONES & BILLETERAS</span>
+                  <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                  <div class="table-density-btn-group" data-table="aml-transactions-table">
+                    <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('aml-transactions-table', 'compact')" title="Filas compactas (alta densidad)">Compacto</button>
+                    <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('aml-transactions-table', 'normal')" title="Filas estandar">Normal</button>
+                    <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('aml-transactions-table', 'expanded')" title="Filas amplias y legibles">Ampliado</button>
+                  </div>
+                  <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                  <select class="table-limit-select" onchange="setTableLimit('aml-transactions-table', this.value)" title="Cantidad de filas">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="all">Todas</option>
+                  </select>
+                </div>
+                <div class="table-toolbar-right">
+                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('aml-transactions-table', true)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                    Expandir Todo
+                  </button>
+                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('aml-transactions-table', false)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                    Contraer Todo
+                  </button>
+                  <input type="text" class="table-search-input" id="aml-table-filter" placeholder="Filtrar transacciones..." oninput="filterAmlTable(this.value)">
+                </div>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="data-table" id="aml-transactions-table">
+                  <thead>
+                    <tr>
+                      <th style="width:30px; text-align:center;"></th>
+                      <th>TXID / Hash</th>
+                      <th>Red</th>
+                      <th>Origen</th>
+                      <th>Destino</th>
+                      <th>Monto</th>
+                      <th>Heuristica Forense</th>
+                      <th>Riesgo AML</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aml-table-body">
+                    <!-- Dynamic rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 8: BOVEDA DE EVIDENCIAS & CADENA DE CUSTODIA (ISO/IEC 27037) -->
+        <section class="view-section" id="view-forensics-vault">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div>
+                <div class="panel-title">[COC] BOVEDA DE EVIDENCIAS & CADENA DE CUSTODIA (ISO/IEC 27037)</div>
+                <div class="panel-subtitle">Adquisicion forense, verificacion criptografica local SHA-256 / MD5, trazabilidad pericial y exportacion de manifiestos firmados</div>
+              </div>
+              <div class="table-toolbar-tactical" id="vault-evidence-table-toolbar">
+                <div class="table-toolbar-left">
+                  <span class="mono" style="font-weight:700; color:var(--accent-cyan);">REGISTRO DE EVIDENCIAS & CADENA DE CUSTODIA</span>
+                  <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                  <div class="table-density-btn-group" data-table="vault-evidence-table">
+                    <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('vault-evidence-table', 'compact')" title="Filas compactas">Compacto</button>
+                    <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('vault-evidence-table', 'normal')" title="Filas estandar">Normal</button>
+                    <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('vault-evidence-table', 'expanded')" title="Filas amplias">Ampliado</button>
+                  </div>
+                  <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                  <select class="table-limit-select" onchange="setTableLimit('vault-evidence-table', this.value)">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="all">Todas</option>
+                  </select>
+                </div>
+                <div class="table-toolbar-right">
+                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('vault-evidence-table', true)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                    Expandir Todo
+                  </button>
+                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('vault-evidence-table', false)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                    Contraer Todo
+                  </button>
+                  <input type="text" class="table-search-input" id="vault-table-filter" placeholder="Filtrar evidencias o hashes..." oninput="filterTableGeneric('vault-evidence-table', this.value)">
+                </div>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="data-table" id="vault-evidence-table">
+                  <thead>
+                    <tr>
+                      <th style="width:30px; text-align:center;"></th>
+                      <th>ID Evidencia</th>
+                      <th>Nombre de Archivo / Elemento</th>
+                      <th>Tipo MIME</th>
+                      <th>Hash SHA-256</th>
+                      <th>Hash MD5</th>
+                      <th>Perito / Operador</th>
+                      <th>Timestamp Adquisicion</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vault-evidence-body">
+                    <!-- Dynamic evidence items -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 9: MATRIZ MITRE ATT&CK ENTERPRISE -->
+        <section class="view-section" id="view-mitre-matrix">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div>
+                <div class="panel-title">[TTP] MATRIZ MITRE ATT&CK ENTERPRISE (AUTO-MAPEO IOCs)</div>
+                <div class="panel-subtitle">Correlacion automatica de artefactos del caso activo con tecnicas y tacticas adversarias de ciberinteligencia</div>
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-secondary btn-sm" onclick="exportMitreNavigatorLayer()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Exportar Capa ATT&CK Navigator
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="rebuildMitreMapping()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                  Recalcular Correlacion
+                </button>
+              </div>
+            </div>
+
+            <!-- Resumen de Tacticas Detectadas -->
+            <div class="mitre-board" id="mitre-matrix-board" style="margin-top:1rem;">
+              <!-- Dynamic Tactics Columns -->
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 10: CARTOGRAFIA GEOESPACIAL & TOPOLOGIA BGP -->
+        <section class="view-section" id="view-geo-map">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+              <div>
+                <div class="panel-title">[GEO] CARTOGRAFIA GEOESPACIAL & TOPOLOGIA BGP</div>
+                <div class="panel-subtitle">Georreferenciacion interactiva del caso activo: servidores C2, nodos de enrutamiento ASN, saltos de red y arcos geodesicos</div>
+              </div>
+              <div class="table-toolbar-tactical" id="geomap-nodes-table-toolbar">
+                <div class="table-toolbar-left">
+                  <span class="mono" style="font-weight:700; color:var(--accent-cyan);">INFRAESTRUCTURA GEORREFERENCIADA</span>
+                  <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                  <div class="table-density-btn-group" data-table="geomap-nodes-table">
+                    <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('geomap-nodes-table', 'compact')" title="Filas compactas">Compacto</button>
+                    <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('geomap-nodes-table', 'normal')" title="Filas estandar">Normal</button>
+                    <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('geomap-nodes-table', 'expanded')" title="Filas amplias">Ampliado</button>
+                  </div>
+                  <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                  <select class="table-limit-select" onchange="setTableLimit('geomap-nodes-table', this.value)">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="all">Todas</option>
+                  </select>
+                </div>
+                <div class="table-toolbar-right">
+                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('geomap-nodes-table', true)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                    Expandir Todo
+                  </button>
+                  <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('geomap-nodes-table', false)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                    Contraer Todo
+                  </button>
+                  <input type="text" class="table-search-input" id="geomap-table-filter" placeholder="Filtrar infraestructura..." oninput="filterTableGeneric('geomap-nodes-table', this.value)">
+                </div>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="data-table" id="geomap-nodes-table">
+                  <thead>
+                    <tr>
+                      <th style="width:30px; text-align:center;"></th>
+                      <th>Identificador / IP</th>
+                      <th>Ubicacion Geografica</th>
+                      <th>ASN & Proveedor de Red</th>
+                      <th>Coordenadas Lat / Lon</th>
+                      <th>Rol Operativo</th>
+                      <th>Accion</th>
+                    </tr>
+                  </thead>
+                  <tbody id="geomap-nodes-body">
+                    <!-- Dynamic rows from active case -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 11: GENERADOR DE REGLAS DE DETECCION -->
+        <section class="view-section" id="view-rules-generator">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div>
+                <div class="panel-title">[SIG] GENERADOR DE REGLAS DE DETECCION (SIEM / IDS / EDR)</div>
+                <div class="panel-subtitle">Traduccion automatica de indicadores de compromiso (IOCs) a especificaciones Sigma v2, YARA v4, Suricata IDS y STIX 2.1</div>
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="copyCurrentRuleToClipboard()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  Copiar Regla al Portapapeles
+                </button>
+              </div>
+            </div>
+
+            <!-- Selector de Formato -->
+            <div style="display:flex; gap:0.5rem; margin-top:1rem; margin-bottom:0.75rem;">
+              <button class="btn btn-secondary btn-sm active" id="btn-rule-sigma" onclick="switchRuleFormat('sigma')">Sigma v2 (YAML)</button>
+              <button class="btn btn-secondary btn-sm" id="btn-rule-yara" onclick="switchRuleFormat('yara')">YARA v4</button>
+              <button class="btn btn-secondary btn-sm" id="btn-rule-suricata" onclick="switchRuleFormat('suricata')">Suricata / Snort (IDS)</button>
+              <button class="btn btn-secondary btn-sm" id="btn-rule-stix" onclick="switchRuleFormat('stix')">STIX 2.1 Bundle (JSON)</button>
+            </div>
+
+            <!-- Visor de Codigo -->
+            <pre class="code-box" id="rule-code-display">// Generando definicion de regla para caso activo...</pre>
+          </div>
+        </section>
+
+        <!-- VISTA 12: MONITOR DE VIGILANCIA ACTIVA -->
+        <section class="view-section" id="view-threat-watchtower">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div>
+                <div class="panel-title">[WCH] MONITOR DE VIGILANCIA ACTIVA & ALERTAS TEMPRANAS</div>
+                <div class="panel-subtitle">Supervision continua de mutaciones DNS, aparicion de nuevos certificados SSL/TLS y cambios de titularidad WHOIS</div>
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="promptAddWatchTarget()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Anadir Objetivo a Vigilancia
+                </button>
+              </div>
+            </div>
+
+            <!-- Feed de Alertas en Tiempo Real -->
+            <div style="margin-top:1rem; display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+              <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:1rem;">
+                <div class="mono" style="font-size:11px; font-weight:700; color:var(--accent-cyan); margin-bottom:0.75rem;">FEED DE ALERTAS DE SEGURIDAD OPERATIVA</div>
+                <div id="watchtower-alerts-list" style="display:flex; flex-direction:column; gap:0.5rem; max-height:360px; overflow-y:auto;">
+                  <!-- Dynamic alerts -->
+                </div>
+              </div>
+
+              <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:1rem;">
+                <div class="table-toolbar-tactical" id="watchtower-targets-table-toolbar">
+                  <div class="table-toolbar-left">
+                    <span class="mono" style="font-weight:700; color:var(--accent-cyan);">OBJETIVOS BAJO VIGILANCIA</span>
+                    <span style="color:var(--text-muted); font-size:10px;">Densidad:</span>
+                    <div class="table-density-btn-group" data-table="watchtower-targets-table">
+                      <button type="button" class="table-density-btn" data-density="compact" onclick="setTableDensity('watchtower-targets-table', 'compact')">Compacto</button>
+                      <button type="button" class="table-density-btn active" data-density="normal" onclick="setTableDensity('watchtower-targets-table', 'normal')">Normal</button>
+                      <button type="button" class="table-density-btn" data-density="expanded" onclick="setTableDensity('watchtower-targets-table', 'expanded')">Ampliado</button>
+                    </div>
+                    <span style="color:var(--text-muted); font-size:10px; margin-left:4px;">Mostrar:</span>
+                    <select class="table-limit-select" onchange="setTableLimit('watchtower-targets-table', this.value)">
+                      <option value="5">5</option>
+                      <option value="10" selected>10</option>
+                      <option value="25">25</option>
+                      <option value="all">Todas</option>
+                    </select>
+                  </div>
+                  <div class="table-toolbar-right">
+                    <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('watchtower-targets-table', true)">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4"></path><polyline points="7 13 12 18 17 13"></polyline></svg>
+                      Expandir Todo
+                    </button>
+                    <button type="button" class="table-btn-action" onclick="toggleAllRowsDetail('watchtower-targets-table', false)">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 11 12 6 17 11"></polyline><path d="M7 13v4a5 5 0 0 0 10 0v-4"></path></svg>
+                      Contraer Todo
+                    </button>
+                    <input type="text" class="table-search-input" id="watchtower-table-filter" placeholder="Filtrar objetivos..." oninput="filterTableGeneric('watchtower-targets-table', this.value)">
+                  </div>
+                </div>
+                <div style="overflow-x:auto;">
+                  <table class="data-table" id="watchtower-targets-table">
+                    <thead>
+                      <tr>
+                        <th style="width:30px; text-align:center;"></th>
+                        <th>Objetivo / IOC</th>
+                        <th>Tipo</th>
+                        <th>Ultimo Chequeo</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="watchtower-targets-body">
+                      <!-- Dynamic targets -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VISTA 13: PUENTE MALTEGO DESKTOP -->
+        <section class="view-section" id="view-desktop-bridge">
+          <div class="panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div>
+                <div class="panel-title">[BRG] PUENTE MALTEGO DESKTOP & SERVIDOR TRX LOCAL</div>
+                <div class="panel-subtitle">Sincronizacion bidireccional entre la consola Web MCP y el cliente oficial Maltego Desktop via socket local y configuracion .mtz</div>
+              </div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="exportMtzConfigBundle()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Exportar Configuracion .mtz
+                </button>
+              </div>
+            </div>
+
+            <!-- Tarjetas de Estado del Puente -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:1rem; margin-top:1rem;">
+              <div class="aml-stat-box">
+                <div class="aml-stat-title">Demonio maltego-mcp-bridge</div>
+                <div class="aml-stat-val" style="color:var(--accent-emerald);" id="bridge-daemon-status">ACTIVO (8003)</div>
+                <small style="color:var(--text-muted); font-size:11px;">Endpoint XML / Transform Server</small>
+              </div>
+              <div class="aml-stat-box">
+                <div class="aml-stat-title">Transforms Registrados en Desktop</div>
+                <div class="aml-stat-val" id="bridge-transforms-count">24 Transforms</div>
+                <small style="color:var(--text-muted); font-size:11px;">Disponibles en paleta de Maltego</small>
+              </div>
+              <div class="aml-stat-box">
+                <div class="aml-stat-title">Sincronizacion de Grafos</div>
+                <div class="aml-stat-val" style="color:var(--accent-cyan);">BIDIRECCIONAL</div>
+                <small style="color:var(--text-muted); font-size:11px;">Exportacion nativa .mtgx automatica</small>
+              </div>
+            </div>
+
+            <!-- Instrucciones de Conexion -->
+            <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:1.25rem; margin-top:1.25rem;">
+              <div class="mono" style="font-size:12px; font-weight:700; color:var(--text-primary); margin-bottom:0.5rem;">GUIA RAPIDA DE INTEGRACION CON MALTEGO DESKTOP:</div>
+              <ol style="margin-left:1.5rem; line-height:1.8; color:var(--text-secondary); font-size:12.5px;">
+                <li>Descarga el archivo de configuracion <span class="mono" style="color:var(--accent-cyan);">maltego-mcp-config.mtz</span> pulsando el boton superior.</li>
+                <li>Abre tu aplicacion <strong>Maltego Desktop</strong> (Classic, XL o Community).</li>
+                <li>Navega al menu superior: <strong>Manage &rarr; Import &rarr; Import Config</strong>.</li>
+                <li>Selecciona el archivo <span class="mono">maltego-mcp-config.mtz</span> y pulsa <strong>Next &rarr; Finish</strong>.</li>
+                <li>Los transforms del servidor local apareceran automaticamente listados bajo la categoria <strong>MCP Maltego</strong> en el panel de transforms.</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+        </main>
     </div>
   </div>
 
@@ -609,30 +1259,30 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="panel-title" id="modal-account-title">Registrar Cuenta en la Bóveda</div>
-        <button class="btn btn-secondary btn-sm" onclick="closeNewAccountModal()">✕</button>
+        <button class="btn btn-secondary btn-sm" onclick="closeNewAccountModal()">&times;</button>
       </div>
       <form id="form-account" onsubmit="submitNewAccount(event)">
         <div class="modal-body">
           <!-- SELECTOR DE CATEGORÍA ACTIVA -->
           <div class="modal-category-tabs">
             <button type="button" class="modal-cat-tab active" data-cat="social" onclick="selectModalCategory('social')">
-              <span>🌐</span> Red Social
+              <span class="icon-tag">[SOC]</span> Red Social
             </button>
             <button type="button" class="modal-cat-tab" data-cat="forum" onclick="selectModalCategory('forum')">
-              <span>💀</span> Foro Ciber
+              <span class="icon-tag">[FRM]</span> Foro Ciber
             </button>
             <button type="button" class="modal-cat-tab" data-cat="market" onclick="selectModalCategory('market')">
-              <span>🛒</span> Mercado / Leaks
+              <span class="icon-tag">[MKT]</span> Mercado / Leaks
             </button>
             <button type="button" class="modal-cat-tab" data-cat="generic" onclick="selectModalCategory('generic')">
-              <span>⚙️</span> Genérica / Tor
+              <span class="icon-tag">[GEN]</span> Genérica / Tor
             </button>
           </div>
           <input type="hidden" name="acc_category" id="acc_category" value="social">
 
           <!-- BANNER CONSEJO OPSEC DINÁMICO -->
           <div class="opsec-tip-box" id="modal-opsec-tip">
-            <span>🛡️</span>
+            <span class="icon-tag">[OPSEC]</span>
             <div id="modal-opsec-text">Para redes sociales, utiliza cuentas de investigación dedicadas o tokens de bot para evitar exponer tu identidad personal o sufrir baneos en cuentas principales.</div>
           </div>
 
@@ -640,7 +1290,7 @@
             <div class="form-group">
               <label class="form-label">Plataforma / Servicio</label>
               <select class="select" name="acc_platform" id="acc_platform" required onchange="onPlatformChanged(this.value)">
-                <optgroup label="🌐 Redes Sociales" id="optgroup-social">
+                <optgroup label="[SOC] Redes Sociales" id="optgroup-social">
                   <option value="twitter">Twitter / X</option>
                   <option value="telegram">Telegram (Bot / MTProto)</option>
                   <option value="discord">Discord (Bot / Webhook)</option>
@@ -655,7 +1305,7 @@
                   <option value="gitlab">GitLab</option>
                   <option value="session">Session / Matrix</option>
                 </optgroup>
-                <optgroup label="💀 Foros Ciber & Hacking Underground" id="optgroup-forum">
+                <optgroup label="[FRM] Foros Ciber & Hacking Underground" id="optgroup-forum">
                   <option value="breachforums">BreachForums (.onion / mirror)</option>
                   <option value="exploit_in">Exploit.in (CTI Ruso/Inglés)</option>
                   <option value="xss_is">XSS.is (Malware & Exploit)</option>
@@ -668,7 +1318,7 @@
                   <option value="hackforums">HackForums</option>
                   <option value="forum">Otro Foro Underground</option>
                 </optgroup>
-                <optgroup label="🛒 Mercados Dark Web & Data Leaks" id="optgroup-market">
+                <optgroup label="[MKT] Mercados Dark Web & Data Leaks" id="optgroup-market">
                   <option value="intelx">Intelligence X (IntelX API)</option>
                   <option value="dnmx">DnmX (.onion Mail & Market)</option>
                   <option value="russian_market">Russian Market (Stealer Logs)</option>
@@ -679,7 +1329,7 @@
                   <option value="genesis_mirror">Genesis Market Mirror</option>
                   <option value="darknet_market">Mercado Darknet Genérico (.onion)</option>
                 </optgroup>
-                <optgroup label="⚙️ Otras / Genéricas" id="optgroup-generic">
+                <optgroup label="[GEN] Otras / Genéricas" id="optgroup-generic">
                   <option value="generic">Genérica / Web API</option>
                   <option value="tor">Tor SOCKS5 General</option>
                   <option value="onion">Sitio .onion Aislado</option>
@@ -732,7 +1382,7 @@
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
                 <label class="form-label" style="margin-bottom:0;">Proxy Dedicado</label>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="setTorProxyPreset()" style="font-size:10px; padding:2px 6px;">
-                  🧅 Usar Tor (127.0.0.1:9050)
+                  [TOR] Usar Tor (127.0.0.1:9050)
                 </button>
               </div>
               <input class="input mono" name="acc_proxy" id="acc_proxy" placeholder="ej. socks5h://127.0.0.1:9050">
@@ -762,7 +1412,7 @@
     <div class="modal-card" style="max-width:680px;">
       <div class="modal-header">
         <div class="panel-title">Generador de Identidades Sock Puppet (Kit OPSEC)</div>
-        <button class="btn btn-secondary btn-sm" onclick="closePersonaModal()">✕</button>
+        <button class="btn btn-secondary btn-sm" onclick="closePersonaModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-row" style="margin-bottom:1rem;">
@@ -800,6 +1450,218 @@
     </div>
   </div>
 
+  <!-- MODAL: IMPORTACIÓN DE INVESTIGACIONES Y GRAFOS -->
+  <div class="modal-overlay" id="modal-import">
+    <div class="modal-card" style="max-width:620px;">
+      <div class="modal-header">
+        <div>
+          <div class="panel-title">Importar Archivo de Investigación</div>
+          <div class="panel-subtitle">Soporta formatos .mtgx (Maltego Desktop), .json (forense) y .csv (tabla relacional)</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="closeImportModal()">&times;</button>
+      </div>
+      <form id="form-import-case" onsubmit="submitImportCase(event)">
+        <div class="modal-body">
+          <!-- Dropzone -->
+          <div class="import-dropzone" id="import-dropzone" onclick="document.getElementById('import-file-input').click()">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="color:var(--accent-cyan); margin-bottom:0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <div style="font-weight:600; font-size:14px; color:var(--text-primary);" id="import-dropzone-label">
+              Arrastra aquí tu archivo o haz clic para seleccionarlo
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:0.25rem;">
+              Formatos aceptados: <span class="mono">.mtgx</span>, <span class="mono">.json</span>, <span class="mono">.csv</span> (máx. 20 MB)
+            </div>
+            <input type="file" id="import-file-input" style="display:none;" accept=".mtgx,.json,.csv" onclick="event.stopPropagation()" onchange="onImportFileSelected(event)">
+            <div id="import-file-badge" style="display:none; margin-top:0.6rem;">
+              <span class="pill pill-cyan" id="import-file-badge-text">archivo.mtgx (0 KB)</span>
+            </div>
+          </div>
+
+          <!-- Selección de Destino / Modo -->
+          <div style="margin-top:1.25rem;">
+            <label class="form-label" style="margin-bottom:0.5rem;">Destino de los Datos Importados</label>
+            <div style="display:flex; flex-direction:column; gap:0.6rem;">
+              <label style="display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer; background:var(--bg-surface); padding:0.65rem 0.85rem; border:1px solid var(--border-subtle); border-radius:6px;">
+                <input type="radio" name="import_mode" value="new" checked onchange="toggleImportMode(this.value)" style="margin-top:0.2rem;">
+                <div>
+                  <strong style="font-size:13px; color:var(--text-primary); display:block;">Crear una nueva investigación desde cero</strong>
+                  <span style="font-size:12px; color:var(--text-muted);">Crea un nuevo caso independiente aislado en el almacenamiento local</span>
+                </div>
+              </label>
+
+              <label style="display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer; background:var(--bg-surface); padding:0.65rem 0.85rem; border:1px solid var(--border-subtle); border-radius:6px;">
+                <input type="radio" name="import_mode" value="existing" onchange="toggleImportMode(this.value)" style="margin-top:0.2rem;">
+                <div>
+                  <strong style="font-size:13px; color:var(--text-primary); display:block;">Incorporar y fusionar en el caso actual</strong>
+                  <span style="font-size:12px; color:var(--text-muted);" id="import-current-case-hint">Funde las entidades y aristas sin duplicar registros</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Campos para Nueva Investigación -->
+          <div id="import-new-case-fields" style="margin-top:1rem;">
+            <div class="form-group" style="margin-bottom:0.75rem;">
+              <label class="form-label">Identificador del Caso (Case ID)</label>
+              <input type="text" class="input mono" id="import-case-id" placeholder="ej. operacion-caso-01 (autogenerado si se deja vacío)">
+              <div class="form-hint">Permite letras minúsculas, números, guiones y barras bajas.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Descripción de la Investigación (Opcional)</label>
+              <input type="text" class="input" id="import-case-desc" placeholder="ej. Red de infraestructura importada">
+            </div>
+          </div>
+
+          <!-- Feedback de Proceso -->
+          <div id="import-feedback-box" style="display:none; margin-top:1rem; padding:0.75rem; border-radius:6px; font-size:12.5px;"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-import">
+            Iniciar Importación
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DE TRAZABILIDAD AML & FLUJO DE FONDOS -->
+  <div class="modal-overlay" id="modal-aml-trace">
+    <div class="modal-card trace-modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="panel-title" id="aml-trace-title">Trazabilidad Forense Multi-Salto de Fondos & Mixers</div>
+          <div class="panel-subtitle">Desglose secuencial de saltos (Hops), deteccion de Peeling Chain y exposicion a Mixers / OFAC</div>
+        </div>
+        <button type="button" class="btn-icon" onclick="closeAmlTraceModal()" title="Cerrar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="aml-trace-modal-body">
+        <!-- Renderizado dinamico de KPIs y Timeline de saltos -->
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <div id="aml-trace-footer-info" class="mono" style="font-size:11px; color:var(--text-muted);">Cadena verificada con firmas criptograficas</div>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="exportCurrentTraceReport()">Exportar Informe (.JSON)</button>
+          <button type="button" class="btn btn-primary" onclick="injectCurrentTraceIntoCase()">Inyectar Ruta en Grafo del Caso</button>
+          <button type="button" class="btn btn-secondary" onclick="closeAmlTraceModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE TRAZADOR DE CAMINOS EN EL GRAFO -->
+  <div class="modal-overlay" id="modal-path-trace">
+    <div class="modal-card trace-modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="panel-title">Trazador de Caminos Forenses entre Entidades</div>
+          <div class="panel-subtitle">Calcula el camino minimo (Shortest Path) y conectividad multi-salto entre dos nodos del caso</div>
+        </div>
+        <button type="button" class="btn-icon" onclick="closePathTraceModal()" title="Cerrar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+          <div>
+            <label class="form-label" style="font-size:11px; font-weight:700; color:var(--text-secondary); text-transform:uppercase;">Entidad Origen (A)</label>
+            <select class="form-control" id="path-trace-source-select" style="font-family:var(--font-mono); font-size:12px;"></select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:11px; font-weight:700; color:var(--text-secondary); text-transform:uppercase;">Entidad Destino (B)</label>
+            <select class="form-control" id="path-trace-target-select" style="font-family:var(--font-mono); font-size:12px;"></select>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+          <div class="mono" style="font-size:11px; color:var(--text-muted);" id="path-trace-summary-text">Selecciona las entidades origen y destino para calcular la ruta</div>
+          <button type="button" class="btn btn-primary" onclick="executeGraphPathTrace()">Trazar Camino</button>
+        </div>
+        <div id="path-trace-result-container" style="background:rgba(11,15,25,0.8); border:1px solid var(--border-subtle); border-radius:6px; padding:1rem; min-height:120px;">
+          <div style="text-align:center; padding:2rem; color:var(--text-muted); font-size:12px;">Ninguna traza calculada todavia.</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="mono" style="font-size:11px; color:var(--text-muted);">Algoritmo BFS bidireccional sobre topologia activa</div>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-secondary" id="btn-highlight-path" style="display:none;" onclick="highlightCurrentPathOnCanvas()">Iluminar Camino en Canvas</button>
+          <button type="button" class="btn btn-secondary" onclick="closePathTraceModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE TRAZADOR DE RUTA BGP & AS-PATH -->
+  <div class="modal-overlay" id="modal-bgp-trace">
+    <div class="modal-card trace-modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="panel-title" id="bgp-trace-title">Trazador de Ruta BGP & Topologia AS-Path</div>
+          <div class="panel-subtitle">Auditoria de saltos de red, transito internacional Tier-1 y puntos de intercambio IXP</div>
+        </div>
+        <button type="button" class="btn-icon" onclick="closeBgpTraceModal()" title="Cerrar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="bgp-trace-modal-body">
+        <!-- Contenido dinamico de saltos BGP -->
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="mono" style="font-size:11px; color:var(--text-muted);">Enrutamiento validado con tablas globales de BGP Routing</div>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-primary" onclick="projectCurrentBgpOnGeoMap()">Proyectar Traza en GeoMap</button>
+          <button type="button" class="btn btn-secondary" onclick="closeBgpTraceModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <!-- MODAL DE TRAZABILIDAD & CADENA DE CUSTODIA DE EVIDENCIAS -->
+  <div class="modal-overlay" id="modal-evidence-trace">
+    <div class="modal-card trace-modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="panel-title" id="evidence-trace-title">Trazabilidad Pericial & Cadena de Custodia (ISO/IEC 27037)</div>
+          <div class="panel-subtitle">Auditoria de adquisicion forense, verificacion criptografica y sellado inmutable</div>
+        </div>
+        <button type="button" class="btn-icon" onclick="closeEvidenceTraceModal()" title="Cerrar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="evidence-trace-modal-body">
+        <!-- Contenido dinamico de evidencia -->
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="mono" style="font-size:11px; color:#10b981;">Integridad SHA-256 / MD5 verificada sin alteraciones</div>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-primary" onclick="exportEvidenceManifest()">Exportar Manifiesto Firmado (.JSON)</button>
+          <button type="button" class="btn btn-secondary" onclick="closeEvidenceTraceModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PALETA DE COMANDOS GLOBAL (CTRL+K) -->
+  <div class="command-palette-overlay" id="command-palette" onclick="onCommandPaletteOverlayClick(event)">
+    <div class="command-palette-card" onclick="event.stopPropagation()">
+      <div class="command-palette-search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan); flex-shrink:0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="command-palette-input" id="cmd-palette-input" placeholder="Escribe un comando, busca un caso o salta a un módulo... (Esc para salir)" oninput="filterCommandPalette(this.value)" onkeydown="onCommandPaletteKeydown(event)">
+        <span class="keycap">ESC</span>
+      </div>
+      <div class="command-palette-list" id="cmd-palette-results">
+        <!-- Dynamic items -->
+      </div>
+      <div class="command-palette-footer">
+        <span><span class="keycap">&uarr;</span><span class="keycap">&darr;</span> Navegar</span>
+        <span><span class="keycap">ENTER</span> Ejecutar</span>
+        <span><span class="keycap">ESC</span> Salir</span>
+      </div>
+    </div>
+  </div>
+  
   <script src="/dashboard.js"></script>
 </body>
 </html>

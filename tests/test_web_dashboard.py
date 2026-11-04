@@ -33,6 +33,13 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "bg-canvas" in r_root.text
     assert "graph-filter-drawer" in r_root.text
     assert "graph-search-input" in r_root.text
+    assert "btn-export-dropdown" in r_root.text
+    assert "modal-import" in r_root.text
+    assert "import-dropzone" in r_root.text
+    assert "modal-aml-trace" in r_root.text
+    assert "modal-path-trace" in r_root.text
+    assert "modal-bgp-trace" in r_root.text
+    assert "table-toolbar-tactical" in r_root.text
 
     r_dash = client.get("/dashboard")
     assert r_dash.status_code == 200
@@ -50,6 +57,12 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert ".graph-filter-drawer" in r_css.text
     assert ".account-category-cards" in r_css.text
     assert ".modal-category-tabs" in r_css.text
+    assert ".dropdown-menu" in r_css.text
+    assert ".import-dropzone" in r_css.text
+    assert ".table-toolbar-tactical" in r_css.text
+    assert ".row-expand-btn" in r_css.text
+    assert ".density-compact" in r_css.text
+    assert ".trace-timeline" in r_css.text
 
     r_js = client.get("/dashboard.js")
     assert r_js.status_code == 200
@@ -59,6 +72,14 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "selectModalCategory" in r_js.text
     assert "setTorProxyPreset" in r_js.text
     assert "filterAccountsByCategory" in r_js.text
+    assert "toggleExportMenu" in r_js.text
+    assert "openImportModal" in r_js.text
+    assert "initImportDropzone" in r_js.text
+    assert "setTableDensity" in r_js.text
+    assert "toggleRowDetail" in r_js.text
+    assert "traceAmlTransaction" in r_js.text
+    assert "openPathTracerModal" in r_js.text
+    assert "traceBgpRoute" in r_js.text
 
     r_worker = client.get("/bg-worker.js")
     assert r_worker.status_code == 200
@@ -308,3 +329,63 @@ def test_api_inbox_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     # 3. Validación de mensajes con token ausente
     r_no_token = client.get("/api/inbox/messages")
     assert r_no_token.status_code == 400
+
+
+def test_api_case_export_and_import(tmp_path: Path) -> None:
+    app = _create_test_app(tmp_path)
+    client = TestClient(app)
+
+    # 1. Crear un caso con entidad inicial
+    r_create = client.post("/api/cases", json={"case_id": "caso-test-export", "description": "Caso de prueba"})
+    assert r_create.status_code == 200
+    assert r_create.json()["ok"] is True
+
+    # 2. Probar exportación en todos los formatos soportados
+    for fmt in ("mtgx", "json", "csv", "graphml", "report_html", "report_md"):
+        r_exp = client.get(f"/api/cases/caso-test-export/export/{fmt}")
+        assert r_exp.status_code == 200, f"Fallo al exportar formato {fmt}"
+        assert len(r_exp.content) > 0
+        assert "Content-Disposition" in r_exp.headers
+
+    # 3. Probar importación creando una nueva investigación desde cero con CSV
+    csv_data = (
+        "source_type,source_value,relation,target_type,target_value,confidence\n"
+        "maltego.Domain,target.com,has_ip,maltego.IPv4Address,1.2.3.4,0.9\n"
+    )
+    r_imp_new = client.post(
+        "/api/cases/import",
+        files={"file": ("red-objetivo.csv", csv_data.encode("utf-8"), "text/csv")},
+        data={
+            "case_id": "caso-nuevo-desde-cero",
+            "description": "Investigación creada desde archivo",
+            "create_new": "true",
+        },
+    )
+    assert r_imp_new.status_code == 200
+    imp_data = r_imp_new.json()
+    assert imp_data["ok"] is True
+    assert imp_data["case_id"] == "caso-nuevo-desde-cero"
+    assert imp_data["entities"] == 2
+    assert imp_data["links"] == 1
+
+    # 4. Probar importación con JSON en el caso existente
+    json_data = (
+        '{"entities": [{"type": "maltego.EmailAddress", "value": "test@target.com", "confidence": 0.8}], '
+        '"edges": []}'
+    )
+    r_imp_json = client.post(
+        "/api/cases/import",
+        files={"file": ("entidades.json", json_data.encode("utf-8"), "application/json")},
+        data={"case_id": "caso-nuevo-desde-cero"},
+    )
+    assert r_imp_json.status_code == 200
+    assert r_imp_json.json()["ok"] is True
+    assert r_imp_json.json()["entities"] == 1
+
+    # 5. Comprobar que el grafo del caso tiene ahora las entidades importadas
+    r_graph = client.get("/api/cases/caso-nuevo-desde-cero/graph")
+    assert r_graph.status_code == 200
+    g_data = r_graph.json()
+    assert g_data["ok"] is True
+    assert len(g_data["nodes"]) == 3  # domain, ip, email
+    assert len(g_data["links"]) == 1

@@ -15,6 +15,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+import secrets
 import socket
 import time
 from collections.abc import AsyncIterator
@@ -41,7 +43,7 @@ from maltego_mcp.accounts import (
 from maltego_mcp.config import Settings
 from maltego_mcp.cti_feeds import _connect, ensure_seed_cti_db, sync_deepdark_cti
 from maltego_mcp.inbox import PROVIDER_CATALOG, MailTmClient
-from maltego_mcp.service import OsintService
+from maltego_mcp.service import IMPORT_SUFFIXES, OsintService
 
 logger = logging.getLogger("maltego_mcp.web")
 
@@ -529,7 +531,7 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         if not _check_host(request):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         cid = str(request.path_params.get("case_id") or "").strip()
-        fmt = str(request.path_params.get("format") or "mtgx").strip().lower()
+        fmt = str(request.path_params.get("format") or request.query_params.get("format") or "mtgx").strip().lower()
         if fmt not in ("mtgx", "json", "csv", "graphml", "report_md", "report_html"):
             return JSONResponse({"ok": False, "error": f"Formato no soportado: {fmt}"}, status_code=400)
         try:
@@ -540,10 +542,119 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
             elif fmt == "json":
                 media_type = "application/json"
             elif fmt == "csv":
-                media_type = "text/csv"
-            return FileResponse(path, filename=path.name, media_type=media_type)
+                media_type = "text/csv; charset=utf-8"
+            elif fmt == "graphml":
+                media_type = "application/xml"
+            elif fmt == "report_md":
+                media_type = "text/markdown; charset=utf-8"
+            elif fmt == "report_html":
+                media_type = "text/html; charset=utf-8"
+            return FileResponse(
+                path,
+                filename=path.name,
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+            )
         except Exception as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
+
+    async def api_import_case(request: Request) -> JSONResponse:
+        if not _check_host(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+
+        content_type = request.headers.get("content-type", "")
+        cid = ""
+        desc = ""
+        create_new = False
+        file_bytes: bytes = b""
+        filename = ""
+
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            upload = form.get("file")
+            cid = str(form.get("case_id") or "").strip()
+            desc = str(form.get("description") or "").strip()
+            create_new = str(form.get("create_new", "false")).lower() in ("true", "1", "yes")
+
+            if upload and hasattr(upload, "read"):
+                filename = Path(str(getattr(upload, "filename", "import_data.mtgx"))).name
+                file_bytes = await upload.read()
+            elif isinstance(upload, str):
+                filename = Path(upload).name
+        else:
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            cid = str(body.get("case_id") or "").strip()
+            desc = str(body.get("description") or "").strip()
+            create_new = bool(body.get("create_new", False))
+            filename = str(body.get("file_name") or body.get("filename") or "").strip()
+            raw_content = body.get("content")
+            if raw_content:
+                file_bytes = raw_content.encode("utf-8") if isinstance(raw_content, str) else bytes(raw_content)
+
+        if file_bytes:
+            safe_name = re.sub(r"[^\w\.-]", "_", filename or "import_data.mtgx")
+            if not any(safe_name.lower().endswith(sfx) for sfx in IMPORT_SUFFIXES):
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": f"Extensión no permitida. Formatos soportados: {', '.join(IMPORT_SUFFIXES)}",
+                    },
+                    status_code=400,
+                )
+            service.import_dir.mkdir(parents=True, exist_ok=True)
+            target_path = service.import_dir / safe_name
+            target_path.write_bytes(file_bytes)
+            filename = safe_name
+
+        if not filename:
+            return JSONResponse({"ok": False, "error": "Debes proporcionar un archivo para importar."}, status_code=400)
+
+        # Si no se especifica case_id o se solicitó explícitamente nueva investigación:
+        if not cid or create_new:
+            base_slug = re.sub(r"[^a-zA-Z0-9_-]", "-", Path(filename).stem).strip("-").lower()
+            cid = cid or f"caso-{base_slug or 'import'}"
+            cid = re.sub(r"[^a-zA-Z0-9_-]", "-", cid).strip("-")[:64]
+            if not cid:
+                cid = f"caso-{secrets.token_hex(4)}"
+
+        case_created = False
+        try:
+            summary = await service.case_summary(cid, top=1)
+            is_empty = summary.entity_count == 0 and summary.edge_count == 0
+        except Exception:
+            is_empty = True
+
+        if is_empty or create_new:
+            case_desc = desc or f"Caso importado desde {filename}"
+            try:
+                await service.create_case(cid, case_desc)
+                case_created = True
+                broadcast_event({"type": "case_created", "case_id": cid, "description": case_desc})
+            except Exception:
+                pass
+
+        try:
+            res = await service.import_graph(cid, filename)
+            broadcast_event({"type": "case_imported", "case_id": cid, "entities": res.entities, "links": res.links})
+            broadcast_event({"type": "pulse", "intensity": 0.8})
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "case_id": cid,
+                    "case_created": case_created,
+                    "filename": filename,
+                    "entities": res.entities,
+                    "new_entities": res.new_entities,
+                    "links": res.links,
+                    "steps": res.steps,
+                    "skipped": res.skipped,
+                }
+            )
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
 
     async def api_create_case(request: Request) -> JSONResponse:
         if not _check_host(request):
@@ -691,7 +802,9 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
     app.add_route("/api/cases", api_create_case, methods=["POST"])
     app.add_route("/api/cases/{case_id}", api_delete_case, methods=["DELETE"])
     app.add_route("/api/cases/{case_id}/graph", api_case_graph, methods=["GET"])
+    app.add_route("/api/cases/{case_id}/export", api_export_case, methods=["GET"])
     app.add_route("/api/cases/{case_id}/export/{format}", api_export_case, methods=["GET"])
+    app.add_route("/api/cases/import", api_import_case, methods=["POST"])
     app.add_route("/api/events", api_events, methods=["GET"])
 
     return app

@@ -436,6 +436,53 @@ def provider_response(host: str, path: str, params: dict[str, str], request: htt
         return httpx.Response(200, json={"classification": "benign", "name": "Google", "noise": False, "riot": True})
     if host == "api.tatum.io":
         return httpx.Response(200, json=[{"hash": "ab" * 32, "blockNumber": 1, "time": 1600000000}])
+    if host == "mempool.space":
+        if "/api/address/" in path and "/txs" in path:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "txid": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                        "status": {"confirmed": True, "block_height": 800000, "block_time": 1690000000},
+                        "vin": [
+                            {
+                                "prevout": {
+                                    "scriptpubkey_address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+                                    "value": 5000000,
+                                }
+                            },
+                            {
+                                "prevout": {
+                                    "scriptpubkey_address": "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
+                                    "value": 3000000,
+                                }
+                            },
+                        ],
+                        "vout": [
+                            {"scriptpubkey_address": "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", "value": 7500000},
+                            {"scriptpubkey_address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "value": 490000},
+                        ],
+                        "fee": 10000,
+                    }
+                ],
+            )
+        if "/api/tx/" in path:
+            return httpx.Response(
+                200,
+                json={
+                    "txid": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    "status": {"confirmed": True, "block_height": 800000, "block_time": 1690000000},
+                    "vin": [
+                        {"prevout": {"scriptpubkey_address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "value": 5000000}},
+                        {"prevout": {"scriptpubkey_address": "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", "value": 3000000}},
+                    ],
+                    "vout": [
+                        {"scriptpubkey_address": "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", "value": 7500000},
+                        {"scriptpubkey_address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "value": 490000},
+                    ],
+                    "fee": 10000,
+                },
+            )
     return httpx.Response(599, json={"error": f"host no simulado {host}{path}"})
 
 
@@ -788,3 +835,30 @@ async def test_urlhaus_transform(ctx: BuiltinContext) -> None:
     entities = [(e.entity_type, e.value, e.link_label) for e in res.entities]
     assert ("maltego.URL", "http://example.com/malware.exe", "malware_url") in entities
     assert any("[Threat] exe" in val for _, val, _ in entities)
+
+
+async def test_crypto_forensic_suite(ctx: BuiltinContext) -> None:
+    # 1. MempoolAddressToTransactions
+    txs_res = await run(ctx, "MempoolAddressToTransactions", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
+    assert any(t == "maltego.CryptocurrencyTransaction" for t, _, _ in txs_res)
+
+    # 2. MempoolTxToInputsOutputs
+    io_res = await run(
+        ctx, "MempoolTxToInputsOutputs", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
+    assert any(t == "maltego.CryptocurrencyAddress" for t, _, _ in io_res)
+
+    # 3. CryptoClusteringCIOH
+    cluster_res = await run(
+        ctx, "CryptoClusteringCIOH", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
+    assert any(t == "maltego.CryptoCluster" for t, _, _ in cluster_res)
+
+    # 4. OFACSanctionsCryptoLookup
+    ofac_res = await run(ctx, "OFACSanctionsCryptoLookup", "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b")
+    assert any(t == "maltego.MixerContract" for t, _, _ in ofac_res)
+
+    # 5. CryptoAddressToExchange
+    vasp_res = await run(ctx, "CryptoAddressToExchange", "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be")
+    assert any(t == "maltego.VASPExchange" for t, _, _ in vasp_res)
+    assert any(t == "maltego.Company" and "Binance" in val for t, val, _ in vasp_res)

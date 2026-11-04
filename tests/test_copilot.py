@@ -367,6 +367,10 @@ async def test_ontologia_por_categoria(svc: OsintService) -> None:
     assert {t["maltego_type"] for t in r["items"]} == {
         "maltego.CryptocurrencyAddress",
         "maltego.CryptocurrencyTransaction",
+        "maltego.CryptoCluster",
+        "maltego.MixerContract",
+        "maltego.VASPExchange",
+        "maltego.DeFiBridge",
     }
     port = (await js(svc, "osint_upsert_entity", {"case_id": "o1", "entity_type": "maltego.Port", "value": "443/tcp"}))[
         "entity"

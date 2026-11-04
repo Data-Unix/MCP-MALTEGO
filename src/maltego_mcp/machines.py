@@ -218,6 +218,28 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
         ),
         default_rounds=2,
     ),
+    Machine(
+        "CryptoFlowRecon",
+        "Investigacion criptoforense completa de direcciones y transacciones: flujo UTXO en mempool.space, "
+        "comprobacion de sanciones OFAC SDN / mixers, clustering por co-gasto (CIOH) "
+        "e identificacion de exchanges/VASPs.",
+        ("maltego.CryptocurrencyAddress", "maltego.CryptocurrencyTransaction", "maltego.CryptoCluster"),
+        (
+            (
+                "OFACSanctionsCryptoLookup",
+                "CryptoAddressToExchange",
+                "MempoolAddressToTransactions",
+                "MempoolTxToInputsOutputs",
+                "CryptoClusteringCIOH",
+            ),
+            (
+                "OFACSanctionsCryptoLookup",
+                "CryptoAddressToExchange",
+                "CryptoClusteringCIOH",
+            ),
+        ),
+        default_rounds=1,
+    ),
 )
 
 DEFAULT_MACHINE_BY_TYPE = {
@@ -233,6 +255,9 @@ DEFAULT_MACHINE_BY_TYPE = {
     "maltego.url": "URLRecon",
     "maltego.hash": "ThreatSweep",
     "maltego.as": "ASNToNetblocks",
+    "maltego.cryptocurrencyaddress": "CryptoFlowRecon",
+    "maltego.cryptocurrencytransaction": "CryptoFlowRecon",
+    "maltego.cryptocluster": "CryptoFlowRecon",
 }
 
 
