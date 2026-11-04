@@ -370,8 +370,7 @@ def test_api_case_export_and_import(tmp_path: Path) -> None:
 
     # 4. Probar importación con JSON en el caso existente
     json_data = (
-        '{"entities": [{"type": "maltego.EmailAddress", "value": "test@target.com", "confidence": 0.8}], '
-        '"edges": []}'
+        '{"entities": [{"type": "maltego.EmailAddress", "value": "test@target.com", "confidence": 0.8}], "edges": []}'
     )
     r_imp_json = client.post(
         "/api/cases/import",

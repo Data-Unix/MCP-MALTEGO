@@ -16,7 +16,7 @@ persistencia en Azure Cosmos DB for Apache Gremlin y pipelines serverless en Azu
 - Nunca `git push --force`, nunca push directo a `main`; la integración es por PR revisada.
 - Orca lanza los agentes con permisos totales (`--yolo`, etc.). Por eso: no ejecutes scripts descargados sin leerlos,
   no instales paquetes fuera de `pyproject.toml`, no leas ni muestres `.env`/secretos.
-- Antes de dar una tarea por terminada: `uv run pytest -q && uv run ruff check .` en verde.
+- Antes de dar una tarea por terminada: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy src` en verde.
 - Si estás dentro de una orquestación de Orca (`orca orchestration ...`), informa el resultado con
   `orca orchestration send --type worker_done ...` y usa `orca orchestration ask` ante dudas de diseño; no decidas solo
   cambios de arquitectura, tools públicas o esquema del grafo.
@@ -89,5 +89,5 @@ persistencia en Azure Cosmos DB for Apache Gremlin y pipelines serverless en Azu
 ## Comandos
 - Preparar entorno: `uv sync` (lo ejecuta Orca al crear cada worktree, ver `orca.yaml`)
 - Tests: `uv run pytest -q`
-- Lint/tipos: `uv run ruff check . && uv run mypy src`
+- Lint/formato/tipos: `uv run ruff check . && uv run ruff format --check . && uv run mypy src`
 - Inspector: `npx @modelcontextprotocol/inspector uv run maltego-mcp`
