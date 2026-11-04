@@ -424,6 +424,8 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
         tx_name = str(body.get("transform") or "").strip()
         val = str(body.get("value") or "").strip()
         etype = str(body.get("type") or "auto").strip()
+        cid = str(body.get("case_id") or "").strip()
+        save_results = bool(body.get("save", False)) and bool(cid)
 
         if not tx_name or not val:
             return JSONResponse({"ok": False, "error": "Faltan parámetros 'transform' y 'value'"}, status_code=400)
@@ -437,14 +439,29 @@ def attach_dashboard_routes(app: Starlette, service: OsintService, settings: Set
             etype = spec.input_types[0] if spec.input_types else "maltego.Phrase"
 
         try:
-            run = await service.run_transform("", tx_name, etype, val, [], 50, False)
+            run = await service.run_transform(cid if save_results else "", tx_name, etype, val, [], 50, save_results)
             broadcast_event({"type": "pulse", "intensity": 0.8})
-            broadcast_event({"type": "transform", "transform": tx_name, "target": val})
+            broadcast_event({"type": "transform", "transform": tx_name, "target": val, "case_id": cid})
             entities_out = [
-                {"type": r.entity.maltego_type, "value": r.entity.value, "label": r.edge_label} for r in run.results
+                {
+                    "type": r.entity.maltego_type,
+                    "value": r.entity.value,
+                    "label": r.edge_label,
+                    "weight": getattr(r.entity, "weight", 100),
+                    "properties": r.entity.properties,
+                }
+                for r in run.results
             ]
             msg = run.messages[0][1] if run.messages else ""
-            return JSONResponse({"ok": True, "entities": entities_out, "message": msg})
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "entities": entities_out,
+                    "message": msg,
+                    "case_id": cid,
+                    "saved": save_results,
+                }
+            )
         except Exception as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 

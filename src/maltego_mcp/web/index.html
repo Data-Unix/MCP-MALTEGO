@@ -902,38 +902,38 @@
                   <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
                   <select class="select select-sm module-case-select" id="crypto-case-select" onchange="onModuleCaseChanged('crypto', this.value)"></select>
                 </div>
-                <button class="btn btn-secondary btn-sm" onclick="runAmlMixerHeuristics()">
+                <button class="btn btn-secondary btn-sm" onclick="scanAmlCaseMixers()" title="Comprobar direcciones del caso activo contra la lista oficial OFAC SDN y contratos de mezcla">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                  Escanear Mixers & Saltos
+                  Escanear Mixers & OFAC
                 </button>
-                <button class="btn btn-primary btn-sm" onclick="promptAddCryptoTrace()">
+                <button class="btn btn-primary btn-sm" onclick="promptAddCryptoTrace()" title="Consultar e incorporar transacciones reales de una billetera o TXID">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                  Nueva Billetera / TXID
+                  Consultar On-Chain / TXID
                 </button>
               </div>
             </div>
 
-            <!-- Metricas AML -->
+            <!-- Metricas AML Calculadas Dinamicamente -->
             <div class="aml-stat-grid" style="margin-top:1rem;">
               <div class="aml-stat-box">
                 <div class="aml-stat-title">Saldo Total Rastreado</div>
-                <div class="aml-stat-val" id="aml-stat-volume">1,428,500.00 USDT</div>
-                <small style="color:var(--text-muted); font-size:11px;">Equivalente multired (TRC20 / ERC20)</small>
+                <div class="aml-stat-val" id="aml-stat-volume">0.00 BTC / 0.00 USDT</div>
+                <small style="color:var(--text-muted); font-size:11px;" id="aml-stat-volume-desc">Calculado desde entidades del caso activo</small>
               </div>
               <div class="aml-stat-box alert">
                 <div class="aml-stat-title">Exposicion a Mixers / Tumblers</div>
-                <div class="aml-stat-val" style="color:var(--accent-gold);" id="aml-stat-mixer">68.4% (ALTO)</div>
-                <small style="color:var(--text-muted); font-size:11px;">Contratos Tornado Cash 10 ETH detectados</small>
+                <div class="aml-stat-val" style="color:var(--accent-gold);" id="aml-stat-mixer">0.0% (Limpio)</div>
+                <small style="color:var(--text-muted); font-size:11px;" id="aml-stat-mixer-desc">Deteccion de smart contracts y protocolos de mezcla</small>
               </div>
               <div class="aml-stat-box">
-                <div class="aml-stat-title">Saltos de Peeling Chain</div>
-                <div class="aml-stat-val" id="aml-stat-hops">7 Saltos Heuristicos</div>
-                <small style="color:var(--text-muted); font-size:11px;">Descomposicion UTXO y retiros fijos</small>
+                <div class="aml-stat-title">Profundidad Forense (Saltos)</div>
+                <div class="aml-stat-val" id="aml-stat-hops">0 Saltos</div>
+                <small style="color:var(--text-muted); font-size:11px;" id="aml-stat-hops-desc">Profundidad del camino maximo en el grafo</small>
               </div>
               <div class="aml-stat-box">
-                <div class="aml-stat-title">Coincidencias OFAC / Sanctions</div>
-                <div class="aml-stat-val" style="color:var(--accent-crimson);" id="aml-stat-ofac">2 ALERTAS ACTIVAS</div>
-                <small style="color:var(--text-muted); font-size:11px;">Entidades de lista negra SDN</small>
+                <div class="aml-stat-title">Coincidencias OFAC / Sanciones</div>
+                <div class="aml-stat-val" style="color:var(--accent-crimson);" id="aml-stat-ofac">0 Coincidencias</div>
+                <small style="color:var(--text-muted); font-size:11px;" id="aml-stat-ofac-desc">Entidades verificadas en lista SDN del Tesoro EEUU</small>
               </div>
             </div>
 

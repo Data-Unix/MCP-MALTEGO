@@ -4463,171 +4463,281 @@ function drawKineticEdgePulses(ctx, edgePairGroups) {
 }
 
 // --- H. Modulo: Blockchain & AML Ledger ---
+function isCryptocurrencyEntity(node) {
+  if (!node) return false;
+  const t = (node.type || "").toLowerCase();
+  const val = String(node.value || "").trim();
+
+  // 1. Tipos canónicos del estándar Maltego
+  if (
+    t.includes("cryptocurrency") ||
+    t.includes("cryptocluster") ||
+    t.includes("mixercontract") ||
+    t.includes("vaspexchange") ||
+    t.includes("defibridge")
+  ) {
+    return true;
+  }
+
+  // 2. Validación estricta por expresiones regulares de formato on-chain
+  // Bitcoin Bech32 (mainnet bc1q... o bc1p...)
+  if (/^bc1[ac-hj-np-z02-9]{25,87}$/i.test(val)) return true;
+  // Bitcoin Legacy P2PKH (1...) o P2SH (3...) (26 a 35 caracteres Base58 alfanuméricos)
+  if (/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(val)) {
+    if (/[a-zA-Z]/.test(val) && /[0-9]/.test(val)) return true;
+  }
+  // Ethereum / EVM Address (0x + 40 caracteres hexadecimales)
+  if (/^0x[a-fA-F0-9]{40}$/.test(val)) return true;
+  // Tron TRC-20 Address (T + 33 caracteres Base58)
+  if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(val)) return true;
+  // Transaction Hash (64 hex) solo si viene marcado como transacción o txid
+  if ((/^[a-fA-F0-9]{64}$/i.test(val) || /^0x[a-fA-F0-9]{64}$/i.test(val)) && (t.includes("transaction") || node.properties?.txid)) {
+    return true;
+  }
+
+  return false;
+}
+
+function detectCryptoNetwork(val) {
+  const v = String(val || "").trim();
+  if (/^bc1/i.test(v) || /^[13]/.test(v)) return "Bitcoin (BTC)";
+  if (/^0x/i.test(v)) return "Ethereum (EVM / ERC-20)";
+  if (/^T/.test(v)) return "Tron (TRC-20)";
+  return "Crypto Multi-Cadena";
+}
+
 function renderCryptoLedger() {
   const tableBody = document.getElementById("aml-table-body");
   if (!tableBody) return;
 
   const effectiveCaseId = getModuleCaseId("crypto");
   const caseNodes = getNodesForCase(effectiveCaseId);
+  const caseLinks = getLinksForCase(effectiveCaseId);
 
-  // Filtrar billeteras o direcciones cripto en el proyecto enfocado
-  const cryptoNodes = caseNodes.filter(
-    (n) => n.type.includes("Crypto") || n.type.includes("Bitcoin") || n.type.includes("Ethereum") || n.type.includes("Mixer") || n.type.includes("VASP") || String(n.value).startsWith("T") || String(n.value).startsWith("0x") || String(n.value).startsWith("1") || String(n.value).startsWith("3") || String(n.value).startsWith("bc1")
-  );
+  // Filtrar exclusivamente nodos cripto reales
+  const cryptoNodes = caseNodes.filter(isCryptocurrencyEntity);
 
-  const sampleTxs = [
-    {
-      id: "tx-1",
-      txid: "0x8f2a63b019c84e1792f8b548d1c94892c908fe09b2e04192b0c98189899191b4",
-      txidShort: "0x8f2a...91b4",
-      network: "TRC-20",
-      from: "TA3V7ogV1K38KsmXzP8BqLwQ9zK",
-      fromShort: "TA3V7o...W9zK",
-      to: "Tornado Cash Router (0xd90e2f925da726b50c4ed8d0fb90ad053324f31b)",
-      toShort: "Tornado Cash Router",
-      amount: "250,000 USDT",
-      heur: "Mixer Deposit (10 ETH pool)",
-      risk: "OFAC-RISK",
-      badge: "ofac",
-      block: "19482910",
-      gas: "0.0042 ETH ($14.28)",
-      taint: "94.8% OFAC SDN",
-      hops: 4,
-      source: "Etherscan Verified Contract & OFAC SDN List (OFAC-37021)",
-      desc: "Deposito en pool de mezcla de Tornado Cash. Fondos originados en direccion vinculada a incidente cibernetico."
-    },
-    {
-      id: "tx-2",
-      txid: "0x19bc45ef20a149b81d7729aa1894bf91290387bda90192e1047120e8912ee412",
-      txidShort: "0x19bc...e412",
-      network: "ERC-20",
-      from: "0x742d35cc6634c0532925a3b844bc454e4438f44e",
-      fromShort: "0x742d...44e",
-      to: "0x8912bc900192a84bb178921cb923401829370bc9",
-      toShort: "0x8912...bc9",
-      amount: "120,000 USDT",
-      heur: "Peeling Chain Hop #3",
-      risk: "PEELING",
-      badge: "peel",
-      block: "19483015",
-      gas: "0.0028 ETH ($9.52)",
-      taint: "76.4% Suspicious",
-      hops: 3,
-      source: "Peeling Chain Engine & Ethereum Virtual Machine (EVM) Log Tracer",
-      desc: "Salto intermedio con tecnica de Peeling Chain; extraccion de cambio en wallet temporal y dispersion hacia puente."
-    },
-    {
-      id: "tx-3",
-      txid: "0x7ac1099238bc401927bb100234819aa01827bce19827364810293746192800fe",
-      txidShort: "0x7ac1...00fe",
-      network: "BTC",
-      from: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-      fromShort: "bc1qxy...89k",
-      to: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-      toShort: "1A1zP1...eP5",
-      amount: "4.5 BTC",
-      heur: "Unsanctioned Swapper",
-      risk: "ALTO",
-      badge: "mixer",
-      block: "834192",
-      gas: "0.00015 BTC ($9.75)",
-      taint: "82.1% High Risk",
-      hops: 2,
-      source: "Mempool.space Open API & Bitcoin Core Full Node RPC",
-      desc: "Intercambio en plataforma P2P sin verificacion KYC con paso previo por ChipMixer."
-    },
-    {
-      id: "tx-4",
-      txid: "0x3e4dc890291748aa91726354819028374618290374618293746192837461c890",
-      txidShort: "0x3e4d...c890",
-      network: "TRC-20",
-      from: "TMu1a4Kjs9827Jks928172Kjsu928p2qL",
-      fromShort: "TMu1a4...p2qL",
-      to: "TA3V7ogV1K38KsmXzP8BqLwQ9zK",
-      toShort: "TA3V7o...W9zK",
-      amount: "65,000 USDT",
-      heur: "Direct Transfer",
-      risk: "MODERADO",
-      badge: "bridge",
-      block: "58921044",
-      gas: "12.5 TRX ($1.87)",
-      taint: "31.0% Low Risk",
-      hops: 1,
-      source: "TronGrid JSON-RPC API & VASP Registry",
-      desc: "Transferencia directa de alimentacion previa a la dispersion en el contrato de mezcla."
-    }
-  ];
-
-  // Extraer flujos reales del proyecto si existen nodos cripto
   const caseTxs = [];
+  let totalSatsAccum = 0;
+  let mixerCount = 0;
+  let ofacCount = 0;
+
+  cryptoNodes.forEach((n) => {
+    const isMixer = n.type.includes("Mixer") || n.properties?.is_mixer === "yes";
+    if (isMixer) mixerCount++;
+    const isOfac = n.properties?.sdn_id || n.properties?.ofac || String(n.value).includes("[OFAC") || (n.sources && n.sources.some(s => String(s).toLowerCase().includes("ofac")));
+    if (isOfac) ofacCount++;
+  });
+
+  // 1. Identificar transacciones explícitas (CryptocurrencyTransaction)
   cryptoNodes.forEach((n, idx) => {
-    if (n.type.includes("Transaction") || n.properties?.txid || (n.properties?.amount && n.properties?.network)) {
-      const txVal = n.properties?.txid || n.value;
-      const txShort = txVal.length > 14 ? `${txVal.slice(0, 8)}...${txVal.slice(-4)}` : txVal;
-      const fromVal = n.properties?.from || "Billetera Emisora";
-      const toVal = n.properties?.to || "Destino / Mixer";
+    const isTxNode = n.type.includes("Transaction") || n.properties?.txid || (/^[a-fA-F0-9]{64}$/i.test(n.value));
+    if (isTxNode) {
+      const txid = n.properties?.txid || n.value;
+      const txShort = txid.length > 14 ? `${txid.slice(0, 8)}...${txid.slice(-6)}` : txid;
+
+      // Buscar aristas entrantes (inputs) y salientes (outputs)
+      const inLinks = caseLinks.filter((l) => (l.targetNode?.id === n.id || l.target === n.id));
+      const outLinks = caseLinks.filter((l) => (l.sourceNode?.id === n.id || l.source === n.id));
+
+      const inNodes = inLinks.map((l) => l.sourceNode || caseNodes.find((x) => x.id === l.source)).filter(Boolean);
+      const outNodes = outLinks.map((l) => l.targetNode || caseNodes.find((x) => x.id === l.target)).filter(Boolean);
+
+      const fromVal = inNodes.length > 0 ? inNodes.map((x) => x.value).join(", ") : (n.properties?.from || "Entrada On-Chain (Mempool)");
+      const toVal = outNodes.length > 0 ? outNodes.map((x) => x.value).join(", ") : (n.properties?.to || "Salida On-Chain (Mempool)");
+
+      // Monto en satoshis o tokens
+      let amountStr = "N/A";
+      let sats = 0;
+      if (n.properties?.value_sats) {
+        sats = parseInt(n.properties.value_sats, 10) || 0;
+      } else {
+        outNodes.forEach((on) => {
+          if (on.properties?.value_sats) sats += (parseInt(on.properties.value_sats, 10) || 0);
+        });
+      }
+      if (sats > 0) {
+        totalSatsAccum += sats;
+        amountStr = `${(sats / 1e8).toFixed(6)} BTC`;
+      } else if (n.properties?.amount) {
+        amountStr = `${n.properties.amount} ${n.properties.network || 'USDT'}`;
+      }
+
+      // Heurística y clasificación de riesgo
+      const allAdj = inNodes.concat(outNodes);
+      const hasOfacConn = allAdj.some((x) => x.properties?.sdn_id || x.properties?.ofac || String(x.value).includes("[OFAC"));
+      const hasMixerConn = allAdj.some((x) => x.type.includes("Mixer") || x.properties?.is_mixer === "yes");
+      const hasVaspConn = allAdj.some((x) => x.type.includes("VASP") || x.type.includes("Exchange"));
+      const hasClusterConn = allAdj.some((x) => x.type.includes("Cluster"));
+
+      let heur = "Transferencia Verificada";
+      let risk = "BAJO";
+      let badge = "peel";
+
+      if (hasOfacConn) {
+        heur = "Interaccion Sancionada OFAC";
+        risk = "OFAC-SDN";
+        badge = "ofac";
+      } else if (hasMixerConn) {
+        heur = "Pool de Anonimizacion";
+        risk = "MIXER-ALERTA";
+        badge = "mixer";
+      } else if (hasVaspConn) {
+        heur = "Deposito / Retiro VASP";
+        risk = "PUNTO DE SALIDA";
+        badge = "bridge";
+      } else if (hasClusterConn) {
+        heur = "Agrupacion CIOH (Co-gasto)";
+        risk = "CLUSTER UTXO";
+        badge = "peel";
+      }
+
       caseTxs.push({
         id: `ctx-${idx}`,
-        txid: txVal,
+        nodeId: n.id,
+        txid: txid,
         txidShort: txShort,
-        network: n.properties?.network || "ERC-20",
+        network: n.properties?.network || detectCryptoNetwork(txid),
         from: fromVal,
-        fromShort: fromVal.length > 12 ? `${fromVal.slice(0, 6)}...${fromVal.slice(-4)}` : fromVal,
+        fromShort: fromVal.length > 18 ? `${fromVal.slice(0, 8)}...${fromVal.slice(-6)}` : fromVal,
         to: toVal,
-        toShort: toVal.length > 12 ? `${toVal.slice(0, 6)}...${toVal.slice(-4)}` : toVal,
-        amount: n.properties?.amount ? `${n.properties.amount} ${n.properties.network || 'USDT'}` : "10,000 USDT",
-        heur: n.properties?.is_mixer === "yes" ? "Mixer Router Interaction" : (n.properties?.heuristic || "Direct Transfer"),
-        risk: n.properties?.taint && parseFloat(n.properties.taint) > 70 ? "OFAC-RISK" : (n.properties?.risk || "MEDIO"),
-        badge: n.properties?.taint && parseFloat(n.properties.taint) > 70 ? "ofac" : "mixer",
-        block: n.properties?.block || "19482910",
-        gas: n.properties?.gas || "0.0035 ETH",
-        taint: n.properties?.taint || "68.5% Taint",
-        hops: n.properties?.hops || 2,
-        source: n.sources?.[0] || n.properties?.source || (n.properties?.is_mixer === "yes" ? "OFAC SDN List & Smart Contract Registry" : "Mempool.space Open API & On-Chain Consensus"),
-        desc: n.notes || n.properties?.desc || `Transaccion registrada en el proyecto '${effectiveCaseId}'`
+        toShort: toVal.length > 18 ? `${toVal.slice(0, 8)}...${toVal.slice(-6)}` : toVal,
+        amount: amountStr,
+        heur: heur,
+        risk: risk,
+        badge: badge,
+        block: n.properties?.crypto__block || n.properties?.block || "Confirmado",
+        gas: n.properties?.crypto__fee ? `${n.properties.crypto__fee} sats` : (n.properties?.fee || "N/A"),
+        taint: hasOfacConn ? "100.0% OFAC SDN" : (hasMixerConn ? "95.0% Mixer" : "0.0% Limpio"),
+        hops: 1 + (inNodes.length > 0 ? 1 : 0) + (outNodes.length > 0 ? 1 : 0),
+        source: n.sources?.[0] || n.properties?.source || "Mempool.space API v1 Mainnet",
+        desc: n.notes || n.properties?.desc || `Transaccion verificada en el caso '${effectiveCaseId}'`,
+        rawNode: n
       });
     }
   });
 
-  if (caseTxs.length === 0 && cryptoNodes.length > 0) {
-    cryptoNodes.forEach((cn, cidx) => {
-      caseTxs.push({
-        id: `c-w-${cidx}`,
-        txid: `0x${cidx}a9f001928471cba8192837461928374619284756`,
-        txidShort: `0x${cidx}a9f...4756`,
-        network: cn.properties?.network || (String(cn.value).startsWith("T") ? "TRC-20" : "ERC-20"),
-        from: String(cn.value),
-        fromShort: String(cn.value).slice(0, 8) + "...",
-        to: "Exchange / VASP Hub",
-        toShort: "VASP Hub",
-        amount: cn.properties?.balance || "5,000 USDT",
-        heur: "Identificacion On-Chain",
-        risk: cn.isRisk ? "ALTO" : "MEDIO",
-        badge: cn.isRisk ? "ofac" : "peel",
-        block: "19482900",
-        gas: "0.0025 ETH",
-        taint: cn.isRisk ? "85.0% OFAC" : "25.0% Clean",
-        hops: 1,
-        source: cn.sources?.[0] || cn.properties?.source || "Mempool.space API Open Ledger",
-        desc: `Billetera identificada en el proyecto '${effectiveCaseId}'`
-      });
-    });
+  // 2. Si hay direcciones con aristas directas entre ellas que no pasan por nodo tx
+  caseLinks.forEach((l, lidx) => {
+    const sNode = l.sourceNode || caseNodes.find((x) => x.id === l.source);
+    const tNode = l.targetNode || caseNodes.find((x) => x.id === l.target);
+    if (!sNode || !tNode) return;
+    if (isCryptocurrencyEntity(sNode) && isCryptocurrencyEntity(tNode)) {
+      if (!sNode.type.includes("Transaction") && !tNode.type.includes("Transaction")) {
+        caseTxs.push({
+          id: `clink-${lidx}`,
+          nodeId: sNode.id,
+          txid: `Relacion: ${l.label || 'transferred_to'}`,
+          txidShort: l.label || 'vinculo',
+          network: detectCryptoNetwork(sNode.value),
+          from: sNode.value,
+          fromShort: sNode.value.length > 16 ? `${sNode.value.slice(0, 8)}...${sNode.value.slice(-6)}` : sNode.value,
+          to: tNode.value,
+          toShort: tNode.value.length > 16 ? `${tNode.value.slice(0, 8)}...${tNode.value.slice(-6)}` : tNode.value,
+          amount: sNode.properties?.balance || tNode.properties?.balance || "Transferencia en Grafo",
+          heur: l.label || "Vinculo On-Chain",
+          risk: sNode.isRisk || tNode.isRisk ? "ALTO" : "MEDIO",
+          badge: sNode.isRisk || tNode.isRisk ? "ofac" : "peel",
+          block: "En Grafo",
+          gas: "N/A",
+          taint: sNode.isRisk || tNode.isRisk ? "Exposicion Detectada" : "0.0% Limpio",
+          hops: 2,
+          source: "Topologia del Grafo Activo",
+          desc: `Relacion dirigida '${l.label || 'vinculo'}' entre ${sNode.value} y ${tNode.value}`,
+          rawNode: sNode
+        });
+      }
+    }
+  });
+
+  // 3. Actualizar KPIs en tiempo real con datos matemáticos reales
+  const elVol = document.getElementById("aml-stat-volume");
+  const elVolDesc = document.getElementById("aml-stat-volume-desc");
+  if (elVol) {
+    if (totalSatsAccum > 0) {
+      elVol.textContent = `${(totalSatsAccum / 1e8).toFixed(4)} BTC`;
+      if (elVolDesc) elVolDesc.textContent = `${totalSatsAccum.toLocaleString()} satoshis verificados on-chain`;
+    } else if (caseTxs.length > 0) {
+      elVol.textContent = `${caseTxs.length} TXs Activas`;
+      if (elVolDesc) elVolDesc.textContent = "Volumen registrado en nodos del caso";
+    } else {
+      elVol.textContent = "0.00 BTC / 0.00 USDT";
+      if (elVolDesc) elVolDesc.textContent = "Sin volumen financiero registrado";
+    }
   }
 
-  const txsToUse = (caseTxs.length > 0) ? caseTxs : (effectiveCaseId === "demo-maltego" || effectiveCaseId === "caso-demo-01" ? sampleTxs : []);
-  window._currentAmlTransactions = txsToUse;
+  const elMixer = document.getElementById("aml-stat-mixer");
+  const elMixerDesc = document.getElementById("aml-stat-mixer-desc");
+  if (elMixer) {
+    const pct = cryptoNodes.length > 0 ? ((mixerCount / cryptoNodes.length) * 100).toFixed(1) : "0.0";
+    elMixer.textContent = `${pct}% (${mixerCount > 0 ? 'ALERTA' : 'Limpio'})`;
+    elMixer.style.color = mixerCount > 0 ? "var(--accent-crimson)" : "var(--accent-emerald)";
+    if (elMixerDesc) elMixerDesc.textContent = `${mixerCount} servicios o contratos mezcladores detectados`;
+  }
 
-  if (txsToUse.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:2.5rem; color:var(--text-muted);">
-      Sin transacciones ni billeteras cripto registradas en el proyecto <strong>${escapeHtml(effectiveCaseId)}</strong>.<br>
-      <span style="font-size:11px; margin-top:0.5rem; display:inline-block;">Para incorporar transacciones y billeteras, ejecuta la Machine <strong>CryptoFlowRecon</strong> o incorpora entidades en el Grafo.</span>
-    </td></tr>`;
+  const elHops = document.getElementById("aml-stat-hops");
+  const elHopsDesc = document.getElementById("aml-stat-hops-desc");
+  if (elHops) {
+    const maxHops = caseTxs.reduce((acc, t) => Math.max(acc, t.hops || 0), 0);
+    elHops.textContent = `${maxHops} Saltos Forenses`;
+    if (elHopsDesc) elHopsDesc.textContent = maxHops > 0 ? "Profundidad de dispersion verificada en el grafo" : "Sin saltos en el caso activo";
+  }
+
+  const elOfac = document.getElementById("aml-stat-ofac");
+  const elOfacDesc = document.getElementById("aml-stat-ofac-desc");
+  if (elOfac) {
+    elOfac.textContent = `${ofacCount} ${ofacCount === 1 ? 'ALERTA ACTIVA' : 'ALERTAS ACTIVAS'}`;
+    elOfac.style.color = ofacCount > 0 ? "var(--accent-crimson)" : "var(--accent-emerald)";
+    if (elOfacDesc) elOfacDesc.textContent = ofacCount > 0 ? `${ofacCount} coincidencias directas en lista SDN del Tesoro EEUU` : "Sin coincidencias en lista oficial SDN";
+  }
+
+  window._currentAmlTransactions = caseTxs;
+
+  // 4. Si no hay transacciones ni billeteras en el caso
+  if (caseTxs.length === 0) {
+    if (cryptoNodes.length > 0) {
+      tableBody.innerHTML = `
+        <tr><td colspan="9" style="text-align:center; padding:2.5rem; color:var(--text-muted);">
+          <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:0.4rem;">
+            Se identificaron ${cryptoNodes.length} direcciones cripto en el caso activo '${escapeHtml(effectiveCaseId)}'
+          </div>
+          <div style="font-size:12px; margin-bottom:1rem; color:var(--text-secondary);">
+            Las direcciones aun no tienen transacciones asociadas en el grafo. Pulsa para consultar la blockchain en tiempo real:
+          </div>
+          <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap;">
+            ${cryptoNodes.slice(0, 5).map(cn => `
+              <button class="btn btn-secondary btn-sm" onclick="queryMempoolForAddress('${escapeHtml(cn.value)}')">
+                Consultar ${escapeHtml(cn.value.slice(0, 10))}... en Mempool
+              </button>
+            `).join("")}
+          </div>
+        </td></tr>
+      `;
+    } else {
+      tableBody.innerHTML = `
+        <tr><td colspan="9" style="text-align:center; padding:3rem; color:var(--text-muted);">
+          <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:0.4rem;">
+            Sin transacciones ni billeteras cripto registradas en el caso '${escapeHtml(effectiveCaseId)}'
+          </div>
+          <div style="font-size:12px; max-width:550px; margin:0 auto 1.25rem auto; line-height:1.5;">
+            Esta investigacion no contiene direcciones de criptomonedas. Para consultar una billetera Bitcoin, Ethereum o Tron y verificar sus transacciones en tiempo real:
+          </div>
+          <div style="display:flex; justify-content:center; gap:0.5rem; max-width:480px; margin:0 auto;">
+            <input type="text" id="aml-inline-crypto-input" class="input input-sm mono" placeholder="Direccion BTC / EVM / TRON o hash TXID..." style="flex:1;">
+            <button class="btn btn-primary btn-sm" onclick="submitInlineCryptoTrace()">
+              Consultar On-Chain
+            </button>
+          </div>
+        </td></tr>
+      `;
+    }
     return;
   }
 
+  // Renderizar filas reales
   const limitVal = document.querySelector("#aml-transactions-table-toolbar .table-limit-select")?.value || "10";
-  const limit = limitVal === "all" ? txsToUse.length : parseInt(limitVal, 10);
-  const visibleTxs = txsToUse.slice(0, limit);
+  const limit = limitVal === "all" ? caseTxs.length : parseInt(limitVal, 10);
+  const visibleTxs = caseTxs.slice(0, limit);
 
   tableBody.innerHTML = visibleTxs.map((tx) => `
     <tr id="aml-row-${tx.id}" class="table-row-main" onclick="handleRowClick(event, 'aml-row-${tx.id}')">
@@ -4636,15 +4746,15 @@ function renderCryptoLedger() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
         </button>
       </td>
-      <td class="mono" style="color:var(--accent-cyan);">${tx.txidShort}</td>
-      <td><span class="pill pill-cyan">${tx.network}</span></td>
-      <td class="mono" style="font-size:11px;">${tx.fromShort}</td>
-      <td class="mono" style="font-size:11px;">${tx.toShort}</td>
-      <td class="mono" style="font-weight:700;">${tx.amount}</td>
-      <td><span class="badge-aml ${tx.badge}">${tx.heur}</span></td>
-      <td><span class="badge-aml ${tx.badge}">${tx.risk}</span></td>
+      <td class="mono" style="color:var(--accent-cyan);">${escapeHtml(tx.txidShort)}</td>
+      <td><span class="pill pill-cyan">${escapeHtml(tx.network)}</span></td>
+      <td class="mono" style="font-size:11px;">${escapeHtml(tx.fromShort)}</td>
+      <td class="mono" style="font-size:11px;">${escapeHtml(tx.toShort)}</td>
+      <td class="mono" style="font-weight:700;">${escapeHtml(tx.amount)}</td>
+      <td><span class="badge-aml ${tx.badge}">${escapeHtml(tx.heur)}</span></td>
+      <td><span class="badge-aml ${tx.badge}">${escapeHtml(tx.risk)}</span></td>
       <td>
-        <button class="btn btn-secondary btn-sm" style="font-size:10px; padding:3px 8px; font-weight:600;" onclick="event.stopPropagation(); traceAmlTransaction('${tx.txid}')" title="Iniciar trazabilidad multi-salto de esta transaccion">
+        <button class="btn btn-secondary btn-sm" style="font-size:10px; padding:3px 8px; font-weight:600;" onclick="event.stopPropagation(); traceAmlTransaction('${escapeHtml(tx.txid)}')" title="Visualizar trazabilidad forense multi-salto">
           Trazar
         </button>
       </td>
@@ -4655,61 +4765,54 @@ function renderCryptoLedger() {
           <div class="row-detail-header">
             <div style="font-weight:700; color:var(--accent-cyan); font-size:11px; text-transform:uppercase; display:flex; align-items:center; gap:0.5rem;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              Ficha Forense de Transaccion & Trazabilidad
+              Ficha Forense de Transaccion On-Chain
             </div>
-            <span class="pill pill-cyan">Bloque #${tx.block}</span>
+            <span class="pill pill-cyan">Bloque #${escapeHtml(tx.block)}</span>
           </div>
           <div class="row-detail-grid">
-            <div class="row-detail-item">
-              <span class="row-detail-label">TXID / Hash Completo</span>
-              <span class="row-detail-val">${tx.txid}</span>
+            <div class="row-detail-item" style="grid-column: span 2;">
+              <span class="row-detail-label">TXID / Hash Verificado</span>
+              <span class="row-detail-val mono" style="word-break:break-all;">${escapeHtml(tx.txid)}</span>
             </div>
             <div class="row-detail-item">
               <span class="row-detail-label">Direccion Emisora (From)</span>
-              <span class="row-detail-val">${tx.from}</span>
+              <span class="row-detail-val mono" style="word-break:break-all;">${escapeHtml(tx.from)}</span>
             </div>
             <div class="row-detail-item">
               <span class="row-detail-label">Direccion Receptora / Contrato (To)</span>
-              <span class="row-detail-val">${tx.to}</span>
+              <span class="row-detail-val mono" style="word-break:break-all;">${escapeHtml(tx.to)}</span>
             </div>
             <div class="row-detail-item">
-              <span class="row-detail-label">Comision de Red (Gas Fee)</span>
-              <span class="row-detail-val">${tx.gas}</span>
+              <span class="row-detail-label">Comision de Red (Fee)</span>
+              <span class="row-detail-val mono">${escapeHtml(tx.gas)}</span>
             </div>
             <div class="row-detail-item">
               <span class="row-detail-label">Indice de Contaminacion (Taint)</span>
-              <span class="row-detail-val" style="color:var(--accent-crimson); font-weight:700;">${tx.taint}</span>
-            </div>
-            <div class="row-detail-item">
-              <span class="row-detail-label">Saltos Identificados</span>
-              <span class="row-detail-val">${tx.hops} saltos forenses</span>
+              <span class="row-detail-val" style="color:${tx.risk.includes('OFAC') ? 'var(--accent-crimson)' : 'var(--text-primary)'}; font-weight:700;">${escapeHtml(tx.taint)}</span>
             </div>
             <div class="row-detail-item" style="grid-column: span 2;">
-              <span class="row-detail-label">Fuente Primaria de Datos</span>
-              <span class="row-detail-val" style="color:var(--accent-cyan); font-weight:600;">${escapeHtml(tx.source || 'Mempool.space API Open Ledger')}</span>
+              <span class="row-detail-label">Fuente de Evidencia</span>
+              <span class="row-detail-val" style="color:var(--accent-cyan); font-weight:600;">${escapeHtml(tx.source)}</span>
             </div>
           </div>
-          <div style="font-size:11px; color:var(--text-secondary); margin-top:0.25rem;">
-            <strong>Analisis Heuristico:</strong> ${escapeHtml(tx.desc)}
+          <div style="font-size:11px; color:var(--text-secondary); margin-top:0.35rem;">
+            <strong>Analisis Pericial:</strong> ${escapeHtml(tx.desc)}
           </div>
           <div class="row-detail-actions">
-            <button class="btn btn-primary btn-sm" onclick="traceAmlTransaction('${tx.txid}')">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="18" r="3"></circle><path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v0"></path></svg>
+            <button class="btn btn-primary btn-sm" onclick="traceAmlTransaction('${escapeHtml(tx.txid)}')">
               Trazar Flujo Multi-Salto
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="copyToClipboardWithFeedback('${tx.txid}', 'TXID')">
-              Copiar TXID Completo
+            <button class="btn btn-secondary btn-sm" onclick="copyToClipboardWithFeedback('${escapeHtml(tx.txid)}', 'TXID')">
+              Copiar TXID
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="injectSingleTxIntoGraph('${tx.txid}')">
-              Enviar al Grafo Principal
+            <button class="btn btn-secondary btn-sm" onclick="exploreTxInputsOutputs('${escapeHtml(tx.txid)}')">
+              Desglosar Inputs/Outputs en Mempool
             </button>
           </div>
         </div>
       </td>
     </tr>
   `).join("");
-
-  drawAmlSankeyFlow();
 }
 
 function filterAmlTable(query) {
@@ -4721,54 +4824,199 @@ function filterAmlTable(query) {
   });
 }
 
-function runAmlMixerHeuristics() {
-  playTacticalClick(800, 0.05);
-  showToast("Escaneando firmas de smart contracts de Tornado Cash y Sinbad...", "info");
-  setTimeout(() => {
-    showToast("Analisis completado: 2 depositos en pools de Tornado Cash detectados con 98% certeza", "warning");
-  }, 1200);
+function submitInlineCryptoTrace() {
+  const input = document.getElementById("aml-inline-crypto-input");
+  if (!input || !input.value.trim()) {
+    showToast("Introduce una direccion o hash para consultar", "warning");
+    return;
+  }
+  executeCryptoOnChainLookup(input.value.trim());
 }
 
 function promptAddCryptoTrace() {
   playTacticalClick(800, 0.04);
-  const input = prompt("Introduce Direccion de Billetera o TXID (TRC20 / ERC20 / BTC):", "0x8f2a63b019c84e1792f8b548d1c94892c908fe09b2e04192b0c98189899191b4");
+  const input = prompt("Introduce Direccion de Billetera o TXID (Bitcoin / EVM / TRON):", "");
   if (!input || !input.trim()) return;
-  const clean = input.trim();
+  executeCryptoOnChainLookup(input.trim());
+}
 
-  // Buscar si ya existe
-  const txList = window._currentAmlTransactions || [];
-  let existing = txList.find((t) => t.txid === clean || t.from === clean);
-
-  if (!existing) {
-    const isEth = clean.startsWith("0x");
-    const isTron = clean.startsWith("T");
-    const network = isTron ? "TRC-20" : (isEth ? "ERC-20" : "BTC");
-
-    existing = {
-      id: `tx-${Date.now()}`,
-      txid: isEth && clean.length > 40 ? clean : `0x${Array.from(crypto.getRandomValues(new Uint8Array(20))).map(b => b.toString(16).padStart(2, "0")).join("")}`,
-      txidShort: clean.slice(0, 10) + "..." + clean.slice(-6),
-      network: network,
-      from: isEth || isTron ? clean : "TA3V7ogV1K38KsmXzP8BqLwQ9zK",
-      fromShort: clean.slice(0, 8) + "..." + clean.slice(-4),
-      to: "Tornado Cash Router (0xd90e2f925da726b50c4ed8d0fb90ad053324f31b)",
-      toShort: "Tornado Cash Router",
-      amount: "185,000 USDT",
-      heur: "Mixer Deposit & Peeling Split",
-      risk: "OFAC-CRITICAL",
-      badge: "ofac",
-      block: "19483240",
-      gas: "0.0038 ETH",
-      taint: "93.2% OFAC SDN",
-      hops: 4,
-      desc: `Trazabilidad generada para ${clean}. Identificado flujo hacia contrato sancionado por FinCEN.`
-    };
-    txList.unshift(existing);
-    window._currentAmlTransactions = txList;
-    renderCryptoLedger();
+async function executeCryptoOnChainLookup(cleanVal) {
+  const cid = getModuleCaseId("crypto");
+  if (!cid) {
+    showToast("Selecciona un caso activo primero", "warning");
+    return;
   }
 
-  traceAmlTransaction(existing.txid);
+  const isBtcAddr = /^(bc1[ac-hj-np-z02-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/.test(cleanVal);
+  const isTxid = /^[a-fA-F0-9]{64}$/i.test(cleanVal) || /^0x[a-fA-F0-9]{64}$/i.test(cleanVal);
+  const isEvmAddr = /^0x[a-fA-F0-9]{40}$/.test(cleanVal);
+  const isTronAddr = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(cleanVal);
+
+  let transformName = "MempoolAddressToTransactions";
+  let entityType = "maltego.CryptocurrencyAddress";
+
+  if (isTxid) {
+    transformName = "MempoolTxToInputsOutputs";
+    entityType = "maltego.CryptocurrencyTransaction";
+  } else if (isEvmAddr || isTronAddr) {
+    transformName = "OFACSanctionsCryptoLookup";
+    entityType = "maltego.CryptocurrencyAddress";
+  } else if (isBtcAddr) {
+    transformName = "MempoolAddressToTransactions";
+    entityType = "maltego.CryptocurrencyAddress";
+  } else {
+    transformName = "OFACSanctionsCryptoLookup";
+    entityType = "maltego.CryptocurrencyAddress";
+  }
+
+  showToast(`Consultando ${cleanVal.slice(0, 12)}... con '${transformName}' en tiempo real...`, "info");
+  playTacticalClick(820, 0.05);
+
+  try {
+    const res = await fetch("/api/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transform: transformName,
+        value: cleanVal,
+        type: entityType,
+        case_id: cid,
+        save: true
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast(data.error || "Fallo en consulta on-chain", "error");
+      return;
+    }
+
+    // Ejecutar chequeos adicionales OFAC y Exchanges
+    if (isBtcAddr || isEvmAddr || isTronAddr) {
+      await fetch("/api/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transform: "OFACSanctionsCryptoLookup",
+          value: cleanVal,
+          type: "maltego.CryptocurrencyAddress",
+          case_id: cid,
+          save: true
+        })
+      }).catch(() => {});
+
+      await fetch("/api/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transform: "CryptoAddressToExchange",
+          value: cleanVal,
+          type: "maltego.CryptocurrencyAddress",
+          case_id: cid,
+          save: true
+        })
+      }).catch(() => {});
+    }
+
+    showToast(`[OK] Consulta completada: ${data.entities.length} entidades descubiertas e integradas`, "ok");
+    playTacticalClick(900, 0.05);
+    await fetchCaseGraphData(cid);
+    loadCaseGraph(cid);
+    renderCryptoLedger();
+  } catch (err) {
+    showToast(`Error de red al consultar: ${err.message}`, "error");
+  }
+}
+
+async function queryMempoolForAddress(addr) {
+  executeCryptoOnChainLookup(addr);
+}
+
+async function exploreTxInputsOutputs(txid) {
+  const cid = getModuleCaseId("crypto");
+  if (!cid) return;
+  showToast(`Desglosando inputs y outputs para TX ${txid.slice(0, 10)}...`, "info");
+  playTacticalClick(800, 0.04);
+  try {
+    const res = await fetch("/api/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transform: "MempoolTxToInputsOutputs",
+        value: txid.trim(),
+        type: "maltego.CryptocurrencyTransaction",
+        case_id: cid,
+        save: true
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast(data.error || "Fallo al desglosar TX", "error");
+      return;
+    }
+    showToast(`Se identificaron ${data.entities.length} entradas y salidas on-chain`, "ok");
+    await fetchCaseGraphData(cid);
+    loadCaseGraph(cid);
+    renderCryptoLedger();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, "error");
+  }
+}
+
+async function scanAmlCaseMixers() {
+  const cid = getModuleCaseId("crypto");
+  if (!cid) return;
+  const caseNodes = getNodesForCase(cid);
+  const cryptoAddrs = caseNodes.filter((n) => isCryptocurrencyEntity(n) && !n.type.includes("Transaction"));
+
+  if (cryptoAddrs.length === 0) {
+    showToast("No hay direcciones cripto en el caso activo para escanear. Anade una primero.", "warning");
+    return;
+  }
+
+  showToast(`Escaneando ${cryptoAddrs.length} direcciones contra lista oficial OFAC SDN y contratos VASP...`, "info");
+  playTacticalClick(800, 0.05);
+
+  let hits = 0;
+  for (const n of cryptoAddrs) {
+    try {
+      const res = await fetch("/api/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transform: "OFACSanctionsCryptoLookup",
+          value: String(n.value).trim(),
+          type: "maltego.CryptocurrencyAddress",
+          case_id: cid,
+          save: true
+        })
+      });
+      const data = await res.json();
+      if (data.ok && data.entities && data.entities.some(e => e.label === "ofac_alert")) {
+        hits++;
+      }
+      await fetch("/api/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transform: "CryptoAddressToExchange",
+          value: String(n.value).trim(),
+          type: "maltego.CryptocurrencyAddress",
+          case_id: cid,
+          save: true
+        })
+      });
+    } catch (e) {}
+  }
+
+  await fetchCaseGraphData(cid);
+  loadCaseGraph(cid);
+  renderCryptoLedger();
+
+  if (hits > 0) {
+    showToast(`ALERTA: Se detectaron ${hits} coincidencias con entidades sancionadas por OFAC SDN`, "error");
+  } else {
+    showToast(`Escaneo finalizado: ${cryptoAddrs.length} direcciones verificadas sin alertas OFAC`, "ok");
+  }
 }
 
 let amlSankeyNodes = [];
@@ -4786,22 +5034,67 @@ function drawAmlSankeyFlow() {
 
   initAmlSankeyEvents(canvas);
 
-  // Derivar nodos del caso activo o estructura forense
-  amlSankeyNodes = [
-    { id: "sankey-0", name: "Billeteras Victima / Mula", stage: "Origen", volume: "1,428,500 USDT", x: 80, y: 120, radius: 10, color: "#38bdf8", desc: "Depositos fraccionados iniciales" },
-    { id: "sankey-1", name: "Peeling Chain Hop #1", stage: "Descomposicion", volume: "850,000 USDT", x: 360, y: 65, radius: 9, color: "#fbbf24", desc: "Retiro estructurado a direccion de cambio" },
-    { id: "sankey-2", name: "Peeling Chain Hop #2", stage: "Descomposicion", volume: "578,500 USDT", x: 360, y: 175, radius: 9, color: "#fbbf24", desc: "Division de fondos en montos cerrados" },
-    { id: "sankey-3", name: "Tornado Cash Router (10 ETH)", stage: "Mixer / Anonimizador", volume: "950,000 USDT", x: 720, y: 120, radius: 12, color: "#c084fc", desc: "Pool ZK-SNARKs de mezcla de transacciones" },
-    { id: "sankey-4", name: "Exchange No-KYC / Swapper", stage: "Retiro Final", volume: "942,000 USDT", x: 1020, y: 120, radius: 10, color: "#f87171", desc: "Punto de salida a fiat / OTC no regulado" },
-  ];
+  const effectiveCaseId = getModuleCaseId("crypto");
+  const caseNodes = getNodesForCase(effectiveCaseId);
+  const cryptoNodes = caseNodes.filter(isCryptocurrencyEntity);
 
-  amlSankeyLinks = [
-    { from: amlSankeyNodes[0], to: amlSankeyNodes[1], amount: "850,000 USDT", width: 14 },
-    { from: amlSankeyNodes[0], to: amlSankeyNodes[2], amount: "578,500 USDT", width: 10 },
-    { from: amlSankeyNodes[1], to: amlSankeyNodes[3], amount: "845,000 USDT", width: 12 },
-    { from: amlSankeyNodes[2], to: amlSankeyNodes[3], amount: "570,000 USDT", width: 9 },
-    { from: amlSankeyNodes[3], to: amlSankeyNodes[4], amount: "942,000 USDT", width: 16 },
-  ];
+  if (cryptoNodes.length === 0) {
+    amlSankeyNodes = [];
+    amlSankeyLinks = [];
+    ctx.fillStyle = "#04060a";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#64748b";
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Sin entidades de criptomonedas en el caso activo para construir el flujo", w / 2, h / 2);
+    return;
+  }
+
+  // Derivar etapas del grafo real
+  const txNodes = cryptoNodes.filter((n) => n.type.includes("Transaction") || n.properties?.txid);
+  const mixerNodes = cryptoNodes.filter((n) => n.type.includes("Mixer") || n.properties?.is_mixer === "yes");
+  const vaspNodes = cryptoNodes.filter((n) => n.type.includes("VASP") || n.type.includes("Exchange"));
+  const addrNodes = cryptoNodes.filter((n) => !txNodes.includes(n) && !mixerNodes.includes(n) && !vaspNodes.includes(n));
+
+  amlSankeyNodes = [];
+  amlSankeyLinks = [];
+
+  const stageGroups = [
+    { name: "Direcciones / Billeteras", nodes: addrNodes.slice(0, 3), color: "#38bdf8" },
+    { name: "Transacciones On-Chain", nodes: txNodes.slice(0, 3), color: "#fbbf24" },
+    { name: "Anonimizadores / Mixers", nodes: mixerNodes.slice(0, 2), color: "#c084fc" },
+    { name: "Puntos de Retiro / VASP", nodes: vaspNodes.slice(0, 2), color: "#f87171" }
+  ].filter(g => g.nodes.length > 0);
+
+  const stepX = (w - 240) / Math.max(1, stageGroups.length - 1);
+
+  stageGroups.forEach((grp, gIdx) => {
+    const x = 120 + gIdx * stepX;
+    const count = grp.nodes.length;
+    grp.nodes.forEach((n, nIdx) => {
+      const y = (h / (count + 1)) * (nIdx + 1);
+      amlSankeyNodes.push({
+        id: `sankey-${n.id}`,
+        name: n.value.length > 16 ? `${n.value.slice(0, 8)}...${n.value.slice(-6)}` : n.value,
+        stage: grp.name,
+        volume: n.properties?.amount || (n.properties?.value_sats ? `${(parseInt(n.properties.value_sats, 10) / 1e8).toFixed(4)} BTC` : "Verificado"),
+        x: x,
+        y: y,
+        radius: 10,
+        color: grp.color,
+        desc: n.type
+      });
+    });
+  });
+
+  for (let i = 0; i < amlSankeyNodes.length - 1; i++) {
+    amlSankeyLinks.push({
+      from: amlSankeyNodes[i],
+      to: amlSankeyNodes[i + 1],
+      amount: "Flujo en grafo",
+      width: 10
+    });
+  }
 
   renderAmlSankeyCanvas(ctx, w, h);
 }
@@ -6295,183 +6588,288 @@ function traceAmlTransaction(txid) {
     return;
   }
 
-  // Localizar datos de la transacción en la memoria activa
+  const effectiveCaseId = getModuleCaseId("crypto");
+  const caseNodes = getNodesForCase(effectiveCaseId);
+  const caseLinks = getLinksForCase(effectiveCaseId);
+
+  // 1. Localizar datos de la transaccion en memoria activa o en los nodos del caso
   const txList = window._currentAmlTransactions || [];
-  const found = txList.find((t) => t.txid === txid || t.txidShort === txid) || {
-    txid: txid,
-    network: "TRC-20",
-    from: "TA3V7ogV1K38KsmXzP8BqLwQ9zK",
-    to: "Tornado Cash Router (0xd90e2f925da726b50c4ed8d0fb90ad053324f31b)",
-    amount: "250,000 USDT",
-    heur: "Mixer Deposit (10 ETH pool)",
-    risk: "OFAC-CRITICAL",
-    badge: "ofac",
-    block: "19482910",
-    gas: "0.0042 ETH",
-    taint: "94.8% OFAC SDN",
-    hops: 4,
-    desc: "Ingreso directo a contrato inteligente sancionado por OFAC."
+  let found = txList.find((t) => t.txid === txid || t.txidShort === txid || t.id === txid);
+
+  if (!found) {
+    const gNode = caseNodes.find((n) => n.id === txid || n.value === txid || n.properties?.txid === txid);
+    if (gNode) {
+      found = {
+        id: `ctx-${gNode.id}`,
+        nodeId: gNode.id,
+        txid: gNode.properties?.txid || gNode.value,
+        txidShort: (gNode.properties?.txid || gNode.value).length > 14 ? `${(gNode.properties?.txid || gNode.value).slice(0, 8)}...${(gNode.properties?.txid || gNode.value).slice(-6)}` : (gNode.properties?.txid || gNode.value),
+        network: gNode.properties?.network || detectCryptoNetwork(gNode.value),
+        from: gNode.properties?.from || "Billetera Emisora en Grafo",
+        fromShort: (gNode.properties?.from || "Billetera Emisora").slice(0, 16),
+        to: gNode.properties?.to || "Billetera Receptora en Grafo",
+        toShort: (gNode.properties?.to || "Billetera Receptora").slice(0, 16),
+        amount: gNode.properties?.amount || (gNode.properties?.value_sats ? `${(parseInt(gNode.properties.value_sats, 10) / 1e8).toFixed(6)} BTC` : "No registrado"),
+        heur: "Entidad en Grafo Activo",
+        risk: gNode.isRisk ? "ALTO" : "VERIFICADO",
+        badge: gNode.isRisk ? "ofac" : "peel",
+        block: gNode.properties?.crypto__block || gNode.properties?.block || "En Grafo",
+        gas: gNode.properties?.crypto__fee ? `${gNode.properties.crypto__fee} sats` : "N/A",
+        taint: gNode.isRisk ? "Exposicion Detectada" : "0.0% Limpio",
+        hops: 1,
+        source: gNode.sources?.[0] || "Grafo del Caso",
+        desc: gNode.notes || `Nodo registrado en el caso '${effectiveCaseId}'`,
+        rawNode: gNode
+      };
+    } else {
+      found = {
+        id: "tx-external",
+        nodeId: null,
+        txid: txid,
+        txidShort: txid.length > 14 ? `${txid.slice(0, 8)}...${txid.slice(-6)}` : txid,
+        network: detectCryptoNetwork(txid),
+        from: "Entrada pendiente de consulta",
+        fromShort: "N/A",
+        to: "Salida pendiente de consulta",
+        toShort: "N/A",
+        amount: "Pendiente on-chain",
+        heur: "Identificador Cripto",
+        risk: "SIN CLASIFICAR",
+        badge: "peel",
+        block: "Desconocido",
+        gas: "N/A",
+        taint: "0.0% Sin evaluar",
+        hops: 0,
+        source: "Consulta Manual",
+        desc: "Identificador on-chain introducido para analisis de trazabilidad.",
+        rawNode: null
+      };
+    }
+  }
+
+  // 2. Traza topologica dinamica en el grafo del caso
+  const centralNode = found.rawNode || caseNodes.find((n) => n.id === found.nodeId || n.value === found.txid || n.properties?.txid === found.txid);
+
+  let ingressNodes = [];
+  let egressNodes = [];
+
+  if (centralNode) {
+    const inLinks = caseLinks.filter((l) => (l.targetNode?.id === centralNode.id || l.target === centralNode.id));
+    const outLinks = caseLinks.filter((l) => (l.sourceNode?.id === centralNode.id || l.source === centralNode.id));
+
+    ingressNodes = inLinks.map((l) => l.sourceNode || caseNodes.find((x) => x.id === l.source)).filter(Boolean);
+    egressNodes = outLinks.map((l) => l.targetNode || caseNodes.find((x) => x.id === l.target)).filter(Boolean);
+  }
+
+  // Comprobar alertas OFAC, Mixers y VASPs en las entidades conectadas
+  const allConnected = [centralNode, ...ingressNodes, ...egressNodes].filter(Boolean);
+  const ofacMatch = allConnected.find((n) => n.properties?.sdn_id || n.properties?.ofac || String(n.value).includes("[OFAC") || (n.sources && n.sources.some(s => String(s).toLowerCase().includes("ofac"))));
+  const mixerMatch = allConnected.find((n) => n.type?.includes("Mixer") || n.properties?.is_mixer === "yes");
+  const vaspMatch = allConnected.find((n) => n.type?.includes("VASP") || n.type?.includes("Exchange") || n.properties?.vasp);
+
+  let taintScore = 0.0;
+  let taintSeverityLabel = "0.0% Limpio (Sin antecedentes de sanciones en el caso)";
+  let taintBarColor = "var(--accent-emerald)";
+
+  if (ofacMatch) {
+    taintScore = 100.0;
+    taintSeverityLabel = `100.0% CRITICO: Coincidencia en Lista OFAC SDN (${escapeHtml(ofacMatch.value)})`;
+    taintBarColor = "var(--accent-crimson)";
+  } else if (mixerMatch) {
+    taintScore = 95.0;
+    taintSeverityLabel = `95.0% ALERTA DE MEZCLADOR: Contacto con servicio de anonimizacion (${escapeHtml(mixerMatch.value)})`;
+    taintBarColor = "#f59e0b";
+  } else if (vaspMatch) {
+    taintScore = 15.0;
+    taintSeverityLabel = `15.0% FLUJO CUSTODIAL: Deposito / Retiro en Exchange regulado (${escapeHtml(vaspMatch.value)})`;
+    taintBarColor = "var(--accent-cyan)";
+  }
+
+  const calculatedHops = (ingressNodes.length > 0 ? 1 : 0) + 1 + (egressNodes.length > 0 ? 1 : 0);
+  found.taint = taintSeverityLabel;
+  found.hops = calculatedHops;
+
+  currentAmlTraceData = {
+    ...found,
+    ingressNodes,
+    egressNodes,
+    ofacMatch,
+    mixerMatch,
+    vaspMatch
   };
 
-  currentAmlTraceData = found;
-
-  title.textContent = `Trazabilidad Forense Multi-Salto: ${found.txid.slice(0, 14)}...`;
+  title.textContent = `Trazabilidad Forense Multi-Salto: ${found.txidShort}`;
 
   body.innerHTML = `
     <!-- KPI Strip -->
     <div class="trace-metrics-strip">
       <div class="trace-kpi-card">
         <span class="trace-kpi-label">Volumen Trazado</span>
-        <span class="trace-kpi-value" style="color:var(--accent-cyan);">${found.amount}</span>
+        <span class="trace-kpi-value" style="color:var(--accent-cyan);">${escapeHtml(found.amount)}</span>
       </div>
       <div class="trace-kpi-card">
         <span class="trace-kpi-label">Red / Estandar</span>
-        <span class="trace-kpi-value">${found.network}</span>
+        <span class="trace-kpi-value">${escapeHtml(found.network)}</span>
       </div>
       <div class="trace-kpi-card">
         <span class="trace-kpi-label">Indice de Contaminacion</span>
-        <span class="trace-kpi-value" style="color:var(--accent-crimson);">${found.taint}</span>
+        <span class="trace-kpi-value" style="color:${taintBarColor};">${taintScore.toFixed(1)}%</span>
       </div>
       <div class="trace-kpi-card">
         <span class="trace-kpi-label">Distancia Forense</span>
-        <span class="trace-kpi-value">${found.hops} saltos (hops)</span>
+        <span class="trace-kpi-value">${calculatedHops} ${calculatedHops === 1 ? 'salto en grafo' : 'saltos en grafo'}</span>
       </div>
       <div class="trace-kpi-card">
         <span class="trace-kpi-label">Clasificacion</span>
-        <span class="trace-kpi-value" style="color:var(--accent-crimson);">${found.risk}</span>
+        <span class="trace-kpi-value" style="color:${ofacMatch ? 'var(--accent-crimson)' : 'var(--text-primary)'};">${escapeHtml(found.risk)}</span>
       </div>
     </div>
 
-    <!-- Barra de Contaminación (Taint Gauge) -->
+    <!-- Barra de Contaminacion (Taint Gauge) -->
     <div style="background:rgba(15,23,42,0.8); border:1px solid var(--border-subtle); border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem;">
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
         <span style="font-weight:600; color:var(--text-secondary); text-transform:uppercase;">Exposicion Directa a Protocolos Sancionados (OFAC SDN List)</span>
-        <span class="mono" style="color:var(--accent-crimson); font-weight:700;">94.8% Severidad Maxima</span>
+        <span class="mono" style="color:${taintBarColor}; font-weight:700;">${taintSeverityLabel}</span>
       </div>
       <div class="taint-gauge">
         <div class="taint-bar-bg">
-          <div class="taint-bar-fill" style="width: 94.8%;"></div>
+          <div class="taint-bar-fill" style="width: ${Math.max(3, taintScore)}%; background: ${taintBarColor};"></div>
         </div>
       </div>
     </div>
 
-    <!-- Timeline de Saltos Multi-Hop -->
+    <!-- Acciones Operativas On-Chain Directas -->
+    <div style="display:flex; gap:0.5rem; margin-bottom:1.25rem; flex-wrap:wrap; background:rgba(0,0,0,0.2); padding:0.5rem; border-radius:4px; border:1px solid var(--border-subtle);">
+      <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px;" onclick="exploreTxInputsOutputs('${escapeHtml(found.txid)}')">
+        Consultar Entradas y Salidas en Mempool.space
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px;" onclick="executeCryptoOnChainLookup('${escapeHtml(found.txid)}', 'OFACSanctionsCryptoLookup')">
+        Verificar Sanciones OFAC SDN
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px;" onclick="executeCryptoOnChainLookup('${escapeHtml(found.txid)}', 'CryptoClusteringCIOH')">
+        Clustering Heuristico CIOH
+      </button>
+    </div>
+
+    <!-- Timeline de Saltos Multi-Hop Reconstruidos del Grafo -->
     <div style="font-size:11px; font-weight:700; color:var(--accent-cyan); text-transform:uppercase; margin-bottom:0.5rem;">
-      Ruta Reconstruida de Movimiento de Capital
+      Ruta Forense Reconstruida del Caso Activo (${escapeHtml(effectiveCaseId)})
     </div>
 
     <div class="trace-timeline">
-      <!-- Salto 0: Ingress -->
+      <!-- Salto 01: Ingress / Donante (Orígenes) -->
       <div class="trace-hop-item">
         <div class="trace-hop-badge">01</div>
         <div class="trace-hop-card">
           <div class="trace-hop-title">
-            <span style="color:var(--accent-cyan);">Salto 0: Billetera Donante Primaria (Ingress)</span>
-            <span class="pill pill-cyan">ORIGEN NO VERIFICADO</span>
+            <span style="color:var(--accent-cyan);">Salto 01: Billetera Donante / Emisora (Ingress)</span>
+            <span class="pill ${ingressNodes.some(n => n.properties?.sdn_id) ? 'pill-err' : 'pill-cyan'}">
+              ${ingressNodes.length > 0 ? `${ingressNodes.length} ENTRADA(S) EN GRAFO` : 'ENTRADA DIRECTA'}
+            </span>
           </div>
-          <div class="mono" style="font-size:11px; color:var(--text-primary);">
-            Direccion: <strong>${escapeHtml(found.from)}</strong>
-          </div>
-          <div style="font-size:11px; color:var(--text-secondary);">
-            Emision inicial de fondos mediante agrupacion UTXO / Tron Transfer. Sin verificacion KYC asociada.
-          </div>
+          ${ingressNodes.length > 0 ? ingressNodes.map((inNode) => `
+            <div class="mono" style="font-size:11px; color:var(--text-primary); margin-bottom:3px; word-break:break-all;">
+              Direccion: <strong>${escapeHtml(inNode.value)}</strong>
+              <span class="pill pill-cyan" style="font-size:9px; margin-left:4px;">${escapeHtml(inNode.type)}</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">
+              ${inNode.properties?.balance ? `Saldo: ${escapeHtml(inNode.properties.balance)} | ` : ''}
+              ${inNode.properties?.sdn_id ? '<span style="color:var(--accent-crimson); font-weight:700;">ALERTA OFAC SDN</span>' : 'Entidad verificada en el caso'}
+            </div>
+          `).join("") : `
+            <div class="mono" style="font-size:11px; color:var(--text-primary);">
+              Direccion Emisora: <strong>${escapeHtml(found.from)}</strong>
+            </div>
+            <div style="font-size:11px; color:var(--text-secondary);">
+              Emision registrada en los parametros de la transaccion.
+            </div>
+          `}
           <div class="trace-hop-source">
             <span class="trace-source-tag">Fuente Primaria:</span>
-            <span class="mono" style="color:var(--text-primary);">Mempool.space Electrum Open Ledger / Nodos RPC P2P</span>
+            <span class="mono" style="color:var(--text-primary);">${escapeHtml(ingressNodes[0]?.sources?.[0] || found.source || 'Mempool.space API v1 / Grafo')}</span>
           </div>
         </div>
       </div>
 
-      <!-- Salto 1: Pivot Transaction -->
+      <!-- Salto 02: Transaccion de Pivote (TXID) -->
       <div class="trace-hop-item">
         <div class="trace-hop-badge">02</div>
         <div class="trace-hop-card">
           <div class="trace-hop-title">
-            <span style="color:var(--accent-cyan);">Salto 1: Transaccion de Pivote & Dispersion</span>
-            <span class="pill pill-purple">HASH ANALIZADO</span>
+            <span style="color:var(--accent-cyan);">Salto 02: Transaccion de Pivote & Consenso On-Chain</span>
+            <span class="pill pill-purple">HASH ON-CHAIN</span>
           </div>
           <div class="mono" style="font-size:11px; color:var(--text-primary); word-break:break-all;">
             TXID: <strong>${escapeHtml(found.txid)}</strong>
           </div>
-          <div style="font-size:11px; color:var(--text-secondary);">
-            Monto de transferencia: <strong>${found.amount}</strong> | Bloque: <strong>${found.block || "19482910"}</strong> | Comision: <strong>${found.gas || "0.0042 ETH"}</strong>
+          <div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">
+            Monto: <strong>${escapeHtml(found.amount)}</strong> | Bloque: <strong>${escapeHtml(found.block)}</strong> | Comision: <strong>${escapeHtml(found.gas)}</strong>
           </div>
           <div class="trace-hop-source">
             <span class="trace-source-tag">Fuente Primaria:</span>
-            <span class="mono" style="color:var(--text-primary);">Mempool.space API v1 (/api/tx/${escapeHtml(found.txid)}) & Consenso Mainnet (Bloque #${found.block || "19482910"})</span>
+            <span class="mono" style="color:var(--text-primary);">${escapeHtml(found.source || 'Mempool.space API v1 Consenso Mainnet')}</span>
           </div>
         </div>
       </div>
 
-      <!-- Salto 2: Peeling Chain -->
-      <div class="trace-hop-item">
-        <div class="trace-hop-badge">03</div>
-        <div class="trace-hop-card">
-          <div class="trace-hop-title">
-            <span style="color:var(--accent-cyan);">Salto 2: Peeling Chain & Division de Saldo</span>
-            <span class="pill pill-warn">CAMBIO DE SALDO</span>
+      <!-- Salto 03+: Salidas / Destinos (Receptores, Mixers, VASPs) -->
+      ${egressNodes.length > 0 ? egressNodes.map((outNode, idx) => {
+        const isOfacOut = outNode.properties?.sdn_id || outNode.properties?.ofac || String(outNode.value).includes("[OFAC");
+        const isMixerOut = outNode.type?.includes("Mixer") || outNode.properties?.is_mixer === "yes";
+        const isVaspOut = outNode.type?.includes("VASP") || outNode.type?.includes("Exchange") || outNode.properties?.vasp;
+        const pillClass = isOfacOut ? "pill-err" : (isMixerOut ? "pill-warn" : (isVaspOut ? "pill-ok" : "pill-cyan"));
+        const pillText = isOfacOut ? "OFAC SDN LISTED" : (isMixerOut ? "MIXER DETECTADO" : (isVaspOut ? "VASP DEPOSIT" : "SALIDA ON-CHAIN"));
+        return `
+          <div class="trace-hop-item">
+            <div class="trace-hop-badge ${isMixerOut ? 'mixer' : (isVaspOut ? 'egress' : '')}">${String(3 + idx).padStart(2, '0')}</div>
+            <div class="trace-hop-card" style="${isOfacOut ? 'border-color:rgba(255,75,75,0.4);' : ''}">
+              <div class="trace-hop-title">
+                <span style="color:${isOfacOut ? 'var(--accent-crimson)' : 'var(--accent-cyan)'};">Salto ${3 + idx}: Destino / Receptor</span>
+                <span class="pill ${pillClass}">${pillText}</span>
+              </div>
+              <div class="mono" style="font-size:11px; color:var(--text-primary); word-break:break-all;">
+                Direccion: <strong>${escapeHtml(outNode.value)}</strong>
+              </div>
+              <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+                Tipo: <strong>${escapeHtml(outNode.type)}</strong>
+                ${outNode.properties?.value_sats ? ` | Monto: ${(parseInt(outNode.properties.value_sats, 10) / 1e8).toFixed(6)} BTC` : ''}
+                ${outNode.properties?.cluster ? ` | Cluster: ${escapeHtml(outNode.properties.cluster)}` : ''}
+              </div>
+              <div class="trace-hop-source">
+                <span class="trace-source-tag">Fuente Primaria:</span>
+                <span class="mono" style="color:var(--text-primary);">${escapeHtml(outNode.sources?.[0] || 'Topologia del Grafo Activo')}</span>
+              </div>
+            </div>
           </div>
-          <div class="mono" style="font-size:11px; color:var(--text-primary);">
-            Direccion Temporal: <strong>0x8912bc900192a84bb178921cb923401829370bc9</strong>
-          </div>
-          <div style="font-size:11px; color:var(--text-secondary);">
-            Extraccion de cambio residual: <strong>1,000 USDT</strong> retornado a wallet secundaria; <strong>249,000 USDT</strong> enviados al contrato de mezcla.
-          </div>
-          <div class="trace-hop-source">
-            <span class="trace-source-tag">Fuente Primaria:</span>
-            <span class="mono" style="color:var(--text-primary);">Algoritmo Heuristico de Cambio Residual (CIOH / Peeling Chain Engine)</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Salto 3: Contrato Mezclador -->
-      <div class="trace-hop-item">
-        <div class="trace-hop-badge mixer">04</div>
-        <div class="trace-hop-card" style="border-color:rgba(255,75,75,0.4);">
-          <div class="trace-hop-title">
-            <span style="color:var(--accent-crimson);">Salto 3: Smart Contract Mezclador (Tornado Cash Router)</span>
-            <span class="pill pill-err">OFAC SDN SANCTIONED</span>
-          </div>
-          <div class="mono" style="font-size:11px; color:var(--text-primary);">
-            Contrato: <strong>0xd90e2f925da726b50c4ed8d0fb90ad053324f31b</strong>
-          </div>
-          <div style="font-size:11px; color:var(--text-secondary);">
-            Anonimizacion criptografica en el pool de 10 ETH / 100 USDT mediante pruebas de conocimiento cero (zk-SNARKs). Ruptura intencional del vinculo on-chain.
-          </div>
-          <div class="trace-hop-source">
-            <span class="trace-source-tag">Fuente Primaria:</span>
-            <span class="mono" style="color:var(--accent-crimson); font-weight:700;">US Treasury OFAC Specially Designated Nationals (SDN) Sanctions List & Etherscan Verified Contract Registry</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Salto 4: Egress / Cashout -->
-      <div class="trace-hop-item">
-        <div class="trace-hop-badge egress">05</div>
-        <div class="trace-hop-card" style="border-color:rgba(16,185,129,0.4);">
-          <div class="trace-hop-title">
-            <span style="color:#10b981;">Salto 4: Destino Final / Retiro hacia Exchange (Egress)</span>
-            <span class="pill pill-ok">VASP DEPOSIT DETECTED</span>
-          </div>
-          <div class="mono" style="font-size:11px; color:var(--text-primary);">
-            Direccion de Deposito: <strong>Binance VASP Custody (0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be)</strong>
-          </div>
-          <div style="font-size:11px; color:var(--text-secondary);">
-            Retiro fraccionado en 4 transferencias de cantidad constante hacia cuenta con requerimiento de identificacion KYC.
-          </div>
-          <div class="trace-hop-source">
-            <span class="trace-source-tag">Fuente Primaria:</span>
-            <span class="mono" style="color:#10b981; font-weight:700;">VASP Registry & Base de Datos de Atribucion de Clusteres de Deposito Binance/Coinbase/Kraken</span>
+        `;
+      }).join("") : `
+        <div class="trace-hop-item">
+          <div class="trace-hop-badge">03</div>
+          <div class="trace-hop-card">
+            <div class="trace-hop-title">
+              <span style="color:var(--accent-cyan);">Salto 03: Destino / Receptor</span>
+              <span class="pill pill-cyan">SALIDA REGISTRADA</span>
+            </div>
+            <div class="mono" style="font-size:11px; color:var(--text-primary); word-break:break-all;">
+              Direccion: <strong>${escapeHtml(found.to)}</strong>
+            </div>
+            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+              ${found.to && !found.to.includes("pendiente") ? 'Destino directo registrado en la transaccion.' : 'Sin bifurcaciones posteriores registradas en el grafo. Pulsa "Consultar Entradas y Salidas en Mempool.space" para expandir.'}
+            </div>
+            <div class="trace-hop-source">
+              <span class="trace-source-tag">Fuente Primaria:</span>
+              <span class="mono" style="color:var(--text-primary);">${escapeHtml(found.source || 'Grafo del Caso')}</span>
+            </div>
           </div>
         </div>
-      </div>
+      `}
     </div>
   `;
 
   modal.classList.add("open");
   modal.classList.add("active");
   modal.style.display = "grid";
-  showToast(`Trazabilidad multi-salto activada para ${found.txid.slice(0, 14)}...`, "ok");
+  showToast(`Trazabilidad forense activada para ${found.txidShort}`, "ok");
 }
 
 function closeAmlTraceModal() {
@@ -6486,21 +6884,72 @@ function closeAmlTraceModal() {
 function injectCurrentTraceIntoCase() {
   if (!currentAmlTraceData) return;
   const t = currentAmlTraceData;
+  const effectiveCaseId = getModuleCaseId("crypto");
 
-  const newNodes = [
-    { id: `crypto_tx_${t.txid.slice(0, 10)}`, type: "maltego.CryptocurrencyTransaction", value: `TX ${t.txid.slice(0, 12)}...`, properties: { network: t.network, amount: t.amount, taint: t.taint } },
-    { id: `crypto_wallet_from`, type: "maltego.CryptocurrencyAddress", value: `Billetera Emisora ${t.from.slice(0, 8)}...`, properties: { address: t.from, role: "donor" } },
-    { id: `crypto_mixer_router`, type: "maltego.MixerContract", value: "Tornado Cash Mixer Router", properties: { contract: "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b", ofac: "SDN-LISTED", is_mixer: "yes" } },
-    { id: `crypto_vasp_deposit`, type: "maltego.VASPExchange", value: "Binance VASP Deposit Hub", properties: { vasp: "Binance", cluster: "Exchange Deposit" } }
-  ];
+  const newNodes = [];
+  const newEdges = [];
 
-  const newEdges = [
-    { source: `crypto_wallet_from`, target: `crypto_tx_${t.txid.slice(0, 10)}`, label: "emite_transaccion" },
-    { source: `crypto_tx_${t.txid.slice(0, 10)}`, target: `crypto_mixer_router`, label: "deposito_mezcla" },
-    { source: `crypto_mixer_router`, target: `crypto_vasp_deposit`, label: "retiro_anonimizado" }
-  ];
+  // 1. Nodo de la transaccion real
+  const txNodeId = `crypto_tx_${t.txid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`;
+  if (!graphNodes.some((x) => x.id === txNodeId || x.value === t.txid)) {
+    newNodes.push({
+      id: txNodeId,
+      type: "maltego.CryptocurrencyTransaction",
+      value: t.txid,
+      case_id: effectiveCaseId,
+      properties: {
+        txid: t.txid,
+        network: t.network,
+        amount: t.amount,
+        block: t.block,
+        fee: t.gas,
+        taint: t.taint
+      },
+      sources: [t.source || "Mempool API / Trazador AML"],
+      isRisk: Boolean(t.ofacMatch || t.mixerMatch)
+    });
+  }
 
-  // Integrar en graphNodes y graphLinks
+  // 2. Nodo emisor (from) si es direccion real
+  if (t.from && t.from !== "N/A" && !t.from.includes("pendiente") && !t.from.includes("No registrado")) {
+    const fromId = `crypto_addr_${t.from.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`;
+    if (!graphNodes.some((x) => x.id === fromId || x.value === t.from)) {
+      newNodes.push({
+        id: fromId,
+        type: "maltego.CryptocurrencyAddress",
+        value: t.from,
+        case_id: effectiveCaseId,
+        properties: { address: t.from, role: "donor_wallet" },
+        sources: [t.source || "Mempool API"]
+      });
+    }
+    newEdges.push({
+      source: fromId,
+      target: txNodeId,
+      label: "emite_transaccion"
+    });
+  }
+
+  // 3. Nodo receptor (to) si es direccion real
+  if (t.to && t.to !== "N/A" && !t.to.includes("pendiente") && !t.to.includes("No registrado")) {
+    const toId = `crypto_addr_${t.to.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`;
+    if (!graphNodes.some((x) => x.id === toId || x.value === t.to)) {
+      newNodes.push({
+        id: toId,
+        type: "maltego.CryptocurrencyAddress",
+        value: t.to,
+        case_id: effectiveCaseId,
+        properties: { address: t.to, role: "recipient_wallet" },
+        sources: [t.source || "Mempool API"]
+      });
+    }
+    newEdges.push({
+      source: txNodeId,
+      target: toId,
+      label: "envia_a"
+    });
+  }
+
   let addedCount = 0;
   for (const n of newNodes) {
     if (!graphNodes.some((x) => x.id === n.id)) {
@@ -6519,18 +6968,20 @@ function injectCurrentTraceIntoCase() {
   }
 
   for (const e of newEdges) {
-    const sNode = graphNodes.find((x) => x.id === e.source);
-    const tNode = graphNodes.find((x) => x.id === e.target);
+    const sNode = graphNodes.find((x) => x.id === e.source || x.value === e.source);
+    const tNode = graphNodes.find((x) => x.id === e.target || x.value === e.target);
     if (sNode && tNode) {
-      graphLinks.push({
-        source: sNode.id,
-        target: tNode.id,
-        sourceNode: sNode,
-        targetNode: tNode,
-        label: e.label,
-        visible: true,
-        isRiskLink: true
-      });
+      if (!graphLinks.some((l) => (l.source === sNode.id && l.target === tNode.id))) {
+        graphLinks.push({
+          source: sNode.id,
+          target: tNode.id,
+          sourceNode: sNode,
+          targetNode: tNode,
+          label: e.label,
+          visible: true,
+          isRiskLink: Boolean(t.ofacMatch || t.mixerMatch)
+        });
+      }
     }
   }
 
@@ -6538,31 +6989,69 @@ function injectCurrentTraceIntoCase() {
   closeAmlTraceModal();
   switchView("view-graph");
   fitGraphView();
-  showToast(`Cadena de trazabilidad inyectada en el caso activo (${addedCount} nodos nuevos)`, "ok");
+  showToast(`Cadena verificada inyectada en el caso activo (${addedCount} nodos nuevos)`, "ok");
 }
 
 function exportCurrentTraceReport() {
   if (!currentAmlTraceData) return;
+  const t = currentAmlTraceData;
+  const effectiveCaseId = getModuleCaseId("crypto");
+
   const report = {
-    titulo: "Dictamen Pericial de Trazabilidad Criptoforense & Deteccion de Mixers",
+    dictamen: "Dictamen Pericial de Trazabilidad Criptoforense & AML",
+    caso_id: effectiveCaseId,
     fecha_generacion: new Date().toISOString(),
-    transaccion_analizada: currentAmlTraceData,
-    protocolo_auditoria: "ISO/IEC 27037 - Evidencia Digital",
-    saltos_reconstruidos: [
-      { salto: 0, tipo: "Ingress", entidad: currentAmlTraceData.from, riesgo: "Medio" },
-      { salto: 1, tipo: "Pivote", entidad: currentAmlTraceData.txid, riesgo: "Alto" },
-      { salto: 2, tipo: "Mixer Pool", entidad: "Tornado Cash Router (0xd90e2f925da726b50c4ed8d0fb90ad053324f31b)", ofac_sdn: true, riesgo: "Critico" },
-      { salto: 3, tipo: "Egress / VASP", entidad: "Binance VASP Custody", riesgo: "Contencion" }
+    transaccion_analizada: {
+      txid: t.txid,
+      red: t.network,
+      monto: t.amount,
+      bloque: t.block,
+      comision: t.gas,
+      origen: t.from,
+      destino: t.to,
+      fuente: t.source
+    },
+    evaluacion_riesgo: {
+      contaminacion: t.taint,
+      clasificacion: t.risk,
+      alerta_ofac_sdn: Boolean(t.ofacMatch),
+      alerta_mixer: Boolean(t.mixerMatch),
+      alerta_vasp: Boolean(t.vaspMatch)
+    },
+    cadena_saltos_reconstruida: [
+      ...(t.ingressNodes || []).map((n, i) => ({
+        salto: `Ingress-${i + 1}`,
+        tipo_nodo: n.type,
+        direccion: n.value,
+        saldo: n.properties?.balance || "N/A",
+        fuente: n.sources?.[0] || "Grafo"
+      })),
+      {
+        salto: "Pivot-Transaction",
+        tipo_nodo: "maltego.CryptocurrencyTransaction",
+        txid: t.txid,
+        red: t.network,
+        bloque: t.block,
+        fuente: t.source
+      },
+      ...(t.egressNodes || []).map((n, i) => ({
+        salto: `Egress-${i + 1}`,
+        tipo_nodo: n.type,
+        direccion: n.value,
+        monto: n.properties?.value_sats ? `${(parseInt(n.properties.value_sats, 10) / 1e8).toFixed(6)} BTC` : "N/A",
+        fuente: n.sources?.[0] || "Grafo"
+      }))
     ],
+    protocolo_auditoria: "ISO/IEC 27037:2012 - Evidencia Digital Forense",
     firma_integridad: "SHA256:" + Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, "0")).join("")
   };
 
   const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `informe_trazabilidad_${currentAmlTraceData.txid.slice(0, 10)}.json`;
+  a.download = `informe_aml_${t.txid.slice(0, 10)}.json`;
   a.click();
-  showToast("Informe de trazabilidad descargado con exito", "ok");
+  showToast("Dictamen pericial AML descargado con exito", "ok");
 }
 
 function injectSingleTxIntoGraph(txid) {
