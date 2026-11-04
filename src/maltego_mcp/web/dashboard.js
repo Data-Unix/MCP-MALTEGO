@@ -1009,8 +1009,15 @@ async function runPlaygroundLookup(e) {
       return;
     }
 
+    lastPlaygroundEntities = entities;
+    const effectiveCaseId = getModuleCaseId("transforms");
     resultDiv.innerHTML = `
-      <div style="font-size:11px; margin-bottom:0.5rem; color:var(--accent-emerald);">Se obtuvieron ${entities.length} entidades:</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
+        <div style="font-size:11px; color:var(--accent-emerald);">Se obtuvieron ${entities.length} entidades:</div>
+        <button class="btn btn-primary btn-sm" onclick="injectPlaygroundEntitiesIntoCase()">
+          Incorporar al Proyecto '${escapeHtml(effectiveCaseId)}'
+        </button>
+      </div>
       <table class="data-table">
         <thead><tr><th>Tipo</th><th>Valor</th><th>Relación</th></tr></thead>
         <tbody>
@@ -1049,6 +1056,153 @@ function escapeHtml(str) {
 // 9. Motor de Grafo Interactivo 2D en Canvas con Simulación de Fuerzas Físicas
 let graphCanvas = null;
 let graphCtx = null;
+let allLoadedCases = [];
+let moduleCaseOverrides = {
+  crypto: "__global__",
+  geo: "__global__",
+  vault: "__global__",
+  mitre: "__global__",
+  watchtower: "__global__",
+  rules: "__global__",
+  transforms: "__global__"
+};
+let caseDataCache = {};
+let caseEvidenceVault = {};
+let caseWatchTargets = {};
+let caseWatchAlerts = {};
+let lastPlaygroundEntities = [];
+
+function getModuleCaseId(moduleKey) {
+  const override = moduleCaseOverrides[moduleKey];
+  if (override && override !== "__global__") {
+    return override;
+  }
+  return currentCaseId || (allLoadedCases.length > 0 ? allLoadedCases[0].case_id : "");
+}
+
+function getNodesForCase(caseId) {
+  if (!caseId || caseId === currentCaseId) {
+    return graphNodes || [];
+  }
+  if (caseDataCache[caseId] && caseDataCache[caseId].nodes) {
+    return caseDataCache[caseId].nodes;
+  }
+  return [];
+}
+
+function getLinksForCase(caseId) {
+  if (!caseId || caseId === currentCaseId) {
+    return graphLinks || [];
+  }
+  if (caseDataCache[caseId] && caseDataCache[caseId].links) {
+    return caseDataCache[caseId].links;
+  }
+  return [];
+}
+
+async function fetchCaseGraphData(caseId) {
+  if (!caseId) return null;
+  if (caseDataCache[caseId]) return caseDataCache[caseId];
+  try {
+    const res = await fetch(`/api/cases/${encodeURIComponent(caseId)}/graph`);
+    const data = await res.json();
+    if (data && data.ok) {
+      caseDataCache[caseId] = data;
+      return data;
+    }
+  } catch (err) {
+    console.warn(`No se pudo cargar datos del caso '${caseId}':`, err);
+  }
+  return null;
+}
+
+function syncAllProjectSelectors() {
+  const primarySelectors = ["global-project-select", "graph-case-select"];
+  primarySelectors.forEach((selId) => {
+    const el = document.getElementById(selId);
+    if (!el) return;
+    el.innerHTML = allLoadedCases
+      .map(
+        (c) =>
+          `<option value="${escapeHtml(c.case_id)}">${escapeHtml(c.case_id)} (${c.entity_count} ents, ${c.edge_count} rels)</option>`
+      )
+      .join("");
+    el.value = currentCaseId;
+  });
+
+  const moduleKeys = ["crypto", "geo", "vault", "mitre", "watchtower", "rules", "transforms"];
+  moduleKeys.forEach((key) => {
+    const el = document.getElementById(`${key}-case-select`);
+    if (!el) return;
+    const currentOverride = moduleCaseOverrides[key] || "__global__";
+    const activeLabel = currentCaseId ? `[Seguir Activo: ${currentCaseId}]` : "[Seguir Proyecto Activo]";
+
+    let html = `<option value="__global__">${escapeHtml(activeLabel)}</option>`;
+    html += allLoadedCases
+      .map(
+        (c) =>
+          `<option value="${escapeHtml(c.case_id)}">${escapeHtml(c.case_id)} (${c.entity_count} ents)</option>`
+      )
+      .join("");
+
+    el.innerHTML = html;
+    el.value = currentOverride;
+  });
+}
+
+async function switchActiveProject(caseId) {
+  if (!caseId) return;
+  currentCaseId = caseId;
+  try {
+    localStorage.setItem("maltego_mcp_active_case", caseId);
+  } catch (e) {}
+
+  syncAllProjectSelectors();
+  await loadCaseGraph(caseId);
+  refreshActiveModuleView();
+  updateTacticalHud();
+  playTacticalClick(800, 0.03);
+  showToast(`Investigacion activa cambiada a '${caseId}' [Datos aislados]`, "ok");
+}
+
+async function onModuleCaseChanged(moduleKey, value) {
+  playTacticalClick(750, 0.025);
+  moduleCaseOverrides[moduleKey] = value;
+
+  const effectiveId = getModuleCaseId(moduleKey);
+  if (value !== "__global__" && !caseDataCache[value]) {
+    await fetchCaseGraphData(value);
+  }
+
+  if (moduleKey === "crypto") renderCryptoLedger();
+  else if (moduleKey === "geo") { buildGeoModelFromActiveCase(); populateGeoNodesTable(); drawGeoMap(); }
+  else if (moduleKey === "vault") renderForensicsVault();
+  else if (moduleKey === "mitre") renderMitreMatrix();
+  else if (moduleKey === "watchtower") renderWatchtower();
+  else if (moduleKey === "rules") renderRulesGenerator();
+
+  const label = value === "__global__" ? `Seguir activo (${effectiveId})` : value;
+  showToast(`Modulo [${moduleKey.toUpperCase()}]: Enfoque fijado en '${label}'`, "info");
+}
+
+function refreshActiveModuleView() {
+  if (currentTab === "crypto-ledger") {
+    renderCryptoLedger();
+  } else if (currentTab === "geo-map") {
+    buildGeoModelFromActiveCase();
+    populateGeoNodesTable();
+    drawGeoMap();
+  } else if (currentTab === "forensics-vault") {
+    renderForensicsVault();
+  } else if (currentTab === "mitre-matrix") {
+    renderMitreMatrix();
+  } else if (currentTab === "threat-watchtower") {
+    renderWatchtower();
+  } else if (currentTab === "rules-generator") {
+    renderRulesGenerator();
+  }
+}
+
 let currentCaseId = "";
 let rawGraphData = { nodes: [], links: [] };
 let activeFilter = "all";
@@ -1126,35 +1280,37 @@ function updateGraphStatusBar(msg) {
 }
 
 async function loadCasesList(autoSelectId = null) {
-  const select = document.getElementById("graph-case-select");
-  if (!select) return;
-
   try {
     const res = await fetch("/api/cases");
     const data = await res.json();
-    const cases = data.cases || [];
+    allLoadedCases = data.cases || [];
 
-    if (cases.length === 0) {
-      select.innerHTML = `<option value="">(Sin casos creados)</option>`;
+    if (allLoadedCases.length === 0) {
+      const gSel = document.getElementById("graph-case-select");
+      if (gSel) gSel.innerHTML = `<option value="">(Sin casos creados)</option>`;
+      const topSel = document.getElementById("global-project-select");
+      if (topSel) topSel.innerHTML = `<option value="">(Sin casos creados)</option>`;
       updateGraphStatusBar("No hay casos OSINT registrados en GraphStore.");
       return;
     }
 
-    select.innerHTML = cases
-      .map(
-        (c) =>
-          `<option value="${escapeHtml(c.case_id)}">${escapeHtml(c.case_id)} (${c.entity_count} ents, ${c.edge_count} rels)</option>`
-      )
-      .join("");
-
     let targetId = autoSelectId;
-    if (!targetId || !cases.some((c) => c.case_id === targetId)) {
-      targetId = cases[0].case_id;
+    if (!targetId) {
+      try {
+        const saved = localStorage.getItem("maltego_mcp_active_case");
+        if (saved && allLoadedCases.some((c) => c.case_id === saved)) {
+          targetId = saved;
+        }
+      } catch (e) {}
+    }
+    if (!targetId || !allLoadedCases.some((c) => c.case_id === targetId)) {
+      targetId = allLoadedCases[0].case_id;
     }
 
-    select.value = targetId;
     currentCaseId = targetId;
-    loadCaseGraph(targetId);
+    syncAllProjectSelectors();
+    await loadCaseGraph(targetId);
+    refreshActiveModuleView();
   } catch (err) {
     console.error("Error al cargar lista de casos:", err);
   }
@@ -1184,8 +1340,7 @@ async function promptCreateCase() {
 
 function onCaseSelected(caseId) {
   if (!caseId) return;
-  currentCaseId = caseId;
-  loadCaseGraph(caseId);
+  switchActiveProject(caseId);
 }
 
 function reloadCurrentGraph() {
@@ -1499,6 +1654,7 @@ async function loadCaseGraph(caseId) {
     }
 
     rawGraphData = data;
+    caseDataCache[caseId] = data;
     graphSteps = data.steps || [];
     buildGraphModel(data);
     updateGraphStatusBar(
@@ -4133,9 +4289,12 @@ function renderCryptoLedger() {
   const tableBody = document.getElementById("aml-table-body");
   if (!tableBody) return;
 
-  // Filtrar billeteras o direcciones cripto en el grafo
-  const cryptoNodes = (graphNodes || []).filter(
-    (n) => n.type.includes("Crypto") || n.type.includes("Bitcoin") || n.type.includes("Ethereum") || String(n.value).startsWith("T") || String(n.value).startsWith("0x") || String(n.value).startsWith("1") || String(n.value).startsWith("3") || String(n.value).startsWith("bc1")
+  const effectiveCaseId = getModuleCaseId("crypto");
+  const caseNodes = getNodesForCase(effectiveCaseId);
+
+  // Filtrar billeteras o direcciones cripto en el proyecto enfocado
+  const cryptoNodes = caseNodes.filter(
+    (n) => n.type.includes("Crypto") || n.type.includes("Bitcoin") || n.type.includes("Ethereum") || n.type.includes("Mixer") || n.type.includes("VASP") || String(n.value).startsWith("T") || String(n.value).startsWith("0x") || String(n.value).startsWith("1") || String(n.value).startsWith("3") || String(n.value).startsWith("bc1")
   );
 
   const sampleTxs = [
@@ -4217,11 +4376,74 @@ function renderCryptoLedger() {
     }
   ];
 
-  window._currentAmlTransactions = sampleTxs;
+  // Extraer flujos reales del proyecto si existen nodos cripto
+  const caseTxs = [];
+  cryptoNodes.forEach((n, idx) => {
+    if (n.type.includes("Transaction") || n.properties?.txid || (n.properties?.amount && n.properties?.network)) {
+      const txVal = n.properties?.txid || n.value;
+      const txShort = txVal.length > 14 ? `${txVal.slice(0, 8)}...${txVal.slice(-4)}` : txVal;
+      const fromVal = n.properties?.from || "Billetera Emisora";
+      const toVal = n.properties?.to || "Destino / Mixer";
+      caseTxs.push({
+        id: `ctx-${idx}`,
+        txid: txVal,
+        txidShort: txShort,
+        network: n.properties?.network || "ERC-20",
+        from: fromVal,
+        fromShort: fromVal.length > 12 ? `${fromVal.slice(0, 6)}...${fromVal.slice(-4)}` : fromVal,
+        to: toVal,
+        toShort: toVal.length > 12 ? `${toVal.slice(0, 6)}...${toVal.slice(-4)}` : toVal,
+        amount: n.properties?.amount ? `${n.properties.amount} ${n.properties.network || 'USDT'}` : "10,000 USDT",
+        heur: n.properties?.is_mixer === "yes" ? "Mixer Router Interaction" : (n.properties?.heuristic || "Direct Transfer"),
+        risk: n.properties?.taint && parseFloat(n.properties.taint) > 70 ? "OFAC-RISK" : (n.properties?.risk || "MEDIO"),
+        badge: n.properties?.taint && parseFloat(n.properties.taint) > 70 ? "ofac" : "mixer",
+        block: n.properties?.block || "19482910",
+        gas: n.properties?.gas || "0.0035 ETH",
+        taint: n.properties?.taint || "68.5% Taint",
+        hops: n.properties?.hops || 2,
+        desc: n.notes || n.properties?.desc || `Transaccion registrada en el proyecto '${effectiveCaseId}'`
+      });
+    }
+  });
+
+  if (caseTxs.length === 0 && cryptoNodes.length > 0) {
+    cryptoNodes.forEach((cn, cidx) => {
+      caseTxs.push({
+        id: `c-w-${cidx}`,
+        txid: `0x${cidx}a9f001928471cba8192837461928374619284756`,
+        txidShort: `0x${cidx}a9f...4756`,
+        network: cn.properties?.network || (String(cn.value).startsWith("T") ? "TRC-20" : "ERC-20"),
+        from: String(cn.value),
+        fromShort: String(cn.value).slice(0, 8) + "...",
+        to: "Exchange / VASP Hub",
+        toShort: "VASP Hub",
+        amount: cn.properties?.balance || "5,000 USDT",
+        heur: "Identificacion On-Chain",
+        risk: cn.isRisk ? "ALTO" : "MEDIO",
+        badge: cn.isRisk ? "ofac" : "peel",
+        block: "19482900",
+        gas: "0.0025 ETH",
+        taint: cn.isRisk ? "85.0% OFAC" : "25.0% Clean",
+        hops: 1,
+        desc: `Billetera identificada en el proyecto '${effectiveCaseId}'`
+      });
+    });
+  }
+
+  const txsToUse = (caseTxs.length > 0) ? caseTxs : (effectiveCaseId === "demo-maltego" || effectiveCaseId === "caso-demo-01" ? sampleTxs : []);
+  window._currentAmlTransactions = txsToUse;
+
+  if (txsToUse.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:2.5rem; color:var(--text-muted);">
+      Sin transacciones ni billeteras cripto registradas en el proyecto <strong>${escapeHtml(effectiveCaseId)}</strong>.<br>
+      <span style="font-size:11px; margin-top:0.5rem; display:inline-block;">Para incorporar transacciones y billeteras, ejecuta la Machine <strong>CryptoFlowRecon</strong> o incorpora entidades en el Grafo.</span>
+    </td></tr>`;
+    return;
+  }
 
   const limitVal = document.querySelector("#aml-transactions-table-toolbar .table-limit-select")?.value || "10";
-  const limit = limitVal === "all" ? sampleTxs.length : parseInt(limitVal, 10);
-  const visibleTxs = sampleTxs.slice(0, limit);
+  const limit = limitVal === "all" ? txsToUse.length : parseInt(limitVal, 10);
+  const visibleTxs = txsToUse.slice(0, limit);
 
   tableBody.innerHTML = visibleTxs.map((tx) => `
     <tr id="aml-row-${tx.id}" class="table-row-main" onclick="handleRowClick(event, 'aml-row-${tx.id}')">
@@ -4487,19 +4709,52 @@ function renderAmlSankeyCanvas(ctx, w, h) {
     ctx.fillText(n.volume, n.x, n.y > 100 ? n.y + 37 : n.y - 27);
   });
 }
-// --- I. Modulo: Boveda de Evidencias & Cadena de Custodia ISO/IEC 27037 ---
-const custodyEvidenceLog = [
-  { id: "EVD-2026-001", name: "dump_trafico_c2_capture.pcap", mime: "application/vnd.tcpdump.pcap", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", md5: "d41d8cd98f00b204e9800998ecf8427e", examiner: "Perito CTI #409", date: "2026-11-03T18:00:00Z", verified: true },
-  { id: "EVD-2026-002", name: "cert_ssl_fingerprint_sha256.pem", mime: "application/x-pem-file", sha256: "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069", md5: "9e107d9d372bb6826bd81d3542a419d6", examiner: "Perito CTI #409", date: "2026-11-03T18:15:22Z", verified: true }
-];
+// --- I. Modulo: Boveda de Evidencias & Cadena de Custodia ISO/IEC 27037 (Aislamiento por Proyecto) ---
+function getCustodyEvidenceLog(caseId) {
+  const cid = caseId || getModuleCaseId("vault");
+  if (!caseEvidenceVault[cid]) {
+    try {
+      const stored = localStorage.getItem(`maltego_evidence_${cid}`);
+      if (stored) {
+        caseEvidenceVault[cid] = JSON.parse(stored);
+      }
+    } catch (e) {}
+  }
+  if (!caseEvidenceVault[cid]) {
+    if (cid === "demo-maltego" || cid === "caso-demo-01") {
+      caseEvidenceVault[cid] = [
+        { id: "EVD-2026-001", name: "dump_trafico_c2_capture.pcap", mime: "application/vnd.tcpdump.pcap", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", md5: "d41d8cd98f00b204e9800998ecf8427e", examiner: "Perito CTI #409", date: "2026-11-03T18:00:00Z", verified: true },
+        { id: "EVD-2026-002", name: "cert_ssl_fingerprint_sha256.pem", mime: "application/x-pem-file", sha256: "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069", md5: "9e107d9d372bb6826bd81d3542a419d6", examiner: "Perito CTI #409", date: "2026-11-03T18:15:22Z", verified: true }
+      ];
+    } else {
+      caseEvidenceVault[cid] = [];
+    }
+  }
+  return caseEvidenceVault[cid];
+}
+
+function saveCustodyEvidenceLog(caseId) {
+  const cid = caseId || getModuleCaseId("vault");
+  try {
+    localStorage.setItem(`maltego_evidence_${cid}`, JSON.stringify(caseEvidenceVault[cid] || []));
+  } catch (e) {}
+}
 
 function renderForensicsVault() {
   const tbody = document.getElementById("vault-evidence-body");
   if (!tbody) return;
 
+  const effectiveCaseId = getModuleCaseId("vault");
+  const custodyList = getCustodyEvidenceLog(effectiveCaseId);
+
   const limitVal = document.querySelector("#vault-evidence-table-toolbar .table-limit-select")?.value || "10";
-  const limit = limitVal === "all" ? custodyEvidenceLog.length : parseInt(limitVal, 10);
-  const visibleEvs = custodyEvidenceLog.slice(0, limit);
+  const limit = limitVal === "all" ? custodyList.length : parseInt(limitVal, 10);
+  const visibleEvs = custodyList.slice(0, limit);
+
+  if (visibleEvs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:2rem; color:var(--text-muted);">Sin evidencias registradas en el proyecto <strong>${escapeHtml(effectiveCaseId)}</strong>.<br><span style="font-size:11px; margin-top:0.4rem; display:inline-block;">Arrastra un archivo o haz clic en '+ Registrar Evidencia' para incorporarlo a esta investigacion sin mezclar datos.</span></td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = visibleEvs.map((ev) => `
     <tr id="vault-row-${ev.id}" class="table-row-main" onclick="handleRowClick(event, 'vault-row-${ev.id}')">
@@ -4585,8 +4840,10 @@ async function onEvidenceFileSelected(e) {
       md5 += (hashArray[i % hashArray.length] ^ (i * 17)).toString(16).padStart(2, "0");
     }
 
+    const effectiveCaseId = getModuleCaseId("vault");
+    const custodyList = getCustodyEvidenceLog(effectiveCaseId);
     const newEv = {
-      id: `EVD-2026-${(custodyEvidenceLog.length + 1).toString().padStart(3, "0")}`,
+      id: `EVD-${(custodyList.length + 1).toString().padStart(3, "0")}`,
       name: file.name,
       mime: file.type || "application/octet-stream",
       sha256,
@@ -4595,37 +4852,51 @@ async function onEvidenceFileSelected(e) {
       date: new Date().toISOString(),
       verified: true,
     };
-    custodyEvidenceLog.unshift(newEv);
+    custodyList.unshift(newEv);
+    saveCustodyEvidenceLog(effectiveCaseId);
     renderForensicsVault();
     playTacticalClick(900, 0.05);
-    showToast(`Evidencia ${newEv.id} registrada con exito en la Cadena de Custodia`, "ok");
+    showToast(`Evidencia ${newEv.id} registrada en el proyecto '${effectiveCaseId}'`, "ok");
   } catch (err) {
     showToast(`Error de hashing: ${err.message}`, "error");
   }
 }
 
 function exportCustodyManifest() {
+  const effectiveCaseId = getModuleCaseId("vault");
+  const custodyList = getCustodyEvidenceLog(effectiveCaseId);
   const manifest = {
     "@context": "https://schema.org",
     "@type": "ForensicEvidenceManifest",
     standard: "ISO/IEC 27037:2012 Guidelines for handling digital evidence",
-    case_id: currentCaseId || "caso-operativo",
+    case_id: effectiveCaseId || "caso-operativo",
     generated_at: new Date().toISOString(),
-    evidence_items: custodyEvidenceLog,
+    evidence_items: custodyList,
     digital_signature: "ECDSA-SHA256-AUTHENTICATED-LOCAL-ENVIRONMENT",
   };
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `manifiesto_custodia_${currentCaseId || "caso"}.json`;
+  a.download = `manifiesto_custodia_${effectiveCaseId || "caso"}.json`;
   a.click();
-  showToast("Manifiesto de Cadena de Custodia descargado", "ok");
+  showToast(`Manifiesto de custodia del proyecto '${effectiveCaseId}' descargado`, "ok");
 }
 
 // --- J. Modulo: Matriz MITRE ATT&CK Enterprise ---
 function renderMitreMatrix() {
   const board = document.getElementById("mitre-matrix-board");
   if (!board) return;
+
+  const effectiveCaseId = getModuleCaseId("mitre");
+  const caseNodes = getNodesForCase(effectiveCaseId);
+  const hasDomains = caseNodes.some(n => n.type.includes("Domain") || n.type.includes("DNS") || String(n.value).includes("."));
+  const hasIPs = caseNodes.some(n => n.type.includes("IPv4") || n.type.includes("IPv6"));
+  const hasEmails = caseNodes.some(n => n.type.includes("Email") || n.type.includes("Person") || n.type.includes("Alias") || String(n.value).includes("@"));
+  const hasCrypto = caseNodes.some(n => n.type.includes("Crypto") || n.type.includes("Bitcoin") || n.type.includes("Ethereum"));
+  const hasMixers = caseNodes.some(n => n.type.includes("Mixer") || n.properties?.is_mixer === "yes");
+  const hasC2 = caseNodes.some(n => n.isRisk || String(n.value).toLowerCase().includes("c2"));
+  const hasTor = caseNodes.some(n => String(n.value).includes(".onion") || String(n.properties?.proxy || "").includes("9050"));
+  const hasData = caseNodes.length > 0;
 
   const tactics = [
     {
@@ -4687,11 +4958,12 @@ function inspectMitreTechnique(id, name, tactic, rationale) {
   showToast(`[MITRE ${id}] ${name} | ${tactic}: ${rationale}`, "info");
 }
 function exportMitreNavigatorLayer() {
+  const effectiveCaseId = getModuleCaseId("mitre");
   const layer = {
-    name: `Maltego MCP ATT&CK Layer - ${currentCaseId || "Caso Activo"}`,
+    name: `Maltego MCP ATT&CK Layer - ${effectiveCaseId || "Caso Activo"}`,
     versions: { attack: "14", navigator: "4.5", layer: "4.5" },
     domain: "enterprise-attack",
-    description: "Capa generada automaticamente a partir de IOCs del grafo Maltego",
+    description: `Capa generada automaticamente a partir de IOCs del proyecto '${effectiveCaseId}'`,
     techniques: [
       { techniqueID: "T1583.001", score: 100, comment: "Dominios C2 detectados en infraestructura" },
       { techniqueID: "T1090.003", score: 85, comment: "Nodos Tor y proxies anonimizadores" },
@@ -4702,9 +4974,9 @@ function exportMitreNavigatorLayer() {
   const blob = new Blob([JSON.stringify(layer, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `mitre_layer_${currentCaseId || "attack"}.json`;
+  a.download = `mitre_layer_${effectiveCaseId || "attack"}.json`;
   a.click();
-  showToast("Capa ATT&CK Navigator descargada", "ok");
+  showToast(`Capa ATT&CK Navigator del proyecto '${effectiveCaseId}' descargada`, "ok");
 }
 
 function rebuildMitreMapping() {
@@ -4788,7 +5060,9 @@ function buildGeoModelFromActiveCase() {
   geoNodes = [];
   geoLinks = [];
 
-  const raw = graphNodes || [];
+  const effectiveCaseId = getModuleCaseId("geo");
+  const raw = getNodesForCase(effectiveCaseId);
+  const links = getLinksForCase(effectiveCaseId);
   let index = 0;
 
   // Extraer nodos geolocalizables del caso activo
@@ -5428,7 +5702,12 @@ function switchRuleFormat(fmt) {
   const display = document.getElementById("rule-code-display");
   if (!display) return;
 
-  const caseName = currentCaseId || "caso-maltego-operativo";
+  const caseName = getModuleCaseId("rules");
+  const caseNodes = getNodesForCase(caseName);
+  const ipList = caseNodes.filter(n => n.type.includes("IPv4") || n.type.includes("IPv6")).map(n => n.value);
+  const domainList = caseNodes.filter(n => n.type.includes("Domain") || n.type.includes("DNS")).map(n => n.value);
+  const ipsToUse = ipList.length > 0 ? ipList.slice(0, 4) : ["51.15.42.11", "194.38.20.1"];
+  const domainsToUse = domainList.length > 0 ? domainList.slice(0, 4) : ["threat-actor-c2.net", "payload-drop.org"];
 
   if (fmt === "sigma") {
     display.textContent = `title: Comunicacion C2 Detectada - Caso ${caseName}
@@ -5506,22 +5785,61 @@ function copyCurrentRuleToClipboard() {
 }
 
 // --- M. Modulo: Monitor de Vigilancia & Alertas Tempranas ---
-const watchTargets = [
-  { target: "threat-actor-c2.net", type: "Dominio C2", checked: "Hace 5 min", status: "ONLINE (DNS Drift)" },
-  { target: "51.15.42.11", type: "IPv4 Server", checked: "Hace 2 min", status: "ACTIVO (Puerto 443)" },
-  { target: "TA3V7o...W9zK", type: "Billetera TRC20", checked: "Hace 10 min", status: "TRANSACCION DETECTADA" },
-];
+function getWatchtowerTargets(caseId) {
+  const cid = caseId || getModuleCaseId("watchtower");
+  if (!caseWatchTargets[cid]) {
+    try {
+      const stored = localStorage.getItem(`maltego_watchtower_${cid}`);
+      if (stored) caseWatchTargets[cid] = JSON.parse(stored);
+    } catch (e) {}
+  }
+  if (!caseWatchTargets[cid]) {
+    const cNodes = getNodesForCase(cid);
+    const autoTargets = [];
+    cNodes.forEach((n) => {
+      const val = String(n.value || "");
+      if (n.type.includes("IPv4") || n.type.includes("Domain") || n.type.includes("Crypto")) {
+        autoTargets.push({
+          target: val,
+          type: n.type.replace("maltego.", ""),
+          checked: "En linea",
+          status: n.isRisk ? "ALERTA ACTIVA" : "SUPERVISADO"
+        });
+      }
+    });
+    if (autoTargets.length > 0) {
+      caseWatchTargets[cid] = autoTargets.slice(0, 6);
+    } else if (cid === "demo-maltego" || cid === "caso-demo-01") {
+      caseWatchTargets[cid] = [
+        { target: "threat-actor-c2.net", type: "Dominio C2", checked: "Hace 5 min", status: "ONLINE (DNS Drift)" },
+        { target: "51.15.42.11", type: "IPv4 Server", checked: "Hace 2 min", status: "ACTIVO (Puerto 443)" }
+      ];
+    } else {
+      caseWatchTargets[cid] = [];
+    }
+  }
+  return caseWatchTargets[cid];
+}
 
-const watchAlerts = [
-  { sev: "CRITICO", msg: "Detectada nueva IP asociada al dominio C2 threat-actor-c2.net (Cambio de Cloudflare a OVH Francia)", time: "18:42" },
-  { sev: "ALTO", msg: "Contrato Tornado Cash 10 ETH movilizo 250,000 USDT relacionados con la billetera vigilada", time: "18:15" },
-  { sev: "MEDIO", msg: "Certificado SSL emitido recientemente por Let's Encrypt para subdominio admin.threat-actor-c2.net", time: "17:50" }
-];
+function saveWatchtowerTargets(caseId) {
+  const cid = caseId || getModuleCaseId("watchtower");
+  try {
+    localStorage.setItem(`maltego_watchtower_${cid}`, JSON.stringify(caseWatchTargets[cid] || []));
+  } catch (e) {}
+}
 
 function renderWatchtower() {
+  const effectiveCaseId = getModuleCaseId("watchtower");
+  const currentTargets = getWatchtowerTargets(effectiveCaseId);
+
   const alertsList = document.getElementById("watchtower-alerts-list");
   if (alertsList) {
-    alertsList.innerHTML = watchAlerts.map((al) => `
+    const alerts = (currentTargets.length > 0) ? [
+      { sev: "SUPERVISION", msg: `Monitoreo activo sobre ${currentTargets.length} objetivos del proyecto '${effectiveCaseId}'.`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+    ] : [
+      { sev: "INFO", msg: `Sin alertas pendientes para el proyecto '${effectiveCaseId}'.`, time: "En linea" }
+    ];
+    alertsList.innerHTML = alerts.map((al) => `
       <div style="background:var(--bg-base); border-left:3px solid ${al.sev === "CRITICO" ? "var(--accent-crimson)" : (al.sev === "ALTO" ? "var(--accent-gold)" : "var(--accent-cyan)")}; padding:0.6rem 0.8rem; border-radius:3px;">
         <div style="display:flex; justify-content:space-between; font-size:10px; font-family:var(--font-mono); margin-bottom:0.25rem;">
           <span style="font-weight:700; color:${al.sev === "CRITICO" ? "var(--accent-crimson)" : "var(--accent-gold)"};">[${al.sev}]</span>
@@ -5534,9 +5852,14 @@ function renderWatchtower() {
 
   const tbody = document.getElementById("watchtower-targets-body");
   if (tbody) {
+    if (currentTargets.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">Sin objetivos de vigilancia en el proyecto <strong>${escapeHtml(effectiveCaseId)}</strong>.<br><span style="font-size:11px; margin-top:0.4rem; display:inline-block;">Pulsa '+ Anadir Objetivo' para registrar dominios, IPs o billeteras.</span></td></tr>`;
+      return;
+    }
+
     const limitVal = document.querySelector("#watchtower-targets-table-toolbar .table-limit-select")?.value || "10";
-    const limit = limitVal === "all" ? watchTargets.length : parseInt(limitVal, 10);
-    const visibleTargets = watchTargets.slice(0, limit);
+    const limit = limitVal === "all" ? currentTargets.length : parseInt(limitVal, 10);
+    const visibleTargets = currentTargets.slice(0, limit);
 
     tbody.innerHTML = visibleTargets.map((wt, idx) => `
       <tr id="wt-row-${idx}" class="table-row-main" onclick="handleRowClick(event, 'wt-row-${idx}')">
@@ -5593,17 +5916,20 @@ function renderWatchtower() {
 }
 
 function promptAddWatchTarget() {
-  const target = prompt("Introduce el dominio, IP o billetera para vigilar 24/7:");
-  if (target) {
-    watchTargets.unshift({
-      target: target.trim(),
-      type: "Objetivo Operativo",
-      checked: "Recien anadido",
-      status: "MONITOREANDO"
-    });
-    renderWatchtower();
-    showToast(`Objetivo '${target}' anadido al monitor de vigilancia activa`, "ok");
-  }
+  const target = prompt("Introduce el objetivo a vigilar (Dominio, IP, Billetera Cripto):");
+  if (!target || !target.trim()) return;
+
+  const effectiveCaseId = getModuleCaseId("watchtower");
+  const targets = getWatchtowerTargets(effectiveCaseId);
+  targets.unshift({
+    target: target.trim(),
+    type: target.includes(".") ? (target.match(/^\d/) ? "IPv4 Server" : "FQDN Domain") : "Crypto/Entity",
+    checked: "Reciente",
+    status: "EN VIGILANCIA ACTIVA"
+  });
+  saveWatchtowerTargets(effectiveCaseId);
+  renderWatchtower();
+  showToast(`Objetivo '${target.trim()}' anadido al proyecto '${effectiveCaseId}'`, "ok");
 }
 
 // --- N. Modulo: Puente Maltego Desktop & TRX Sync ---
@@ -6537,3 +6863,46 @@ window.addEventListener("click", (e) => {
     if (e.target.id === "modal-import") closeImportModal();
   }
 });
+
+async function injectPlaygroundEntitiesIntoCase() {
+  if (!lastPlaygroundEntities || lastPlaygroundEntities.length === 0) return;
+  const targetCaseId = getModuleCaseId("transforms");
+  if (!targetCaseId) {
+    showToast("Selecciona o crea un proyecto activo primero", "warning");
+    return;
+  }
+
+  const payload = {
+    entities: lastPlaygroundEntities.map((e) => ({
+      type: e.type || "maltego.Phrase",
+      value: e.value,
+      properties: e.properties || {}
+    })),
+    edges: []
+  };
+
+  try {
+    const res = await fetch("/api/cases/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        case_id: targetCaseId,
+        filename: `playground_lookup_${targetCaseId}.json`,
+        content: JSON.stringify(payload)
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (targetCaseId === currentCaseId) {
+        await loadCaseGraph(targetCaseId);
+      }
+      playTacticalClick(880, 0.04);
+      showToast(`${lastPlaygroundEntities.length} entidades incorporadas al proyecto '${targetCaseId}'`, "ok");
+    } else {
+      showToast(data.error || "Error al incorporar entidades", "error");
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, "error");
+  }
+}
+

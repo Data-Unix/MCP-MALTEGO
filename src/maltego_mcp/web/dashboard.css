@@ -2647,3 +2647,92 @@ tr.row-detail-container td {
   }
 }
 
+/* Barra de Seleccion Global de Proyectos en Topbar */
+.topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 0 1rem;
+}
+
+.topbar-project-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(10, 14, 26, 0.85);
+  border: 1px solid var(--border-color, #334155);
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.project-indicator-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: projectPulse 2.5s infinite ease-in-out;
+}
+
+@keyframes projectPulse {
+  0% { transform: scale(0.9); opacity: 0.75; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.75; }
+}
+
+.project-label {
+  font-size: 11px;
+  color: var(--accent-cyan, #06b6d4);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.topbar-project-select {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text-primary, #f8fafc);
+  border: 1px solid rgba(0, 245, 255, 0.25);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  min-width: 190px;
+  max-width: 280px;
+  cursor: pointer;
+}
+
+.topbar-project-select:focus {
+  border-color: var(--accent-cyan, #06b6d4);
+  outline: none;
+}
+
+/* Selector de Proyecto en Modulos */
+.module-project-selector-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.module-case-select {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  background: rgba(10, 14, 26, 0.9);
+  color: var(--accent-cyan, #06b6d4);
+  border: 1px solid rgba(0, 245, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  min-width: 170px;
+  max-width: 250px;
+  cursor: pointer;
+}
+
+.module-case-select:focus {
+  border-color: var(--accent-cyan, #06b6d4);
+  outline: none;
+}
+

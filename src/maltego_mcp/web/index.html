@@ -201,6 +201,19 @@
         <div class="topbar-left">
           <h1 class="view-title" id="current-view-title">Centro de Mando</h1>
         </div>
+        <div class="topbar-center">
+          <div class="topbar-project-bar">
+            <span class="project-indicator-dot"></span>
+            <span class="project-label mono">[PROYECTO ACTIVO]:</span>
+            <select class="select select-sm topbar-project-select" id="global-project-select" onchange="switchActiveProject(this.value)" title="Cambiar investigacion activa globalmente">
+              <option value="">Cargando proyectos...</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="promptCreateCase()" title="Crear nueva investigacion">+ Proyecto</button>
+            <button class="btn btn-secondary btn-sm" onclick="reloadCurrentGraph()" title="Sincronizar y recargar caso activo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+        </div>
         <div class="topbar-right">
           <button class="btn btn-secondary btn-sm" onclick="openPersonaModal()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -575,10 +588,14 @@
         <!-- VISTA 5: TRANSFORMS Y PLAYGROUND -->
         <section class="view-section" id="view-transforms">
           <div class="panel" style="margin-bottom:1.5rem;">
-            <div class="panel-header">
+            <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
               <div>
                 <div class="panel-title">Playground de Consulta Directa (Lookup)</div>
                 <div class="panel-subtitle">Ejecución aislada de transformadas sin modificar el grafo persistente</div>
+              </div>
+              <div class="module-project-selector-wrapper">
+                <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Proyecto Destino:</span>
+                <select class="select select-sm module-case-select" id="transforms-case-select" onchange="onModuleCaseChanged('transforms', this.value)"></select>
               </div>
             </div>
             <form onsubmit="runPlaygroundLookup(event)" style="display:grid; grid-template-columns:1.5fr 2fr 1fr auto; gap:0.75rem; align-items:end;">
@@ -853,12 +870,16 @@
         <!-- VISTA 7: BLOCKCHAIN & AML LEDGER -->
         <section class="view-section" id="view-crypto-ledger">
           <div class="panel">
-            <div class="panel-header" style="justify-content:space-between;">
+            <div class="panel-header" style="justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
               <div>
                 <div class="panel-title">[AML] BLOCKCHAIN & CRYPTO LEDGER FORENSICS</div>
                 <div class="panel-subtitle">Trazabilidad multi-cadena (TRC-20, ERC-20, BTC), heurística de mixers (Tornado Cash, Sinbad), saltos cross-chain y listas OFAC SDN</div>
               </div>
-              <div style="display:flex; gap:0.5rem;">
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div class="module-project-selector-wrapper">
+                  <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
+                  <select class="select select-sm module-case-select" id="crypto-case-select" onchange="onModuleCaseChanged('crypto', this.value)"></select>
+                </div>
                 <button class="btn btn-secondary btn-sm" onclick="runAmlMixerHeuristics()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                   Escanear Mixers & Saltos
@@ -952,10 +973,16 @@
         <!-- VISTA 8: BOVEDA DE EVIDENCIAS & CADENA DE CUSTODIA (ISO/IEC 27037) -->
         <section class="view-section" id="view-forensics-vault">
           <div class="panel">
-            <div class="panel-header" style="justify-content:space-between;">
+            <div class="panel-header" style="justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
               <div>
                 <div class="panel-title">[COC] BOVEDA DE EVIDENCIAS & CADENA DE CUSTODIA (ISO/IEC 27037)</div>
                 <div class="panel-subtitle">Adquisicion forense, verificacion criptografica local SHA-256 / MD5, trazabilidad pericial y exportacion de manifiestos firmados</div>
+              </div>
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div class="module-project-selector-wrapper">
+                  <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
+                  <select class="select select-sm module-case-select" id="vault-case-select" onchange="onModuleCaseChanged('vault', this.value)"></select>
+                </div>
               </div>
               <div class="table-toolbar-tactical" id="vault-evidence-table-toolbar">
                 <div class="table-toolbar-left">
@@ -1013,12 +1040,16 @@
         <!-- VISTA 9: MATRIZ MITRE ATT&CK ENTERPRISE -->
         <section class="view-section" id="view-mitre-matrix">
           <div class="panel">
-            <div class="panel-header" style="justify-content:space-between;">
+            <div class="panel-header" style="justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
               <div>
                 <div class="panel-title">[TTP] MATRIZ MITRE ATT&CK ENTERPRISE (AUTO-MAPEO IOCs)</div>
                 <div class="panel-subtitle">Correlacion automatica de artefactos del caso activo con tecnicas y tacticas adversarias de ciberinteligencia</div>
               </div>
-              <div style="display:flex; gap:0.5rem;">
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div class="module-project-selector-wrapper">
+                  <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
+                  <select class="select select-sm module-case-select" id="mitre-case-select" onchange="onModuleCaseChanged('mitre', this.value)"></select>
+                </div>
                 <button class="btn btn-secondary btn-sm" onclick="exportMitreNavigatorLayer()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                   Exportar Capa ATT&CK Navigator
@@ -1044,6 +1075,12 @@
               <div>
                 <div class="panel-title">[GEO] CARTOGRAFIA GEOESPACIAL & TOPOLOGIA BGP</div>
                 <div class="panel-subtitle">Georreferenciacion interactiva del caso activo: servidores C2, nodos de enrutamiento ASN, saltos de red y arcos geodesicos</div>
+              </div>
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div class="module-project-selector-wrapper">
+                  <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
+                  <select class="select select-sm module-case-select" id="geo-case-select" onchange="onModuleCaseChanged('geo', this.value)"></select>
+                </div>
               </div>
               <div class="table-toolbar-tactical" id="geomap-nodes-table-toolbar">
                 <div class="table-toolbar-left">
@@ -1099,12 +1136,16 @@
         <!-- VISTA 11: GENERADOR DE REGLAS DE DETECCION -->
         <section class="view-section" id="view-rules-generator">
           <div class="panel">
-            <div class="panel-header" style="justify-content:space-between;">
+            <div class="panel-header" style="justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
               <div>
                 <div class="panel-title">[SIG] GENERADOR DE REGLAS DE DETECCION (SIEM / IDS / EDR)</div>
                 <div class="panel-subtitle">Traduccion automatica de indicadores de compromiso (IOCs) a especificaciones Sigma v2, YARA v4, Suricata IDS y STIX 2.1</div>
               </div>
-              <div style="display:flex; gap:0.5rem;">
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div class="module-project-selector-wrapper">
+                  <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
+                  <select class="select select-sm module-case-select" id="rules-case-select" onchange="onModuleCaseChanged('rules', this.value)"></select>
+                </div>
                 <button class="btn btn-primary btn-sm" onclick="copyCurrentRuleToClipboard()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                   Copiar Regla al Portapapeles
@@ -1128,12 +1169,16 @@
         <!-- VISTA 12: MONITOR DE VIGILANCIA ACTIVA -->
         <section class="view-section" id="view-threat-watchtower">
           <div class="panel">
-            <div class="panel-header" style="justify-content:space-between;">
+            <div class="panel-header" style="justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
               <div>
                 <div class="panel-title">[WCH] MONITOR DE VIGILANCIA ACTIVA & ALERTAS TEMPRANAS</div>
                 <div class="panel-subtitle">Supervision continua de mutaciones DNS, aparicion de nuevos certificados SSL/TLS y cambios de titularidad WHOIS</div>
               </div>
-              <div style="display:flex; gap:0.5rem;">
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <div class="module-project-selector-wrapper">
+                  <span class="mono" style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Investigacion en Foco:</span>
+                  <select class="select select-sm module-case-select" id="watchtower-case-select" onchange="onModuleCaseChanged('watchtower', this.value)"></select>
+                </div>
                 <button class="btn btn-primary btn-sm" onclick="promptAddWatchTarget()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   Anadir Objetivo a Vigilancia
