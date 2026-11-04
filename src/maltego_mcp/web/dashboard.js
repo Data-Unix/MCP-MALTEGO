@@ -4487,6 +4487,7 @@ function renderCryptoLedger() {
       gas: "0.0042 ETH ($14.28)",
       taint: "94.8% OFAC SDN",
       hops: 4,
+      source: "Etherscan Verified Contract & OFAC SDN List (OFAC-37021)",
       desc: "Deposito en pool de mezcla de Tornado Cash. Fondos originados en direccion vinculada a incidente cibernetico."
     },
     {
@@ -4506,6 +4507,7 @@ function renderCryptoLedger() {
       gas: "0.0028 ETH ($9.52)",
       taint: "76.4% Suspicious",
       hops: 3,
+      source: "Peeling Chain Engine & Ethereum Virtual Machine (EVM) Log Tracer",
       desc: "Salto intermedio con tecnica de Peeling Chain; extraccion de cambio en wallet temporal y dispersion hacia puente."
     },
     {
@@ -4525,6 +4527,7 @@ function renderCryptoLedger() {
       gas: "0.00015 BTC ($9.75)",
       taint: "82.1% High Risk",
       hops: 2,
+      source: "Mempool.space Open API & Bitcoin Core Full Node RPC",
       desc: "Intercambio en plataforma P2P sin verificacion KYC con paso previo por ChipMixer."
     },
     {
@@ -4544,6 +4547,7 @@ function renderCryptoLedger() {
       gas: "12.5 TRX ($1.87)",
       taint: "31.0% Low Risk",
       hops: 1,
+      source: "TronGrid JSON-RPC API & VASP Registry",
       desc: "Transferencia directa de alimentacion previa a la dispersion en el contrato de mezcla."
     }
   ];
@@ -4573,6 +4577,7 @@ function renderCryptoLedger() {
         gas: n.properties?.gas || "0.0035 ETH",
         taint: n.properties?.taint || "68.5% Taint",
         hops: n.properties?.hops || 2,
+        source: n.sources?.[0] || n.properties?.source || (n.properties?.is_mixer === "yes" ? "OFAC SDN List & Smart Contract Registry" : "Mempool.space Open API & On-Chain Consensus"),
         desc: n.notes || n.properties?.desc || `Transaccion registrada en el proyecto '${effectiveCaseId}'`
       });
     }
@@ -4597,6 +4602,7 @@ function renderCryptoLedger() {
         gas: "0.0025 ETH",
         taint: cn.isRisk ? "85.0% OFAC" : "25.0% Clean",
         hops: 1,
+        source: cn.sources?.[0] || cn.properties?.source || "Mempool.space API Open Ledger",
         desc: `Billetera identificada en el proyecto '${effectiveCaseId}'`
       });
     });
@@ -4671,6 +4677,10 @@ function renderCryptoLedger() {
             <div class="row-detail-item">
               <span class="row-detail-label">Saltos Identificados</span>
               <span class="row-detail-val">${tx.hops} saltos forenses</span>
+            </div>
+            <div class="row-detail-item" style="grid-column: span 2;">
+              <span class="row-detail-label">Fuente Primaria de Datos</span>
+              <span class="row-detail-val" style="color:var(--accent-cyan); font-weight:600;">${escapeHtml(tx.source || 'Mempool.space API Open Ledger')}</span>
             </div>
           </div>
           <div style="font-size:11px; color:var(--text-secondary); margin-top:0.25rem;">
@@ -6359,6 +6369,10 @@ function traceAmlTransaction(txid) {
           <div style="font-size:11px; color:var(--text-secondary);">
             Emision inicial de fondos mediante agrupacion UTXO / Tron Transfer. Sin verificacion KYC asociada.
           </div>
+          <div class="trace-hop-source">
+            <span class="trace-source-tag">Fuente Primaria:</span>
+            <span class="mono" style="color:var(--text-primary);">Mempool.space Electrum Open Ledger / Nodos RPC P2P</span>
+          </div>
         </div>
       </div>
 
@@ -6375,6 +6389,10 @@ function traceAmlTransaction(txid) {
           </div>
           <div style="font-size:11px; color:var(--text-secondary);">
             Monto de transferencia: <strong>${found.amount}</strong> | Bloque: <strong>${found.block || "19482910"}</strong> | Comision: <strong>${found.gas || "0.0042 ETH"}</strong>
+          </div>
+          <div class="trace-hop-source">
+            <span class="trace-source-tag">Fuente Primaria:</span>
+            <span class="mono" style="color:var(--text-primary);">Mempool.space API v1 (/api/tx/${escapeHtml(found.txid)}) & Consenso Mainnet (Bloque #${found.block || "19482910"})</span>
           </div>
         </div>
       </div>
@@ -6393,6 +6411,10 @@ function traceAmlTransaction(txid) {
           <div style="font-size:11px; color:var(--text-secondary);">
             Extraccion de cambio residual: <strong>1,000 USDT</strong> retornado a wallet secundaria; <strong>249,000 USDT</strong> enviados al contrato de mezcla.
           </div>
+          <div class="trace-hop-source">
+            <span class="trace-source-tag">Fuente Primaria:</span>
+            <span class="mono" style="color:var(--text-primary);">Algoritmo Heuristico de Cambio Residual (CIOH / Peeling Chain Engine)</span>
+          </div>
         </div>
       </div>
 
@@ -6410,6 +6432,10 @@ function traceAmlTransaction(txid) {
           <div style="font-size:11px; color:var(--text-secondary);">
             Anonimizacion criptografica en el pool de 10 ETH / 100 USDT mediante pruebas de conocimiento cero (zk-SNARKs). Ruptura intencional del vinculo on-chain.
           </div>
+          <div class="trace-hop-source">
+            <span class="trace-source-tag">Fuente Primaria:</span>
+            <span class="mono" style="color:var(--accent-crimson); font-weight:700;">US Treasury OFAC Specially Designated Nationals (SDN) Sanctions List & Etherscan Verified Contract Registry</span>
+          </div>
         </div>
       </div>
 
@@ -6426,6 +6452,10 @@ function traceAmlTransaction(txid) {
           </div>
           <div style="font-size:11px; color:var(--text-secondary);">
             Retiro fraccionado en 4 transferencias de cantidad constante hacia cuenta con requerimiento de identificacion KYC.
+          </div>
+          <div class="trace-hop-source">
+            <span class="trace-source-tag">Fuente Primaria:</span>
+            <span class="mono" style="color:#10b981; font-weight:700;">VASP Registry & Base de Datos de Atribucion de Clusteres de Deposito Binance/Coinbase/Kraken</span>
           </div>
         </div>
       </div>

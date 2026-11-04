@@ -2494,6 +2494,25 @@ tr.row-detail-container td {
   font-size: 12px;
 }
 
+.trace-hop-source {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border-left: 2px solid var(--accent-cyan);
+  padding: 3px 8px;
+  border-radius: 0 4px 4px 0;
+  margin-top: 3px;
+}
+
+.trace-source-tag {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
 .taint-gauge {
   display: flex;
   align-items: center;
