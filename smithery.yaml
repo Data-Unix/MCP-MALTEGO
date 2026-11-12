@@ -1,0 +1,14 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # mcp-maltego runs zero-key out of the box; no configuration is required.
+    type: object
+    required: []
+    properties: {}
+  commandFunction:
+    # Returns the CLI command to start mcp-maltego over stdio.
+    |-
+    (config) => ({ command: 'npx', args: ['-y', 'mcp-maltego'] })
+  exampleConfig: {}
