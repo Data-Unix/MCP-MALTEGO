@@ -17,6 +17,8 @@
   <img alt="Maltego CE" src="https://img.shields.io/badge/Maltego-Community%20Edition%20Compatible-orange">
   <img alt="Zero Cost" src="https://img.shields.io/badge/Plan-100%25%20Free%20%26%20Open%20Source-brightgreen">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-server-8A2BE2">
+  <a href="https://registry.modelcontextprotocol.io/v0/servers?search=mcp-maltego"><img alt="MCP Registry" src="https://img.shields.io/badge/MCP%20Registry-active-5b21b6"></a>
+  <a href="https://glama.ai/mcp/servers/Data-Unix/MCP-MALTEGO"><img alt="Glama MCP server score" src="https://glama.ai/mcp/servers/Data-Unix/MCP-MALTEGO/badges/score.svg"></a>
   <img alt="Tools" src="https://img.shields.io/badge/tools-20-blue">
   <a href="CONTRIBUTING.md"><img alt="Contributions" src="https://img.shields.io/badge/PRs-welcome-blue"></a>
   <a href="README.es.md"><img alt="Español" src="https://img.shields.io/badge/docs-español-red"></a>
