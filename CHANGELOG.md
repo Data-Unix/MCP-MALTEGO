@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- **MCP directory metadata**: `smithery.yaml` (stdio launch descriptor for one-click install on Smithery) and `glama.json` (maintainer declaration for Glama.ai), plus an MCP Registry badge in both READMEs. Discoverability metadata only; no runtime or behavior changes.
+- **MCP directory metadata**: `smithery.yaml` (stdio launch descriptor for one-click install on Smithery) and `glama.json` (maintainer declaration for Glama.ai), plus MCP Registry and Glama score badges in both READMEs. Discoverability metadata only; no runtime or behavior changes.
 - **Multi-Case Isolation & Modular Project Scoping**: Global project selector synchronized in the Topbar and live graph canvas, paired with per-module focus selectors (defaulting to `[Follow Active Case]`), strictly preventing cross-contamination between independent forensic cases.
 - **Forensic Case Deletion & Atomic Purging**: Interactive confirmation modal for secure deletion of ad-hoc or temporary investigations, atomic purging of entities, edges, and step history from the graph store via `DELETE /api/cases/{case_id}`, and local cache/evidence destruction with automatic fallback.
 - **Cryptoforensics & Blockchain AML Traceability**: Native cryptocurrency ontology (`maltego.CryptoCluster`, `maltego.VASPExchange`, `maltego.MixerContract`, `maltego.DeFiBridge`), multi-hop transaction flow tracing, peeling chain and tumbler heuristics, OFAC SDN sanctions screening, and VASP deposit touchpoint detection.
