@@ -4,7 +4,10 @@
       "type": "stdio",
       "command": "uv",
       "args": ["run", "--quiet", "maltego-mcp"],
-      "env": {}
+      "env": {
+        "MALTEGO_MCP_ALLOW_ACTIVE": "1",
+        "MALTEGO_MCP_MODE": "active"
+      }
     }
   }
 }

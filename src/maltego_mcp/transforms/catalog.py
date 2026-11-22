@@ -9,8 +9,10 @@ from __future__ import annotations
 import os
 import re
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from maltego_mcp.errors import ConfigError, InvalidInput
@@ -27,9 +29,10 @@ class TransformServer:
     api_key_env: str = ""
     timeout_s: float = 60.0
 
-    def headers(self) -> dict[str, str]:
+    def headers(self, env: Mapping[str, str] | None = None) -> dict[str, str]:
         if self.api_key_env:
-            key = os.environ.get(self.api_key_env, "")
+            source = os.environ if env is None else env
+            key = source.get(self.api_key_env, "").strip() or os.environ.get(self.api_key_env, "").strip()
             if not key:
                 raise ConfigError(f"Falta la variable de entorno {self.api_key_env} para el servidor '{self.name}'.")
             return {"Authorization": f"Bearer {key}"}
@@ -47,6 +50,13 @@ class TransformSpec:
     settings: dict[str, str] = field(default_factory=dict)
     builtin: BuiltinTransform | None = None
     category: str = "servidor"
+    passivity: Literal["local", "passive", "active_proxy", "active_direct"] = "active_direct"
+
+    @property
+    def is_passive(self) -> bool:
+        if self.builtin is not None:
+            return self.builtin.is_passive
+        return self.passivity in ("local", "passive")
 
     @property
     def requires(self) -> tuple[str, ...]:
@@ -90,6 +100,7 @@ def builtin_specs() -> dict[str, TransformSpec]:
             description=b.description,
             builtin=b,
             category=b.category,
+            passivity=b.passivity,
         )
         for b in all_transforms
     }
@@ -154,6 +165,10 @@ def load_catalog(path: Path | None) -> TransformCatalog:
             raise ConfigError(f"path inválido para el transform '{name}': usa minúsculas, números y '-'.")
         if name.lower() in transforms:
             raise ConfigError(f"Transform duplicado en el catálogo: '{name}'.")
+        pass_raw = str(raw.get("passivity", "active_direct")).strip().lower()
+        passivity: Literal["local", "passive", "active_proxy", "active_direct"] = (
+            pass_raw if pass_raw in ("local", "passive", "active_proxy", "active_direct") else "active_direct"  # type: ignore[assignment]
+        )
         transforms[name.lower()] = TransformSpec(
             name=name,
             server=servers[server_name],
@@ -162,6 +177,7 @@ def load_catalog(path: Path | None) -> TransformCatalog:
             output_types=tuple(str(t) for t in raw.get("output_types", [])),
             description=str(raw.get("description", ""))[:500],
             settings={str(k): str(v) for k, v in dict(raw.get("settings", {})).items()},
+            passivity=passivity,
         )
     return TransformCatalog(transforms, load_machines(list(data.get("machines", []))))
 

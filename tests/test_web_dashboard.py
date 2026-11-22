@@ -39,11 +39,25 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "import-dropzone" in r_root.text
     assert "modal-aml-trace" in r_root.text
     assert "modal-path-trace" in r_root.text
-    assert "modal-bgp-trace" in r_root.text
     assert "table-toolbar-tactical" in r_root.text
-    assert "geomap-canvas" in r_root.text
-    assert "geomap-container" in r_root.text
-    assert "geomap-nodes-table" in r_root.text
+    assert 'data-tab="profiling"' in r_root.text
+    assert "view-profiling" in r_root.text
+    assert "profiling-target-select" in r_root.text
+    assert "profiling-typology-select" in r_root.text
+
+    # Modulos y modales retirados en F7 no deben estar presentes
+    assert "modal-bgp-trace" not in r_root.text
+    assert "modal-country-geo" not in r_root.text
+    assert "modal-evidence-trace" not in r_root.text
+    assert "geomap-canvas" not in r_root.text
+    assert "geomap-container" not in r_root.text
+    assert "geomap-nodes-table" not in r_root.text
+    assert "view-geo-map" not in r_root.text
+    assert "view-threat-watchtower" not in r_root.text
+    assert "view-mitre-matrix" not in r_root.text
+    assert "view-rules-generator" not in r_root.text
+    assert "view-forensics-vault" not in r_root.text
+    assert "view-desktop-bridge" not in r_root.text
 
     r_dash = client.get("/dashboard")
     assert r_dash.status_code == 200
@@ -83,11 +97,12 @@ def test_dashboard_serves_html_and_assets(tmp_path: Path) -> None:
     assert "toggleRowDetail" in r_js.text
     assert "traceAmlTransaction" in r_js.text
     assert "openPathTracerModal" in r_js.text
-    assert "traceBgpRoute" in r_js.text
-    assert "renderGeoMap" in r_js.text
-    assert "drawGeoMap" in r_js.text
-    assert "buildGeoModelFromActiveCase" in r_js.text
-    assert "populateGeoNodesTable" in r_js.text
+    assert "traceBgpRoute" not in r_js.text
+    assert "renderGeoMap" not in r_js.text
+    assert "drawGeoMap" not in r_js.text
+    assert "buildGeoModelFromActiveCase" not in r_js.text
+    assert "populateGeoNodesTable" not in r_js.text
+    assert "openCountryGoogleMapsModal" not in r_js.text
 
     r_worker = client.get("/bg-worker.js")
     assert r_worker.status_code == 200
@@ -475,3 +490,193 @@ def test_api_case_deletion_and_cleanup(tmp_path: Path) -> None:
     r_del_nonexistent = client.delete("/api/cases/caso-inexistente-xyz")
     assert r_del_nonexistent.status_code == 400
     assert r_del_nonexistent.json()["ok"] is False
+
+
+def test_api_cti_feeds_and_sources(tmp_path: Path) -> None:
+    app = _create_test_app(tmp_path)
+    client = TestClient(app)
+
+    r = client.get("/api/cti-feeds")
+    assert r.status_code == 200
+    data = r.json()
+    assert "active_count" in data
+    assert "sources" in data
+    assert data["active_count"] > 0
+    assert len(data["sources"]) > 0
+    s0 = data["sources"][0]
+    assert "name" in s0
+    assert "category" in s0
+    assert "updated_at" in s0 or "updated_ts" in s0
+
+
+def test_api_case_profiling(tmp_path: Path) -> None:
+    app = _create_test_app(tmp_path)
+    client = TestClient(app)
+
+    # 1. Crear un caso de prueba con una persona objetivo
+    import_payload = {
+        "entities": [
+            {
+                "type": "maltego.Person",
+                "value": "Carl Icahn",
+                "properties": {"notes": "Líder de fondo activista con historial de OPA"},
+            }
+        ],
+        "edges": [],
+    }
+    r_imp = client.post(
+        "/api/cases/import",
+        files={"file": ("target.json", json.dumps(import_payload).encode("utf-8"), "application/json")},
+        data={"case_id": "caso-test-profiling"},
+    )
+    assert r_imp.status_code == 200
+    assert r_imp.json()["ok"] is True
+
+    # 2. Obtener el grafo del caso para conseguir el entity_id
+    r_graph = client.get("/api/cases/caso-test-profiling/graph")
+    assert r_graph.status_code == 200
+    nodes = r_graph.json()["nodes"]
+    assert len(nodes) >= 1
+    target_node = nodes[0]
+    eid = target_node["id"]
+
+    # 3. Ejecutar el endpoint de perfilado POST /api/cases/{case_id}/profile
+    r_prof = client.post(
+        "/api/cases/caso-test-profiling/profile",
+        json={
+            "entity_id": eid,
+            "typology": "activist_investor",
+            "reason": "Auditoría pericial previa a OPA",
+            "additional_corpus": "Declaraciones agresivas en prensa sobre venta de activos",
+        },
+    )
+    assert r_prof.status_code == 200
+    pdata = r_prof.json()
+    assert pdata["ok"] is True
+    profile = pdata["profile"]
+    assert profile["typology"] == "investor"
+    assert profile["archetype_label"]
+    assert profile["risk_level"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL")
+    assert len(profile["dimensions"]) >= 3
+    assert isinstance(profile["anomalies"], list)
+    assert len(profile["strategic_recommendations"]) >= 1
+    assert pdata["emitted_count"] >= 1
+
+    # 4. Consultar el historial de perfiles del caso GET /api/cases/{case_id}/profiles
+    r_list = client.get("/api/cases/caso-test-profiling/profiles")
+    assert r_list.status_code == 200
+    list_data = r_list.json()
+    assert list_data["ok"] is True
+    assert list_data["count"] >= 1
+    p0 = list_data["profiles"][0]
+    assert p0["id"] == eid
+    assert p0["typology"] == "investor"
+    assert p0["archetype"] == profile["archetype_label"]
+
+
+def test_dashboard_js_no_contiene_onclick_con_interpolaciones_en_pestanas_mantenidas() -> None:
+    """Verifica estáticamente que todo el fichero usa data-* y delegación, excluyendo solo funciones retiradas en F7."""
+    import re
+
+    js_path = Path(__file__).resolve().parents[1] / "src" / "maltego_mcp" / "web" / "dashboard.js"
+    assert js_path.exists()
+    lines = js_path.read_text(encoding="utf-8").splitlines()
+
+    removed_tabs_functions = {
+        "renderForensicsVault",
+        "renderMitreMatrix",
+        "populateGeoNodesTable",
+        "renderGoogleMapsModalContent",
+        "renderWatchtower",
+    }
+
+    def get_enclosing_function(idx: int) -> str:
+        for j in range(idx, -1, -1):
+            line = lines[j].strip()
+            if (
+                line.startswith("function ")
+                or line.startswith("async function ")
+                or " = function" in line
+                or " = async function" in line
+                or (line.endswith("() {") and not line.startswith("if") and not line.startswith("for"))
+            ):
+                m = re.search(r"(?:function\s+([a-zA-Z0-9_]+)|([a-zA-Z0-9_]+)\s*=\s*(?:async\s+)?function)", line)
+                if m:
+                    return m.group(1) or m.group(2) or "unknown"
+                return "unknown"
+        return "global"
+
+    violations: list[str] = []
+    for i, line in enumerate(lines, 1):
+        if "onclick=" in line and "${" in line:
+            fn = get_enclosing_function(i - 1)
+            if fn not in removed_tabs_functions:
+                violations.append(f"Línea {i} (en {fn}): {line.strip()}")
+
+    assert not violations, "Se encontraron onclick interpolados en pestañas mantenidas:\n" + "\n".join(violations)
+
+    # 2. La bandeja de entrada y proveedores de correo deben usar escapeHtml en campos dinámicos
+    content = "\n".join(lines)
+    assert '${escapeHtml(m.from || "Desconocido")}' in content
+    assert '${escapeHtml(m.subject || "(Sin asunto)")}' in content
+    assert "${escapeHtml(err.message)}" in content
+    assert "${escapeHtml(currentInbox.address)}" in content
+    assert "${escapeHtml(p.name)}" in content
+    assert "${escapeHtml(p.description)}" in content
+    assert "${escapeHtml(tip)}" in content
+
+
+def test_dashboard_js_syntax() -> None:
+    """Verifica que dashboard.js no contenga errores de sintaxis (p. ej. bloques await huérfanos)."""
+    import shutil
+    import subprocess
+
+    js_path = Path(__file__).resolve().parent.parent / "src" / "maltego_mcp" / "web" / "dashboard.js"
+    assert js_path.exists()
+    node = shutil.which("node")
+    if node:
+        proc = subprocess.run([node, "--check", str(js_path)], capture_output=True, text=True)
+        assert proc.returncode == 0, f"Error de sintaxis detectado en dashboard.js:\n{proc.stderr}"
+
+
+def test_panel_sin_manejadores_en_linea_y_acciones_declarativas_en_lista_blanca() -> None:
+    """La CSP (script-src 'self') bloquea onclick/onchange en línea: el panel debe usar data-on-* y lista cerrada."""
+    import re
+
+    web = Path(__file__).resolve().parents[1] / "src" / "maltego_mcp" / "web"
+    html = (web / "index.html").read_text(encoding="utf-8")
+    js = (web / "dashboard.js").read_text(encoding="utf-8")
+
+    # 1. Ningún manejador en línea: el navegador no los ejecuta y el control quedaría sin efecto.
+    inline = re.compile(
+        r"""\son(?:click|change|input|submit|keydown|keyup|mouseover|mouseout|focus|blur|load)\s*=\s*["']"""
+    )
+    assert not inline.findall(html), "index.html contiene manejadores en línea bloqueados por la CSP"
+    assert not inline.findall(js), "dashboard.js genera manejadores en línea bloqueados por la CSP"
+
+    # 2. Toda función invocada desde un data-on-* está en la lista cerrada y existe en dashboard.js.
+    allow_block = re.search(r"const DECLARATIVE_ACTIONS = new Set\(\[(.*?)\]\);", js, re.S)
+    assert allow_block, "No se encuentra DECLARATIVE_ACTIONS en dashboard.js"
+    allowed = set(re.findall(r'"([A-Za-z_$][\w$]*)"', allow_block.group(1)))
+    defined = set(re.findall(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", js, re.M))
+    assert allowed <= defined, f"Acciones en la lista blanca sin función definida: {sorted(allowed - defined)}"
+
+    specials = {"event.stopPropagation()", "event.preventDefault()", "this.parentElement.remove()"}
+    proxy_click = re.compile(r"^document\.getElementById\('[\w-]+'\)\.click\(\)$")
+    arg_ok = re.compile(
+        r"""^(?:'[^'\\]*'|"[^"\\]*"|-?\d+(?:\.\d+)?|true|false|null|this|this\.value|this\.checked|event)$"""
+    )
+    declared = re.findall(r'\sdata-on-(?:click|change|input|submit|keydown)="([^"]*)"', html + js)
+    assert len(declared) >= 100
+    for body in declared:
+        assert "${" not in body, f"Acción declarativa con interpolación: {body}"
+        for stmt in filter(None, (s.strip() for s in body.split(";"))):
+            if stmt in specials or proxy_click.match(stmt):
+                continue
+            call = re.match(r"^(?:return\s+)?([A-Za-z_$][\w$]*)\((.*)\)$", stmt)
+            assert call, f"Acción declarativa no admitida por el despachador: {stmt}"
+            assert call.group(1) in allowed, f"Función fuera de la lista blanca: {call.group(1)}"
+            raw_args = call.group(2).strip()
+            if raw_args:
+                for arg in (a.strip() for a in raw_args.split(",")):
+                    assert arg_ok.match(arg), f"Argumento no admitido en '{stmt}': {arg}"

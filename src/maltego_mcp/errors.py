@@ -23,3 +23,11 @@ class TransformError(MaltegoMcpError):
 
 class ConfigError(MaltegoMcpError):
     """Configuración del servidor incorrecta."""
+
+
+class EgressBlockedError(MaltegoMcpError):
+    """Petición de red bloqueada por la política de salida pasiva o el perímetro intocable."""
+
+
+class EgressKillSwitchError(MaltegoMcpError):
+    """El túnel de salida anónima (VPN/Tor) falló; se activa el kill-switch para evitar fugas."""

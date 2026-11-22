@@ -125,6 +125,8 @@ class FakeGraph:
         if q == G.Q_PATHS:
             return [[b["src"], b["dst"]]]
         if q == G.Q_ADD_STEP:
+            if (b["pk"], b["vid"]) in self.v:
+                raise G.ConflictError("409")
             props = {
                 "id": b["vid"],
                 "label": "step",
@@ -344,3 +346,42 @@ async def test_crud_y_memoria_en_gremlin(svc: OsintService, fake: FakeGraph) -> 
         await svc.case_summary("g1", 0)
     for query, bindings in fake.calls:
         assert not (G.RESERVED_BINDINGS & bindings.keys()), query
+
+
+async def test_append_step_reintenta_ante_conflicto_409_y_unicidad_vid(fake: FakeGraph) -> None:
+    store = GremlinGraphStore(fake)
+    step = G.StepRecord(
+        seq=0,
+        case_id="case-steps",
+        timestamp="2026-01-01T00:00:00Z",
+        kind="transform",
+        action="test",
+        input_id="in",
+        input_value="val",
+        reason="reason",
+        outputs=[],
+        new_entities=0,
+        error="",
+        duration_ms=10,
+    )
+
+    s1 = await store.append_step(step)
+    calls_q_add = [b for q, b in fake.calls if q == G.Q_ADD_STEP]
+    assert len(calls_q_add) == 1
+    assert calls_q_add[0]["vid"].startswith(f"step-{s1.seq}-")
+
+    attempt_count = 0
+    original_call = fake.__call__
+
+    async def conflict_once(q: str, b: dict[str, Any]) -> list[Any]:
+        nonlocal attempt_count
+        if q == G.Q_ADD_STEP:
+            attempt_count += 1
+            if attempt_count == 1:
+                raise G.ConflictError("409 Conflict simulado")
+        return await original_call(q, b)
+
+    store_retry = GremlinGraphStore(conflict_once)
+    s2 = await store_retry.append_step(step)
+    assert attempt_count == 2
+    assert s2.seq > 0

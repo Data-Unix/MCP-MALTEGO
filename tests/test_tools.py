@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from mcp import Client
 from mcp.types import TextContent
 
 from maltego_mcp.server import create_server
-from maltego_mcp.service import OsintService
+from maltego_mcp.service import OsintService, _csv_safe
 
 
 async def call(svc: OsintService, tool: str, args: dict[str, Any]) -> tuple[bool, str]:
@@ -90,6 +91,30 @@ async def test_flujo_manual_completo(service: OsintService, tmp_path: Path) -> N
     assert exported == [".csv", ".graphml", ".json"]
     csv_text = next((tmp_path / "exports").glob("*.csv")).read_text(encoding="utf-8-sig")
     assert "maltego.Domain,example.com,resolves_to,maltego.IPv4Address,93.184.216.34" in csv_text
+
+
+def test_csv_safe_neutraliza_inyeccion_y_cr() -> None:
+    # Disparadores estándar
+    assert _csv_safe("=1+1") == "'=1+1"
+    assert _csv_safe("@SUM(A1)") == "'@SUM(A1)"
+    assert _csv_safe("-cmd()") == "'-cmd()"
+    assert _csv_safe("+cmd()") == "'+cmd()"
+    assert _csv_safe("\tcmd()") == "'\tcmd()"
+
+    # Teléfonos legítimos no se prefijan con apóstrofo
+    assert _csv_safe("+34600123456") == "+34600123456"
+    assert _csv_safe("+1 555 123 4567") == "+1 555 123 4567"
+
+    # Salto de línea inicial antes de fórmula
+    assert _csv_safe("\n=cmd()") == "'\n=cmd()"
+    assert _csv_safe("\r=cmd()") == "' =cmd()"
+
+    # Espacios iniciales antes de fórmula
+    assert _csv_safe("   =cmd()") == "'   =cmd()"
+
+    # Retorno de carro embebido se convierte a espacio
+    assert _csv_safe("primer\rsegundo") == "primer segundo"
+    assert _csv_safe("texto normal") == "texto normal"
 
 
 async def test_errores_de_entrada_son_accionables(service: OsintService) -> None:
@@ -423,7 +448,15 @@ async def test_tipo_auto(service: OsintService) -> None:
     assert run["results"][0]["entity"]["value"] == "y.org"
 
 
-async def test_expandir_entidad(service: OsintService) -> None:
+async def test_expandir_entidad(service: OsintService, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        socket,
+        "gethostbyname_ex",
+        lambda h: (
+            (str(h), [], ["93.184.216.34"]) if str(h).strip("b'\"") == "example.org" else (str(h), [], ["127.0.0.1"])
+        ),
+    )
+    service.env = {"MALTEGO_MCP_ALLOW_ACTIVE": "1"}
     d = json.loads(
         await ok(
             service,

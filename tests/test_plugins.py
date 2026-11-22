@@ -11,6 +11,7 @@ from maltego_mcp.transforms.plugins import (
     clear_community_registry,
     custom_transform,
     discover_plugins,
+    get_default_plugin_dirs,
     load_plugin_file,
     result_entity,
     transform_response,
@@ -96,3 +97,21 @@ def test_result_entity_and_response_helpers() -> None:
     resp = transform_response([ent])
     assert len(resp.entities) == 1
     assert resp.entities[0].value == "example.com"
+
+
+def test_default_plugin_dirs_home_opt_in(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_home = tmp_path / "fake_home"
+    fake_home_plugins = fake_home / ".maltego-mcp" / "plugins"
+    fake_home_plugins.mkdir(parents=True)
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+
+    # Sin variable de entorno: no se incluye a pesar de existir
+    monkeypatch.delenv("MALTEGO_MCP_PLUGINS_HOME", raising=False)
+    dirs = get_default_plugin_dirs()
+    assert fake_home_plugins not in dirs
+
+    # Con opt-in explícito MALTEGO_MCP_PLUGINS_HOME=1: se incluye
+    monkeypatch.setenv("MALTEGO_MCP_PLUGINS_HOME", "1")
+    dirs_opt_in = get_default_plugin_dirs()
+    assert fake_home_plugins in dirs_opt_in

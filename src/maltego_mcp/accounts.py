@@ -9,15 +9,24 @@ Reglas OPSEC y de seguridad:
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import hashlib
+import json
 import os
+import secrets
+import socket
 import time
 import tomllib
+import urllib.parse
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+
+from maltego_mcp.egress import ensure_private_file_permissions, mask_url_secrets
+from maltego_mcp.errors import EgressBlockedError, EgressKillSwitchError
 
 ACCOUNTS_FILE = "accounts.toml"
 
@@ -36,9 +45,9 @@ PLATFORM_ENV_VARS: dict[str, tuple[str, ...]] = {
     "dehashed": ("DEHASHED_API_KEY",),
     "snusbase": ("SNUSBASE_API_KEY",),
     "leak_lookup": ("LEAK_LOOKUP_KEY",),
-    "tor": ("TOR_SOCKS_PROXY",),
-    "onion": ("TOR_SOCKS_PROXY",),
 }
+
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
 
 ROLE_TEMPLATES: dict[str, tuple[str, str, str, tuple[str, ...]]] = {
     "cyber_researcher": (
@@ -195,8 +204,7 @@ class SocialAccount:
         if not self.enabled:
             return "deshabilitada"
         if self.token:
-            prefix = self.token[:3] if len(self.token) >= 6 else "***"
-            return f"configurada ({prefix}****)"
+            return "configurada (****)"
         if self.cookie:
             return "cookie configurada (****)"
         if not self.token_env:
@@ -205,8 +213,7 @@ class SocialAccount:
         val = e.get(self.token_env, "").strip()
         if not val:
             return f"falta {self.token_env}"
-        prefix = val[:3] if len(val) >= 6 else ""
-        return f"configurada ({prefix}****)"
+        return "configurada (****)"
 
     def headers(self, env: dict[str, str] | None = None, default_ua: str = "") -> dict[str, str]:
         hdrs: dict[str, str] = {}
@@ -233,8 +240,9 @@ class SocialAccount:
             hdrs["Authorization"] = token if " " in token else f"Bearer {token}"
         elif plat == "intelx":
             hdrs["x-key"] = token
-        else:
+        elif plat in PLATFORM_ENV_VARS:
             hdrs["Authorization"] = f"Bearer {token}"
+        # Para tor, onion o plataformas desconocidas no se añade Authorization
         return hdrs
 
     def to_public_dict(self, env: dict[str, str] | None = None) -> dict[str, object]:
@@ -320,8 +328,8 @@ class AccountPool:
                 if acc_site and acc_site != target and target not in acc_site and acc_site not in target:
                     continue
             candidates.append(a)
-        if not candidates:
-            # Reintento sin filtro estricto de sitio si no hay específica
+        if not candidates and target and plat not in ("tor", "onion"):
+            # Reintento sin filtro estricto de sitio si no hay específica (solo para clearnet conocido)
             candidates = [a for a in self.accounts if a.platform.lower() == plat and a.is_ready(self.env)]
         if not candidates:
             return None
@@ -356,6 +364,7 @@ def ensure_accounts_template(home: Path) -> Path:
     home.mkdir(parents=True, exist_ok=True)
     path = home / ACCOUNTS_FILE
     if path.is_file():
+        ensure_private_file_permissions(path)
         return path
     template = (
         "# Bóveda local de cuentas y Sock Puppets para MCP Maltego (~/.maltego-mcp/accounts.toml)\n"
@@ -369,6 +378,7 @@ def ensure_accounts_template(home: Path) -> Path:
         "# enabled = true\n"
     )
     path.write_text(template, encoding="utf-8")
+    ensure_private_file_permissions(path)
     return path
 
 
@@ -465,11 +475,14 @@ def generate_sockpuppet_persona(
         f"{nouns[(n_idx + 2) % len(nouns)]}.{prefixes[p_idx]}",
     ]
     is_onion = ".onion" in target_site.lower()
-    proxy_rec = "socks5://127.0.0.1:9050" if is_onion else " residencial/VPN dedicado a la región " + norm_region
+    proxy_rec = "socks5h://127.0.0.1:9050" if is_onion else " residencial/VPN dedicado a la región " + norm_region
 
-    # Generación determinista de TOTP secreto Base32 de 32 chars
-    b32_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-    totp_secret = "".join(b32_chars[int(digest[i : i + 2], 16) % len(b32_chars)] for i in range(0, 64, 2))[:32]
+    # Generación de TOTP secreto Base32 de 32 chars (CSPRNG salvo semilla reproducible explícita)
+    if seed.strip():
+        b32_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        totp_secret = "".join(b32_chars[int(digest[i : i + 2], 16) % len(b32_chars)] for i in range(0, 64, 2))[:32]
+    else:
+        totp_secret = base64.b32encode(secrets.token_bytes(20)).decode("ascii")[:32]
     pgp_id = f"0x{digest[:16].upper()}"
     burner_email = f"{primary_handle}@duck.com" if not is_onion else f"{primary_handle}@dnmx.org"
 
@@ -513,26 +526,32 @@ def generate_sockpuppet_persona(
     )
 
 
+def _toml_str(val: str) -> str:
+    return json.dumps(val, ensure_ascii=False)
+
+
 def save_persona_to_accounts_toml(home: Path, persona: SockPuppetPersona, platform: str = "onion_forum") -> Path:
     """Registra el perfil *Sock Puppet* generado en `~/.maltego-mcp/accounts.toml` (sin secretos)."""
     path = ensure_accounts_template(home)
     existing = path.read_text(encoding="utf-8")
-    if f'id = "{persona.persona_id}"' in existing:
+    if f"id = {_toml_str(persona.persona_id)}" in existing:
+        ensure_private_file_permissions(path)
         return path
-    proxy_val = "socks5://127.0.0.1:9050" if ".onion" in persona.target_site.lower() else ""
+    proxy_val = "socks5h://127.0.0.1:9050" if ".onion" in persona.target_site.lower() else ""
     block = (
         f"\n[[accounts]]\n"
-        f'id = "{persona.persona_id}"\n'
-        f'platform = "{platform.strip().lower()[:40]}"\n'
-        f'username = "{persona.handle}"\n'
-        f'handle = "{persona.handle}"\n'
-        f'target_site = "{persona.target_site.replace(chr(34), "")[:180]}"\n'
-        f'user_agent = "{persona.user_agent.replace(chr(34), "")}"\n'
-        f'proxy = "{proxy_val}"\n'
+        f"id = {_toml_str(persona.persona_id)}\n"
+        f"platform = {_toml_str(platform.strip().lower()[:40])}\n"
+        f"username = {_toml_str(persona.handle)}\n"
+        f"handle = {_toml_str(persona.handle)}\n"
+        f"target_site = {_toml_str(persona.target_site[:180])}\n"
+        f"user_agent = {_toml_str(persona.user_agent)}\n"
+        f"proxy = {_toml_str(proxy_val)}\n"
         f"rate_limit_rpm = 15\n"
         f"enabled = true\n"
     )
     path.write_text(existing.rstrip() + "\n" + block, encoding="utf-8")
+    ensure_private_file_permissions(path)
     return path
 
 
@@ -559,24 +578,24 @@ class AccountVerificationReport:
 def _format_account_toml(acc: SocialAccount) -> str:
     lines = [
         "[[accounts]]",
-        f'id = "{acc.id}"',
-        f'platform = "{acc.platform}"',
-        f'category = "{acc.category or acc._infer_category()}"',
-        f'username = "{acc.username}"',
-        f'handle = "{acc.handle or acc.username}"',
+        f"id = {_toml_str(acc.id)}",
+        f"platform = {_toml_str(acc.platform)}",
+        f"category = {_toml_str(acc.category or acc._infer_category())}",
+        f"username = {_toml_str(acc.username)}",
+        f"handle = {_toml_str(acc.handle or acc.username)}",
     ]
     if acc.token:
-        lines.append(f'token = "{acc.token}"')
+        lines.append(f"token = {_toml_str(acc.token)}")
     if acc.cookie:
-        lines.append(f'cookie = "{acc.cookie}"')
+        lines.append(f"cookie = {_toml_str(acc.cookie)}")
     if acc.token_env:
-        lines.append(f'token_env = "{acc.token_env}"')
+        lines.append(f"token_env = {_toml_str(acc.token_env)}")
     if acc.target_site or acc.site:
-        lines.append(f'target_site = "{acc.target_site or acc.site}"')
+        lines.append(f"target_site = {_toml_str(acc.target_site or acc.site)}")
     if acc.user_agent:
-        lines.append(f'user_agent = "{acc.user_agent}"')
+        lines.append(f"user_agent = {_toml_str(acc.user_agent)}")
     if acc.proxy:
-        lines.append(f'proxy = "{acc.proxy}"')
+        lines.append(f"proxy = {_toml_str(acc.proxy)}")
     lines.append(f"rate_limit_rpm = {max(1, acc.rate_limit_rpm)}")
     lines.append(f"enabled = {'true' if acc.enabled else 'false'}")
     return "\n".join(lines)
@@ -598,6 +617,7 @@ def save_account_to_toml(home: Path, account: SocialAccount) -> SocialAccount:
     existing = [a for a in pool.accounts if a.id != account.id]
     existing.append(account)
     path.write_text(serialize_accounts_toml(existing), encoding="utf-8")
+    ensure_private_file_permissions(path)
     return account
 
 
@@ -609,6 +629,7 @@ def remove_account_from_toml(home: Path, account_id: str) -> bool:
     if len(remaining) == len(pool.accounts):
         return False
     path.write_text(serialize_accounts_toml(remaining), encoding="utf-8")
+    ensure_private_file_permissions(path)
     return True
 
 
@@ -634,8 +655,63 @@ async def verify_account_connection(
 
     if is_onion:
         proxy_url = account.proxy or active_env.get("TOR_SOCKS_PROXY", "socks5h://127.0.0.1:9050")
+        safe_proxy_url = mask_url_secrets(proxy_url)
+        allow_active = active_env.get("MALTEGO_MCP_ALLOW_ACTIVE", "").strip() in ("1", "true", "yes")
+
+        # Comprobación pasiva por defecto: sin tráfico hacia el sitio objetivo investigado.
+        # Solo comprueba si el proxy local Tor está levantado en el puerto TCP correspondiente.
+        if not allow_active and client is None:
+            parsed_proxy = urllib.parse.urlparse(proxy_url if "://" in proxy_url else f"socks5h://{proxy_url}")
+            proxy_host = parsed_proxy.hostname or "127.0.0.1"
+            proxy_port = parsed_proxy.port or 9050
+
+            def _probe(h: str, p: int, to: float) -> None:
+                with socket.create_connection((h, p), timeout=to):
+                    pass
+
+            try:
+                await asyncio.to_thread(_probe, proxy_host, proxy_port, min(timeout, 3.0))
+                lat = (time.perf_counter() - t0) * 1000
+                return AccountVerificationReport(
+                    account_id=account.id,
+                    platform=account.platform,
+                    status="ok",
+                    message=(
+                        f"Proxy Tor local verificado en {proxy_host}:{proxy_port} "
+                        "(comprobación pasiva sin tráfico hacia el sitio objetivo)."
+                    ),
+                    checked_at=now_iso,
+                    latency_ms=lat,
+                )
+            except OSError:
+                lat = (time.perf_counter() - t0) * 1000
+                return AccountVerificationReport(
+                    account_id=account.id,
+                    platform=account.platform,
+                    status="tor_unreachable",
+                    message=(
+                        f"Proxy Tor inaccesible ({safe_proxy_url}). "
+                        f"Inicie Tor Browser o el daemon Tor en {proxy_host}:{proxy_port}."
+                    ),
+                    checked_at=now_iso,
+                    latency_ms=lat,
+                )
+
+        # Modo activo explícito o client simulado de test
+        if target_site and not target_site.endswith(".onion"):
+            return AccountVerificationReport(
+                account_id=account.id,
+                platform=account.platform,
+                status="error",
+                message=f"Destino no permitido para cuenta Tor/Onion: {target_site}",
+                checked_at=now_iso,
+            )
+
         try:
-            cl = client or httpx.AsyncClient(proxy=proxy_url, timeout=timeout)
+            from maltego_mcp.egress import create_egress_client
+
+            extra = {target_site} if target_site else None
+            cl = client or create_egress_client(timeout=timeout, extra_allowed_hosts=extra)
             async with cl:
                 test_url = (
                     f"http://{target_site}/"
@@ -681,7 +757,7 @@ async def verify_account_connection(
                     account_id=account.id,
                     platform=account.platform,
                     status="ok",
-                    message=f"Servicio responde (HTTP {resp.status_code}) vía {proxy_url}",
+                    message=f"Servicio responde (HTTP {resp.status_code}) vía {safe_proxy_url}",
                     checked_at=now_iso,
                     latency_ms=lat,
                 )
@@ -691,17 +767,21 @@ async def verify_account_connection(
                 account_id=account.id,
                 platform=account.platform,
                 status="tor_unreachable",
-                message=f"Proxy Tor inaccesible ({proxy_url}). Inicie Tor Browser o el daemon Tor en 127.0.0.1:9050.",
+                message=(
+                    f"Proxy Tor inaccesible ({safe_proxy_url}). Inicie Tor Browser o el daemon Tor en 127.0.0.1:9050."
+                ),
                 checked_at=now_iso,
                 latency_ms=lat,
             )
+        except (EgressBlockedError, EgressKillSwitchError):
+            raise
         except Exception as exc:
             lat = (time.perf_counter() - t0) * 1000
             return AccountVerificationReport(
                 account_id=account.id,
                 platform=account.platform,
                 status="error",
-                message=f"Error al verificar .onion: {exc}",
+                message=f"Error al verificar .onion ({exc.__class__.__name__})",
                 checked_at=now_iso,
                 latency_ms=lat,
             )
@@ -717,13 +797,15 @@ async def verify_account_connection(
                 latency_ms=(time.perf_counter() - t0) * 1000,
             )
         try:
-            cl = client or httpx.AsyncClient(timeout=timeout)
+            from maltego_mcp.egress import create_egress_client
+
+            cl = client or create_egress_client(timeout=timeout)
             async with cl:
                 resp = await cl.get(
                     "https://api.github.com/user",
                     headers={
                         "Authorization": f"Bearer {token}",
-                        "User-Agent": account.user_agent or "maltego-mcp",
+                        "User-Agent": account.user_agent or DEFAULT_USER_AGENT,
                         "Accept": "application/vnd.github.v3+json",
                     },
                 )
@@ -770,12 +852,14 @@ async def verify_account_connection(
                     checked_at=now_iso,
                     latency_ms=lat,
                 )
+        except (EgressBlockedError, EgressKillSwitchError):
+            raise
         except Exception as exc:
             return AccountVerificationReport(
                 account_id=account.id,
                 platform=account.platform,
                 status="error",
-                message=f"Error de conexión con GitHub: {exc}",
+                message=f"Error de conexión con GitHub ({exc.__class__.__name__})",
                 checked_at=now_iso,
                 latency_ms=(time.perf_counter() - t0) * 1000,
             )
@@ -791,11 +875,13 @@ async def verify_account_connection(
                 checked_at=now_iso,
             )
         try:
-            cl = client or httpx.AsyncClient(timeout=timeout)
+            from maltego_mcp.egress import create_egress_client
+
+            cl = client or create_egress_client(timeout=timeout)
             async with cl:
                 resp = await cl.get(
                     f"https://bsky.social/xrpc/app.bsky.actor.getProfile?actor={handle}",
-                    headers={"User-Agent": account.user_agent or "maltego-mcp"},
+                    headers={"User-Agent": account.user_agent or DEFAULT_USER_AGENT},
                 )
                 lat = (time.perf_counter() - t0) * 1000
                 if resp.status_code == 200:
@@ -824,12 +910,14 @@ async def verify_account_connection(
                     checked_at=now_iso,
                     latency_ms=lat,
                 )
+        except (EgressBlockedError, EgressKillSwitchError):
+            raise
         except Exception as exc:
             return AccountVerificationReport(
                 account_id=account.id,
                 platform=account.platform,
                 status="error",
-                message=f"Error al consultar Bluesky: {exc}",
+                message=f"Error al consultar Bluesky ({exc.__class__.__name__})",
                 checked_at=now_iso,
                 latency_ms=(time.perf_counter() - t0) * 1000,
             )

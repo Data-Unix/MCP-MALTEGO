@@ -48,8 +48,22 @@ graph.json.lock
 receipts/
 config/transforms.toml
 config/*.local.toml
+accounts.toml
+**/accounts.toml
+dashboard_auth.json
+**/dashboard_auth.json
+audit.log
+*.mcpcase
+*_recon.json
+*.sqlite
+*.sqlite3
+*.db
 entities.json
 current_case
+active_case
+events.jsonl
+scripts/investigate_*.py
+*private*
 .maltego-mcp/
 
 # --- Python -----------------------------------------------------------------
@@ -60,6 +74,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
+rust/target/
 build/
 dist/
 *.egg-info/
@@ -106,6 +122,7 @@ AGENTS.local.md
 # --- Editores y sistema operativo ------------------------------------------------
 .vscode/*
 !.vscode/extensions.json
+!.vscode/mcp.json
 .idea/
 *.swp
 *.swo

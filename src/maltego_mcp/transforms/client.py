@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 
 import httpx
 
@@ -21,11 +22,20 @@ async def run_remote_transform(
     properties: dict[str, str] | None = None,
     soft_limit: int = 12,
     http: httpx.AsyncClient | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> TransformResponse:
     body = build_request(entity_type, value, properties, spec.settings, soft_limit=soft_limit)
-    headers = {"Content-Type": "application/xml", **spec.server.headers()}
+    headers = {"Content-Type": "application/xml", **spec.server.headers(env)}
     owns = http is None
-    client = http or httpx.AsyncClient(timeout=spec.server.timeout_s, follow_redirects=False)
+    import urllib.parse
+
+    from maltego_mcp.egress import create_egress_client, mask_url_secrets
+
+    server_host = urllib.parse.urlparse(spec.run_url).hostname or ""
+    client = http or create_egress_client(
+        timeout=spec.server.timeout_s,
+        extra_allowed_hosts={server_host} if server_host else None,
+    )
     try:
         async with client.stream("POST", spec.run_url, content=body, headers=headers) as resp:
             if resp.status_code == 404:
@@ -44,22 +54,22 @@ async def run_remote_transform(
                 if size > MAX_RESPONSE_BYTES:
                     raise TransformError("La respuesta del transform supera 5 MB; reduce soft_limit.")
                 chunks.append(chunk)
-    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+    except (httpx.ConnectError, httpx.ConnectTimeout):
         # En Windows, conectar a un puerto cerrado tarda ~2 s en fallar y puede llegar como ConnectTimeout.
         raise TransformError(
-            f"No se pudo contactar con el servidor de transforms '{spec.server.name}' ({spec.server.url}). "
-            "¿Está arrancado?"
-        ) from exc
-    except httpx.TimeoutException as exc:
+            f"No se pudo contactar con el servidor de transforms '{spec.server.name}' "
+            f"({mask_url_secrets(spec.server.url)}). ¿Está arrancado?"
+        ) from None
+    except httpx.TimeoutException:
         raise TransformError(
             f"El transform '{spec.name}' superó el tiempo máximo ({spec.server.timeout_s:.0f}s). "
             "Prueba con un soft_limit menor o aumenta timeout_s en el catálogo."
-        ) from exc
+        ) from None
     except httpx.HTTPError as exc:
         logger.warning("Error HTTP con %s: %s", spec.server.name, exc.__class__.__name__)
         raise TransformError(
             f"No se pudo contactar con el servidor de transforms '{spec.server.name}'. ¿Está arrancado?"
-        ) from exc
+        ) from None
     finally:
         if owns:
             await client.aclose()

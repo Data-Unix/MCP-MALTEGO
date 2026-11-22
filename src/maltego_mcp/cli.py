@@ -177,12 +177,13 @@ def _transforms(entity_type: str) -> int:
     from maltego_mcp.server import build_service
 
     svc = build_service(Settings.from_env())
-    rows = [["TRANSFORM", "CATEGORÍA", "DISPONIBLE"]] + [
-        [s.name, s.category, "sí" if s.available(svc.env) else "falta " + ",".join(s.requires)]
+    rows = [["TRANSFORM", "CATEGORÍA", "PASIVIDAD", "DISPONIBLE"]] + [
+        [s.name, s.category, s.passivity, "sí" if s.available(svc.env) else "falta " + ",".join(s.requires)]
         for s in svc.list_transforms(entity_type)
     ]
     _print_table(rows)
-    print("\nMachines: " + ", ".join(sorted(m.name for m in svc.catalog.machines.machines.values())))
+    print(f"\nModo: {'PASIVO' if svc.is_passive_mode else 'ACTIVO'}")
+    print("Machines: " + ", ".join(sorted(m.name for m in svc.catalog.machines.machines.values())))
     return 0
 
 
@@ -245,6 +246,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", type=Path, default=Path.cwd())
     p.add_argument("--uv", default="")
     ns = parser.parse_args(argv)
+    from maltego_mcp.server import configure_logging
+
+    configure_logging("INFO")
     try:
         if ns.command == "inspect":
             report = inspect_mtgx(ns.file.read_bytes())
@@ -281,12 +285,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Indexados {count} registros de filtraciones en {db_path}.")
             return 0
         if ns.command == "sync-cti":
-            import httpx
-
             from maltego_mcp.cti_feeds import CTISyncSummary, sync_deepdark_cti
+            from maltego_mcp.egress import create_egress_client
 
             async def _run_sync() -> CTISyncSummary:
-                async with httpx.AsyncClient(timeout=15.0) as client:
+                async with create_egress_client(timeout=15.0) as client:
                     return await sync_deepdark_cti(Settings.from_env().home, client, force=bool(ns.force))
 
             res = asyncio.run(_run_sync())
@@ -301,14 +304,23 @@ def main(argv: list[str] | None = None) -> int:
 
             import uvicorn
 
-            from maltego_mcp.server import _uvicorn_log_config, build_service, create_server
+            from maltego_mcp.egress import install_egress_audit_hook
+            from maltego_mcp.server import LOOPBACK_HOSTS, _uvicorn_log_config, build_service, create_server
             from maltego_mcp.web_app import attach_dashboard_routes
 
             settings = Settings.from_env()
+            # Mismo perímetro que `maltego-mcp --transport http`: guardián PEP 578 (estricto con el Anillo Mullvad) y
+            # control de la VPN solo con autenticación y en loopback.
+            strict = settings.require_mullvad
+            install_egress_audit_hook(enabled=True, strict_connect=strict)
+            if strict and sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
             server = create_server(settings)
             app = server.streamable_http_app(stateless_http=True, json_response=True, host=ns.host)
             svc = getattr(server, "_service", None) or build_service(settings)
-            attach_dashboard_routes(app, svc, settings)
+            attach_dashboard_routes(
+                app, svc, settings, ring_control=settings.dashboard_auth and ns.host in LOOPBACK_HOSTS
+            )
 
             url = f"http://{ns.host}:{ns.port}/"
             print(f"Panel web MCP Maltego activo en: {url}")
@@ -325,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
                     port=ns.port,
                     log_level="info",
                     log_config=_uvicorn_log_config(),
+                    loop="asyncio:SelectorEventLoop" if strict and sys.platform == "win32" else "auto",
                 )
             except OSError as exc:
                 print(

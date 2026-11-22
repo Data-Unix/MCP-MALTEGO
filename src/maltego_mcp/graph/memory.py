@@ -203,6 +203,24 @@ class MemoryGraphStore:
 
         return await self._write(mutate)
 
+    async def set_case_confidential(self, case_id: str, confidential: bool = True) -> CaseRecord:
+        self._read()
+
+        def mutate() -> CaseRecord:
+            current = self._cases.get(case_id)
+            if current is None:
+                raise NotFound(f"El caso '{case_id}' no existe.")
+            updated = replace(
+                current,
+                confidential=confidential,
+                updated=utc_now(),
+                version=current.version + 1,
+            )
+            self._cases[case_id] = updated
+            return updated
+
+        return await self._write(mutate)
+
     async def get_case(self, case_id: str) -> CaseRecord | None:
         self._read()
         return self._cases.get(case_id)

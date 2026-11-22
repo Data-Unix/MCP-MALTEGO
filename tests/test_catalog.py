@@ -91,7 +91,8 @@ rounds = 2
     assert (m.stages, m.default_rounds, m.origin) == ((("DNSToIP",), ("IPToAS",)), 2, "catálogo")
     assert m.accepts("maltego.Domain") and not m.accepts("maltego.URL")
     assert cat.machines.get("DomainRecon").origin == "predefinida"
-    assert cat.machines.for_type("maltego.IPv4Address").name == "InfrastructureRecon"
+    assert cat.machines.for_type("maltego.IPv4Address", is_passive=False).name == "InfrastructureRecon"
+    assert cat.machines.for_type("maltego.IPv4Address", is_passive=True).name == "PassiveInfrastructureRecon"
     assert cat.machines.for_type("maltego.Phrase") is None
     with pytest.raises(InvalidInput, match="Disponibles"):
         cat.machines.get("nope")

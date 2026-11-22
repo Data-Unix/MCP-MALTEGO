@@ -20,12 +20,11 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote, urlsplit
 
 import httpx
 
-from maltego_mcp import __version__
 from maltego_mcp.accounts import load_account_pool
 from maltego_mcp.breaches import classify_breach_indicator, query_local_breaches
 from maltego_mcp.cti_feeds import search_cti_feeds, sync_deepdark_cti
@@ -33,7 +32,25 @@ from maltego_mcp.errors import TransformError
 from maltego_mcp.humint import analyze_subject_behavior
 from maltego_mcp.transforms.protocol import ResultEntity, TransformResponse
 
-USER_AGENT = f"maltego-mcp/{__version__} (+https://github.com/Data-Unix/MCP-MALTEGO)"
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+
+
+def get_user_agent(env: dict[str, str] | None = None) -> str:
+    """Devuelve un User-Agent neutro y estable, configurable mediante MALTEGO_MCP_USER_AGENT."""
+    e = os.environ if env is None else env
+    return e.get("MALTEGO_MCP_USER_AGENT", "").strip() or DEFAULT_USER_AGENT
+
+
+def _has_socks_support() -> bool:
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("socksio") is not None
+    except Exception:
+        return False
+
+
+USER_AGENT = get_user_agent()
 DOH_ENDPOINTS = ("https://dns.google/resolve", "https://cloudflare-dns.com/dns-query")
 RDAP_ENDPOINTS = ("https://rdap.org", "https://rdap-bootstrap.arin.net/bootstrap")
 DNS_TYPES = {"A": 1, "NS": 2, "CNAME": 5, "PTR": 12, "MX": 15, "TXT": 16, "AAAA": 28}
@@ -41,12 +58,14 @@ HOST_TYPES = ("maltego.Domain", "maltego.DNSName", "maltego.Website", "maltego.M
 IP_TYPES = ("maltego.IPv4Address", "maltego.IPv6Address")
 
 Handler = Callable[["BuiltinContext", str, str, dict[str, str], int], Awaitable[TransformResponse]]
+PassivityLevel = Literal["local", "passive", "active_proxy", "active_direct"]
 
 
 @dataclass(slots=True)
 class BuiltinContext:
     http: httpx.AsyncClient
     env: dict[str, str] = field(default_factory=lambda: dict(os.environ))
+    client_factory: Callable[..., httpx.AsyncClient] | None = None
 
     def key(self, name: str) -> str:
         value = self.env.get(name, "").strip()
@@ -64,14 +83,33 @@ class BuiltinTransform:
     category: str
     handler: Handler
     requires: tuple[str, ...] = ()
+    passivity: PassivityLevel = "passive"
 
     def available(self, env: dict[str, str]) -> bool:
         return all(env.get(v, "").strip() for v in self.requires)
 
+    @property
+    def is_passive(self) -> bool:
+        return self.passivity in ("local", "passive")
 
-def new_http_client(timeout_s: float = 20.0, transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        timeout=timeout_s, follow_redirects=True, headers={"User-Agent": USER_AGENT}, transport=transport
+
+def new_http_client(
+    timeout_s: float = 20.0,
+    transport: httpx.AsyncBaseTransport | None = None,
+    allow_active: bool | None = None,
+    settings: Any | None = None,
+    scope: Any | None = None,
+    audit_log: Any | None = None,
+) -> httpx.AsyncClient:
+    from maltego_mcp.egress import create_egress_client
+
+    return create_egress_client(
+        settings=settings,
+        scope=scope,
+        audit_log=audit_log,
+        timeout=timeout_s,
+        transport=transport,
+        allow_active=allow_active,
     )
 
 
@@ -95,12 +133,14 @@ async def _get_json(
     auth: tuple[str, str] | None = None,
     not_found_ok: bool = False,
 ) -> Any:
+    from maltego_mcp.egress import get_following
+
     try:
-        resp = await ctx.http.get(url, headers=headers, params=params, auth=auth)
-    except httpx.TimeoutException as exc:
-        raise TransformError(f"Tiempo de espera agotado consultando {urlsplit(url).hostname}.") from exc
-    except httpx.HTTPError as exc:
-        raise TransformError(f"No se pudo contactar con {urlsplit(url).hostname}.") from exc
+        resp = await get_following(ctx.http, url, headers=headers, params=params, auth=auth)
+    except httpx.TimeoutException:
+        raise TransformError(f"Tiempo de espera agotado consultando {urlsplit(url).hostname}.") from None
+    except httpx.HTTPError:
+        raise TransformError(f"No se pudo contactar con {urlsplit(url).hostname}.") from None
     if resp.status_code == 404 and not_found_ok:
         return None
     if resp.status_code in (401, 403):
@@ -111,8 +151,8 @@ async def _get_json(
         raise TransformError(f"{urlsplit(url).hostname} respondió HTTP {resp.status_code}.")
     try:
         return resp.json()
-    except ValueError as exc:
-        raise TransformError(f"{urlsplit(url).hostname} devolvió una respuesta que no es JSON.") from exc
+    except ValueError:
+        raise TransformError(f"{urlsplit(url).hostname} devolvió una respuesta que no es JSON.") from None
 
 
 async def doh(ctx: BuiltinContext, name: str, rtype: str) -> list[str]:
@@ -158,26 +198,150 @@ def _limit(items: list[ResultEntity], soft_limit: int) -> TransformResponse:
     return TransformResponse(entities=out[:soft_limit], truncated=len(out) > soft_limit)
 
 
-# ------------------------------------------------------------------------------------------ DNS
+# ------------------------------------------------------------------------------------------ DNS Pasivo / pDNS
 def _dns_records(rtype: str, out_type: str, label: str) -> Handler:
+    from maltego_mcp.transforms.pdns import (
+        fetch_mnemonic_pdns,
+        fetch_otx_pdns,
+        fetch_robtex_pdns,
+        is_possible_canary,
+    )
+
     async def run(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
-        items = []
-        for data in await doh(ctx, _host(value), rtype):
-            if rtype == "MX":
-                prio, _, host = data.partition(" ")
-                items.append(_ent(out_type, _host(host or prio), label, mx__priority=prio if host else ""))
-            elif rtype == "TXT":
-                items.append(_ent(out_type, f"[TXT] {_txt(data)}", label))
-            else:
-                items.append(_ent(out_type, _host(data) if rtype in ("NS", "CNAME", "PTR") else data, label))
+        host = _host(value)
+        items: list[ResultEntity] = []
+        seen: set[str] = set()
+
+        # 1. Consulta histórica pDNS en Mnemonic
+        mnemonic_res = await fetch_mnemonic_pdns(ctx.http, host, rtype)
+        for r in mnemonic_res:
+            ans = r["answer"]
+            key = f"{rtype}:{ans}"
+            if key not in seen:
+                seen.add(key)
+                props_dict: dict[str, str] = {
+                    "pdns__source": "mnemonic",
+                    "pdns__mnemonic__first_seen": r["first_seen"],
+                    "pdns__mnemonic__last_seen": r["last_seen"],
+                    "independence_cluster": r["independence_cluster"],
+                }
+                if is_possible_canary(ans):
+                    props_dict["possible_canary"] = "true"
+
+                if rtype == "MX":
+                    prio, _, mx_host = ans.partition(" ")
+                    props_dict["mx__priority"] = prio if mx_host else ""
+                    items.append(_ent(out_type, _host(mx_host or prio), label, 100, **props_dict))
+                elif rtype == "TXT":
+                    items.append(_ent(out_type, f"[TXT] {_txt(ans)}", label, 100, **props_dict))
+                else:
+                    target_val = _host(ans) if rtype in ("NS", "CNAME", "PTR") else ans
+                    items.append(_ent(out_type, target_val, label, 100, **props_dict))
+
+        # 2. Consulta histórica pDNS en Robtex
+        robtex_res = await fetch_robtex_pdns(ctx.http, host)
+        for r in robtex_res:
+            if r["rrtype"] == rtype or (not rtype and r["rrtype"] in ("A", "AAAA")):
+                ans = r["answer"]
+                key = f"{r['rrtype']}:{ans}"
+                if key not in seen:
+                    seen.add(key)
+                    props_dict = {
+                        "pdns__source": "robtex",
+                        "pdns__robtex__first_seen": r["first_seen"],
+                        "pdns__robtex__last_seen": r["last_seen"],
+                        "independence_cluster": r["independence_cluster"],
+                    }
+                    if is_possible_canary(ans):
+                        props_dict["possible_canary"] = "true"
+                    if rtype == "MX":
+                        prio, _, mx_host = ans.partition(" ")
+                        props_dict["mx__priority"] = prio if mx_host else ""
+                        items.append(_ent(out_type, _host(mx_host or prio), label, 100, **props_dict))
+                    elif rtype == "TXT":
+                        items.append(_ent(out_type, f"[TXT] {_txt(ans)}", label, 100, **props_dict))
+                    else:
+                        target_val = _host(ans) if rtype in ("NS", "CNAME", "PTR") else ans
+                        items.append(_ent(out_type, target_val, label, 100, **props_dict))
+
+        # 3. Consulta histórica pDNS en OTX (si hay clave de API)
+        otx_key = ctx.env.get("OTX_API_KEY", "").strip()
+        if otx_key:
+            otx_res = await fetch_otx_pdns(ctx.http, host, otx_key)
+            for r in otx_res:
+                if r["rrtype"] == rtype:
+                    ans = r["answer"]
+                    key = f"{rtype}:{ans}"
+                    if key not in seen:
+                        seen.add(key)
+                        props_dict = {
+                            "pdns__source": "otx",
+                            "pdns__otx__first_seen": r["first_seen"],
+                            "pdns__otx__last_seen": r["last_seen"],
+                            "independence_cluster": r["independence_cluster"],
+                        }
+                        if is_possible_canary(ans):
+                            props_dict["possible_canary"] = "true"
+                        target_val = _host(ans) if rtype in ("NS", "CNAME", "PTR") else ans
+                        items.append(_ent(out_type, target_val, label, 100, **props_dict))
+
+        # 4. Resolución DoH activa no intrusiva (dns.google / cloudflare-dns.com) cuando el modo activo está habilitado
+        active_enabled = (
+            ctx.env.get("MALTEGO_MCP_ALLOW_ACTIVE", "").strip() in ("1", "true", "yes")
+            or ctx.env.get("MALTEGO_MCP_MODE", "").strip().lower() == "active"
+        )
+        if active_enabled and not items:
+            for data in await doh(ctx, host, rtype):
+                if rtype == "MX":
+                    prio, _, h = data.partition(" ")
+                    items.append(
+                        _ent(out_type, _host(h or prio), label, mx__priority=prio if h else "", live_dns="true")
+                    )
+                elif rtype == "TXT":
+                    items.append(_ent(out_type, f"[TXT] {_txt(data)}", label, live_dns="true"))
+                else:
+                    target_val = _host(data) if rtype in ("NS", "CNAME", "PTR") else data
+                    items.append(_ent(out_type, target_val, label, live_dns="true"))
+
         return _limit(items, n)
 
     return run
 
 
 async def _reverse_dns(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
-    ptr = ipaddress.ip_address(value.strip()).reverse_pointer
-    return _limit([_ent("maltego.DNSName", _host(d), "reverse_dns") for d in await doh(ctx, ptr, "PTR")], n)
+    from maltego_mcp.transforms.pdns import fetch_passive_ptr
+
+    clean_ip = value.strip()
+    items: list[ResultEntity] = []
+    seen: set[str] = set()
+
+    # 1. Agregadores pasivos (InternetDB, Robtex, THC, HackerTarget)
+    ptr_res = await fetch_passive_ptr(ctx.http, clean_ip)
+    for r in ptr_res:
+        h = r["hostname"]
+        if h not in seen:
+            seen.add(h)
+            p_dict: dict[str, str] = {
+                "pdns__source": r["source"],
+                "independence_cluster": r["independence_cluster"],
+            }
+            if r.get("first_seen"):
+                p_dict[f"pdns__{r['source']}__first_seen"] = r["first_seen"]
+            if r.get("last_seen"):
+                p_dict[f"pdns__{r['source']}__last_seen"] = r["last_seen"]
+            items.append(_ent("maltego.DNSName", _host(h), "reverse_dns", 100, **p_dict))
+
+    # 2. Resolución PTR por DoH no intrusivo cuando el modo activo está habilitado y no hubo datos pasivos
+    active_enabled = (
+        ctx.env.get("MALTEGO_MCP_ALLOW_ACTIVE", "").strip() in ("1", "true", "yes")
+        or ctx.env.get("MALTEGO_MCP_MODE", "").strip().lower() == "active"
+    )
+    if active_enabled and not items:
+        ptr = ipaddress.ip_address(clean_ip).reverse_pointer
+        for d in await doh(ctx, ptr, "PTR"):
+            items.append(_ent("maltego.DNSName", _host(d), "reverse_dns", live_dns="true"))
+
+    return _limit(items, n)
 
 
 async def _cymru(ctx: BuiltinContext, ip: str) -> tuple[str, str, str, str]:
@@ -344,6 +508,8 @@ async def _certspotter_names(ctx: BuiltinContext, domain: str) -> list[str]:
 
 
 async def _crtsh(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_anubis_subdomains
+
     domain = _host(value)
     names: list[str] = []
     try:
@@ -354,7 +520,13 @@ async def _crtsh(ctx: BuiltinContext, etype: str, value: str, props: dict[str, s
                 if host.endswith("." + domain) and _HOSTNAME_RE.match(host):
                     names.append(host)
     except TransformError:
-        names = await _certspotter_names(ctx, domain)
+        try:
+            names = await _certspotter_names(ctx, domain)
+        except TransformError:
+            anubis = await fetch_anubis_subdomains(ctx.http, domain, limit=n)
+            names = [r["subdomain"] for r in anubis if _HOSTNAME_RE.match(r["subdomain"])]
+            if not names:
+                raise
     counts: dict[str, int] = {}
     for h in names:
         counts[h] = counts.get(h, 0) + 1
@@ -366,6 +538,620 @@ async def _certspotter(ctx: BuiltinContext, etype: str, value: str, props: dict[
     domain = _host(value)
     names = await _certspotter_names(ctx, domain)
     return _limit([_ent("maltego.DNSName", h, "certificate_san") for h in sorted(set(names))], n)
+
+
+async def _anubis_subdomains(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_anubis_subdomains
+
+    domain = _host(value)
+    rows = await fetch_anubis_subdomains(ctx.http, domain, limit=n)
+    items = [
+        _ent(
+            "maltego.DNSName",
+            r["subdomain"],
+            "passive_subdomain",
+            pdns__source=r["source"],
+            independence_cluster=r["independence_cluster"],
+            possible_canary=r.get("possible_canary", "false"),
+            source_family="subdominios_pasivos",
+            source_reliability="C",
+            info_credibility="2",
+            collection_mode="passive",
+        )
+        for r in rows
+        if _HOSTNAME_RE.match(r["subdomain"])
+    ]
+    return _limit(items, n)
+
+
+async def _wayback_cdx_search(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_wayback_cdx
+
+    urls = await fetch_wayback_cdx(ctx.http, _host(value), limit=n)
+    items = [
+        _ent(
+            "maltego.URL",
+            u["url"],
+            "archived_url",
+            archive__timestamp=u["timestamp"],
+            archive__mimetype=u.get("mimetype", ""),
+            archive__source=u["source"],
+            independence_cluster=u["independence_cluster"],
+            source_family="archivo_web",
+            source_reliability="B",
+            info_credibility="2",
+            collection_mode="passive",
+        )
+        for u in urls
+    ]
+    return _limit(items, n)
+
+
+async def _arquivo_cdx_search(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_arquivo_cdx
+
+    urls = await fetch_arquivo_cdx(ctx.http, _host(value), limit=n)
+    items = [
+        _ent(
+            "maltego.URL",
+            u["url"],
+            "archived_url",
+            archive__timestamp=u["timestamp"],
+            archive__mimetype=u.get("mimetype", ""),
+            archive__source=u["source"],
+            independence_cluster=u["independence_cluster"],
+            source_family="archivo_web",
+            source_reliability="B",
+            info_credibility="2",
+            collection_mode="passive",
+        )
+        for u in urls
+    ]
+    return _limit(items, n)
+
+
+async def _commoncrawl_cdx_search(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_commoncrawl_cdx
+
+    urls = await fetch_commoncrawl_cdx(ctx.http, _host(value), limit=n)
+    items = [
+        _ent(
+            "maltego.URL",
+            u["url"],
+            "archived_url",
+            archive__timestamp=u["timestamp"],
+            archive__mimetype=u.get("mimetype", ""),
+            archive__statuscode=u.get("statuscode", ""),
+            archive__digest=u.get("digest", ""),
+            archive__source=u["source"],
+            archive__independence_cluster=u["independence_cluster"],
+            independence_cluster=u["independence_cluster"],
+            source_family="archivo_web",
+            source_reliability="B",
+            info_credibility="2",
+            collection_mode="passive",
+        )
+        for u in urls
+    ]
+    return _limit(items, n)
+
+
+async def _crtsh_org_search(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_crtsh_by_org
+
+    certs = await fetch_crtsh_by_org(ctx.http, value, limit=n)
+    items = [
+        _ent(
+            "maltego.DNSName",
+            c["domain"],
+            "issued_for_org",
+            ct__not_before=c["not_before"],
+            ct__issuer=c.get("issuer", ""),
+            ct__source=c["source"],
+            independence_cluster=c["independence_cluster"],
+            possible_canary=c.get("possible_canary", "false"),
+        )
+        for c in certs
+    ]
+    return _limit(items, n)
+
+
+async def _wayback_snapshot_extract(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_wayback_snapshot_entities
+
+    res = await fetch_wayback_snapshot_entities(ctx.http, value, max_snapshots=3)
+    ext = res.get("entities") or {}
+    snaps = res.get("snapshots") or []
+    snap_ts = snaps[0]["timestamp"] if snaps else ""
+    snap_url = snaps[0]["archive_url"] if snaps else ""
+    cluster = str(res.get("independence_cluster") or "archive_wayback_cdx")
+
+    items: list[ResultEntity] = []
+    for cif in ext.get("cifs") or []:
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[CIF/NIF] {cif}",
+                "archived_identifier",
+                weight=95,
+                archive__timestamp=snap_ts,
+                archive__url=snap_url,
+                independence_cluster=cluster,
+            )
+        )
+    for comp in ext.get("companies") or []:
+        items.append(
+            _ent(
+                "maltego.Company",
+                comp,
+                "archived_company",
+                weight=90,
+                archive__timestamp=snap_ts,
+                archive__url=snap_url,
+                independence_cluster=cluster,
+            )
+        )
+    for em in ext.get("emails") or []:
+        items.append(
+            _ent(
+                "maltego.EmailAddress",
+                em,
+                "archived_email",
+                weight=90,
+                archive__timestamp=snap_ts,
+                archive__url=snap_url,
+                independence_cluster=cluster,
+            )
+        )
+    for ph in ext.get("phones") or []:
+        items.append(
+            _ent(
+                "maltego.PhoneNumber",
+                ph,
+                "archived_phone",
+                weight=85,
+                archive__timestamp=snap_ts,
+                archive__url=snap_url,
+                independence_cluster=cluster,
+            )
+        )
+    for title in ext.get("titles") or []:
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[ArchiveTitle] {title}",
+                "archived_title",
+                weight=80,
+                archive__timestamp=snap_ts,
+                archive__url=snap_url,
+                independence_cluster=cluster,
+            )
+        )
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(
+            ("Inform", f"WaybackSnapshotExtract: sin entidades extraídas en instantáneas archivadas de '{value}'.")
+        )
+    return out
+
+
+async def _github_domain_leaks(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    query = _host(value) if etype == "maltego.Domain" else value.strip()
+    if not query:
+        return TransformResponse(messages=[("Inform", "Consulta vacía para búsqueda en GitHub.")])
+
+    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+    gh_token = ctx.env.get("GITHUB_TOKEN", "").strip()
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+
+    items: list[ResultEntity] = []
+    # 1. Búsqueda de código en GitHub (requiere GITHUB_TOKEN en la API de GitHub)
+    if gh_token:
+        try:
+            code_data = await _get_json(
+                ctx,
+                "https://api.github.com/search/code",
+                params={"q": f'"{query}"', "per_page": min(n, 10)},
+                headers=headers,
+                not_found_ok=True,
+            )
+            for it in (code_data or {}).get("items") or []:
+                html_url = str(it.get("html_url") or "")
+                repo_name = str((it.get("repository") or {}).get("full_name") or "")
+                path = str(it.get("path") or "")
+                if html_url:
+                    items.append(
+                        _ent(
+                            "maltego.URL",
+                            html_url,
+                            "github_code_match",
+                            weight=90,
+                            github__repo=repo_name,
+                            github__path=path,
+                            independence_cluster="code_github_api",
+                        )
+                    )
+        except TransformError:
+            pass
+
+    # 2. Búsqueda de repositorios e issues públicos (funciona con o sin GITHUB_TOKEN)
+    try:
+        repo_data = await _get_json(
+            ctx,
+            "https://api.github.com/search/repositories",
+            params={"q": f'"{query}"', "per_page": min(n, 10)},
+            headers=headers,
+            not_found_ok=True,
+        )
+        for repo in (repo_data or {}).get("items") or []:
+            full_name = str(repo.get("full_name") or "")
+            html_url = str(repo.get("html_url") or "")
+            desc = str(repo.get("description") or "")[:120]
+            if html_url:
+                items.append(
+                    _ent(
+                        "maltego.URL",
+                        html_url,
+                        "github_repository",
+                        weight=85,
+                        github__repo=full_name,
+                        github__description=desc,
+                        independence_cluster="code_github_api",
+                    )
+                )
+    except TransformError:
+        pass
+
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"GitHub Search API: 0 coincidencias públicas para '{query}'."))
+    return out
+
+
+async def _boe_entity_records(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_boe_borme_records
+
+    raw_q = re.sub(r"^\[[^\]]+\]\s*", "", value.strip()).strip()
+    is_person = etype == "maltego.Person"
+    records = await fetch_boe_borme_records(ctx.http, raw_q, limit=n, is_person=is_person)
+    items: list[ResultEntity] = []
+    for r in records:
+        kind = r.get("kind", "")
+        ts = r.get("timestamp", "")
+        cluster = r.get("independence_cluster", "gov_boe_borme")
+        src = r.get("source", "openmercantil")
+        if kind == "boe_url":
+            items.append(
+                _ent(
+                    "maltego.URL",
+                    r["value"],
+                    "official_gazette",
+                    weight=90,
+                    boe__timestamp=ts,
+                    archive__timestamp=ts,
+                    boe__source=src,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "borme_company":
+            items.append(
+                _ent(
+                    "maltego.Company",
+                    r["value"],
+                    "borme_registered",
+                    weight=95,
+                    borme__cif=r.get("cif", ""),
+                    borme__province=r.get("province", ""),
+                    borme__role=r.get("role", ""),
+                    registry__last_seen=ts,
+                    registry__source=src,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "borme_officer":
+            items.append(
+                _ent(
+                    "maltego.Person",
+                    r["value"],
+                    f"borme_{r.get('officer_status', 'current')}_officer",
+                    weight=92,
+                    borme__role=r.get("role", ""),
+                    borme__company=r.get("company_name", ""),
+                    borme__cif=r.get("cif", ""),
+                    registry__last_seen=ts,
+                    registry__source=src,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "borme_address":
+            items.append(
+                _ent(
+                    "maltego.Location",
+                    r["value"],
+                    "registered_address",
+                    weight=88,
+                    borme__company=r.get("company_name", ""),
+                    registry__last_seen=ts,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "borme_website":
+            items.append(
+                _ent(
+                    "maltego.Website",
+                    _host(r["value"]),
+                    "borme_website",
+                    weight=90,
+                    borme__company=r.get("company_name", ""),
+                    registry__last_seen=ts,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        else:
+            items.append(
+                _ent(
+                    "maltego.Phrase",
+                    r.get("title") or r.get("value", ""),
+                    "official_record",
+                    weight=85,
+                    boe__timestamp=ts,
+                    registry__last_seen=ts,
+                    boe__url=r.get("url", ""),
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"BOEEntityToRecords: 0 registros indexados para '{raw_q}'."))
+    return out
+
+
+async def _gleif_company_structure(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import fetch_gleif_corporate
+
+    raw_q = re.sub(r"^\[[^\]]+\]\s*", "", value.strip()).strip()
+    records = await fetch_gleif_corporate(ctx.http, raw_q, limit=n)
+    items: list[ResultEntity] = []
+    for r in records:
+        kind = r.get("kind", "")
+        ts = r.get("timestamp", "")
+        cluster = r.get("independence_cluster", "gov_gleif_lei")
+        if kind == "gleif_company":
+            items.append(
+                _ent(
+                    "maltego.Company",
+                    r["value"],
+                    "gleif_legal_entity",
+                    weight=95,
+                    gleif__lei=r.get("lei", ""),
+                    gleif__registered_as=r.get("registered_as", ""),
+                    gleif__jurisdiction=r.get("jurisdiction", ""),
+                    gleif__status=r.get("status", ""),
+                    registry__last_seen=ts,
+                    registry__source="gleif",
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "gleif_parent":
+            items.append(
+                _ent(
+                    "maltego.Company",
+                    r["value"],
+                    r.get("relation", "parent_company"),
+                    weight=95,
+                    gleif__lei=r.get("lei", ""),
+                    gleif__jurisdiction=r.get("jurisdiction", ""),
+                    registry__last_seen=ts,
+                    registry__source="gleif",
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "gleif_location":
+            items.append(
+                _ent(
+                    "maltego.Location",
+                    r["value"],
+                    "legal_address",
+                    weight=88,
+                    gleif__company=r.get("company_name", ""),
+                    gleif__country=r.get("country", ""),
+                    registry__last_seen=ts,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+        elif kind == "gleif_lei":
+            items.append(
+                _ent(
+                    "maltego.Phrase",
+                    r["value"],
+                    "lei_identifier",
+                    weight=90,
+                    gleif__lei=r.get("lei", ""),
+                    gleif__registered_as=r.get("registered_as", ""),
+                    registry__last_seen=ts,
+                    independence_cluster=cluster,
+                    source_family="registro_mercantil",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
+                )
+            )
+    out = _limit(items, n)
+    if not out.entities:
+        out.messages.append(("Inform", f"GLEIFCompanyToStructure: 0 registros LEI para '{raw_q}'."))
+    return out
+
+
+async def _ip_passive_context(
+    ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
+) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import CLUSTER_IPAPI_IS
+
+    clean_ip = value.strip()
+    data = await _get_json(ctx, "https://api.ipapi.is/", params={"q": clean_ip}, not_found_ok=True)
+    if not isinstance(data, dict):
+        return TransformResponse([])
+
+    items: list[ResultEntity] = []
+    # 1. Empresa / Organización titular de la IP
+    comp_raw = data.get("company")
+    comp_name = ""
+    if isinstance(comp_raw, dict):
+        comp_name = str(comp_raw.get("name") or "").strip()
+    elif isinstance(comp_raw, str):
+        comp_name = comp_raw.strip()
+    if comp_name:
+        items.append(
+            _ent(
+                "maltego.Organization",
+                comp_name,
+                "ip_company",
+                weight=90,
+                independence_cluster=CLUSTER_IPAPI_IS,
+                source_family="contexto_red",
+                source_reliability="B",
+                info_credibility="2",
+                collection_mode="passive",
+            )
+        )
+
+    # 2. Sistema Autónomo (ASN)
+    asn_raw = data.get("asn")
+    asn_num = ""
+    asn_org = ""
+    if isinstance(asn_raw, dict):
+        asn_num = str(asn_raw.get("asn") or "").strip().lstrip("ASas")
+        asn_org = str(asn_raw.get("org") or asn_raw.get("descr") or "").strip()
+    elif isinstance(asn_raw, str):
+        m_as = re.match(r"^(?:AS)?(\d+)\s*(.*)$", asn_raw.strip(), re.IGNORECASE)
+        if m_as:
+            asn_num = m_as.group(1)
+            asn_org = m_as.group(2).strip()
+    if asn_num and asn_num.isdigit():
+        items.append(
+            _ent(
+                "maltego.AS",
+                asn_num,
+                "announced_by",
+                weight=90,
+                as__name=asn_org,
+                independence_cluster=CLUSTER_IPAPI_IS,
+                source_family="contexto_red",
+                source_reliability="B",
+                info_credibility="2",
+                collection_mode="passive",
+            )
+        )
+
+    # 3. Ubicación geográfica y zona horaria
+    loc_raw = data.get("location") if isinstance(data.get("location"), dict) else data
+    city = str((loc_raw or {}).get("city") or "").strip()
+    region = str((loc_raw or {}).get("region") or (loc_raw or {}).get("state") or "").strip()
+    country = str((loc_raw or {}).get("country") or "").strip()
+    tz = str((loc_raw or {}).get("timezone") or data.get("timezone") or "").strip()
+    loc_label = ", ".join(p for p in (city, region, country) if p)
+    if loc_label:
+        items.append(
+            _ent(
+                "maltego.Location",
+                loc_label,
+                "located_in",
+                weight=85,
+                location__timezone=tz,
+                independence_cluster=CLUSTER_IPAPI_IS,
+                source_family="contexto_red",
+                source_reliability="B",
+                info_credibility="2",
+                collection_mode="passive",
+            )
+        )
+
+    # 4. Banderas de riesgo / hosting / anonimización (datacenter, tor, vpn, proxy, bogon, abuser)
+    active_flags: list[str] = []
+    for flag_key, tag in (
+        ("is_datacenter", "DATACENTER/HOSTING"),
+        ("is_tor", "TOR_EXIT"),
+        ("is_vpn", "VPN"),
+        ("is_proxy", "PROXY"),
+        ("is_abuser", "ABUSER"),
+        ("is_bogon", "BOGON"),
+    ):
+        if data.get(flag_key) is True:
+            active_flags.append(tag)
+    abuser_score = str(data.get("abuser_score") or "").strip()
+    if active_flags or abuser_score:
+        summary = ", ".join(active_flags) if active_flags else "CLEAN"
+        if abuser_score:
+            summary += f" (abuser_score={abuser_score})"
+        items.append(
+            _ent(
+                "maltego.Phrase",
+                f"[IP Context] {clean_ip}: {summary}",
+                "ip_risk_context",
+                weight=85,
+                independence_cluster=CLUSTER_IPAPI_IS,
+                source_family="contexto_red",
+                source_reliability="B",
+                info_credibility="2",
+                collection_mode="passive",
+            )
+        )
+    return _limit(items, n)
 
 
 # ------------------------------------------------------------------------------------------ fuentes públicas sin clave
@@ -414,10 +1200,15 @@ async def _urlscan_domain(
     ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
 ) -> TransformResponse:
     domain = _host(value)
+    hdrs: dict[str, str] = {}
+    urlscan_key = ctx.env.get("URLSCAN_API_KEY", "").strip()
+    if urlscan_key:
+        hdrs["API-Key"] = urlscan_key
     data = (
         await _get_json(
             ctx,
             "https://urlscan.io/api/v1/search/",
+            headers=hdrs or None,
             params={"q": f"domain:{domain}", "size": min(n, 50)},
         )
         or {}
@@ -913,22 +1704,33 @@ async def _deepdark_cti_search(
 async def _onion_passive_pivot(
     ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
 ) -> TransformResponse:
-    """Pivote pasivo y acotado para dominios/URLs .onion (inspirado en TorCrawl, sin descarga de binarios)."""
-    raw = value.strip()
-    onion_matches = _ONION_HOST_RE.findall(raw)
-    onion_host = onion_matches[0].lower() if onion_matches else _host(raw)
-    if not onion_host.endswith(".onion"):
-        return TransformResponse(
-            messages=[("Inform", f"'{raw}' no es un servicio .onion; usa DeepDarkCTISearch para buscar en superficie.")]
-        )
-    target_url = raw if raw.startswith(("http://", "https://")) else f"http://{onion_host}/"
-    home_dir = _home_dir(ctx)
-    pool = load_account_pool(home_dir, ctx.env)
-    acct = pool.acquire("onion", site=onion_host) or pool.acquire("tor", site=onion_host)
-    headers = pool.auth_headers(acct)
+    """Pivote sobre dominios/URLs .onion: por defecto pasivo (solo feeds CTI locales).
 
+    La inspección HTTP remota está deshabilitada por defecto; requiere explícitamente:
+    MALTEGO_MCP_ALLOW_ACTIVE=1, TOR_SOCKS_PROXY y soporte SOCKS en httpx.
+    """
+    raw = value.strip()
+    url_candidate = raw if "://" in raw else f"http://{raw}"
+    try:
+        split_res = urlsplit(url_candidate)
+        onion_host = (split_res.hostname or "").lower()
+    except Exception:
+        onion_host = ""
+
+    if not onion_host.endswith(".onion") or onion_host == ".onion":
+        return TransformResponse(
+            messages=[
+                (
+                    "Inform",
+                    f"'{raw}' no es un servicio .onion válido; usa DeepDarkCTISearch para buscar en superficie.",
+                )
+            ]
+        )
+
+    home_dir = _home_dir(ctx)
     items: list[ResultEntity] = []
-    # 1. Correlación inmediata contra base local fastfire/deepdarkCTI
+
+    # 1. Correlación pasiva inmediata contra base local fastfire/deepdarkCTI (offline)
     for hit in search_cti_feeds(home_dir, onion_host, active_only=True, limit=n):
         items.append(
             _ent(
@@ -942,18 +1744,55 @@ async def _onion_passive_pivot(
             )
         )
 
-    # 2. Inspección pasiva de HTML (si el cliente HTTP o proxy SOCKS Tor alcanza el .onion)
+    # 2. Inspección activa de HTML: SOLO si se cumplen las tres condiciones requeridas.
+    # Nunca se envían cabeceras de cuentas ni cookies compartidas al .onion.
+    allow_active = ctx.env.get("MALTEGO_MCP_ALLOW_ACTIVE", "").strip() in ("1", "true", "yes")
+    socks_proxy = ctx.env.get("TOR_SOCKS_PROXY", "").strip()
+    can_fetch = allow_active and bool(socks_proxy) and (_has_socks_support() or ctx.client_factory is not None)
+
     html_text = ""
-    try:
-        resp = await ctx.http.get(target_url, headers=headers)
-        if resp.status_code == 429 and acct is not None:
-            pool.mark_rate_limited(acct)
-        elif resp.status_code == 200:
-            ctype = resp.headers.get("content-type", "text/html").lower()
-            if "text/" in ctype or "html" in ctype or "json" in ctype or not ctype:
-                html_text = resp.text[:200_000]
-    except httpx.HTTPError:
-        html_text = ""
+    messages: list[tuple[str, str]] = []
+
+    if can_fetch:
+        target_url = f"{split_res.scheme or 'http'}://{onion_host}{split_res.path or '/'}"
+        if split_res.query:
+            target_url += f"?{split_res.query}"
+
+        client_kwargs: dict[str, Any] = {
+            "timeout": 15.0,
+            "follow_redirects": False,
+            "headers": {
+                "User-Agent": get_user_agent(ctx.env),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            },
+        }
+        if ctx.client_factory is not None:
+            cl = ctx.client_factory(**client_kwargs)
+        else:
+            from maltego_mcp.egress import create_egress_client
+
+            cl = create_egress_client(
+                timeout=client_kwargs.get("timeout", 15.0),
+                extra_allowed_hosts={onion_host},
+            )
+
+        try:
+            async with cl as client:
+                resp = await client.get(target_url)
+                if resp.status_code == 200:
+                    ctype = resp.headers.get("content-type", "text/html").lower()
+                    if "text/" in ctype or "html" in ctype or "json" in ctype or not ctype:
+                        html_text = resp.text[:200_000]
+        except (httpx.HTTPError, OSError):
+            html_text = ""
+    else:
+        messages.append(
+            (
+                "Inform",
+                "Transform activo OnionPassivePivot deshabilitado en modo pasivo "
+                "(requiere MALTEGO_MCP_ALLOW_ACTIVE=1, TOR_SOCKS_PROXY y soporte SOCKS).",
+            )
+        )
 
     if html_text:
         title_m = _HTML_TITLE_RE.search(html_text)
@@ -1002,8 +1841,10 @@ async def _onion_passive_pivot(
             )
 
     out = _limit(items, n)
-    if not out.entities:
-        out.messages.append(("Inform", f"Sin metadatos accesibles para '{onion_host}' (verifique TOR_SOCKS_PROXY)."))
+    for msg in messages:
+        out.messages.append(msg)
+    if not out.entities and not messages:
+        out.messages.append(("Inform", f"Sin metadatos accesibles para '{onion_host}'."))
     return out
 
 
@@ -1489,12 +2330,25 @@ async def _vt_hash(ctx: BuiltinContext, etype: str, value: str, props: dict[str,
 
 
 async def _shodan_ip(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
-    data = await _get_json(
-        ctx,
-        f"https://api.shodan.io/shodan/host/{quote(value.strip())}",
-        params={"key": ctx.key("SHODAN_API_KEY")},
-        not_found_ok=True,
-    )
+    try:
+        data = await _get_json(
+            ctx,
+            f"https://api.shodan.io/shodan/host/{quote(value.strip())}",
+            params={"key": ctx.key("SHODAN_API_KEY")},
+            not_found_ok=True,
+        )
+    except TransformError as exc:
+        if "(403)" in str(exc):
+            return TransformResponse(
+                messages=[
+                    (
+                        "Inform",
+                        "La cuenta gratuita de Shodan limitó /shodan/host (403); "
+                        "InternetDBIPToServices cubre los puertos y CVEs sin clave.",
+                    )
+                ]
+            )
+        raise
     if not data:
         return TransformResponse(messages=[("Inform", "Shodan no tiene datos de esta IP.")])
     items = []
@@ -1515,12 +2369,25 @@ async def _shodan_subdomains(
     ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
 ) -> TransformResponse:
     domain = _host(value)
-    data = (
-        await _get_json(
-            ctx, f"https://api.shodan.io/dns/domain/{quote(domain)}", params={"key": ctx.key("SHODAN_API_KEY")}
+    try:
+        data = (
+            await _get_json(
+                ctx, f"https://api.shodan.io/dns/domain/{quote(domain)}", params={"key": ctx.key("SHODAN_API_KEY")}
+            )
+            or {}
         )
-        or {}
-    )
+    except TransformError as exc:
+        if "(403)" in str(exc):
+            return TransformResponse(
+                messages=[
+                    (
+                        "Inform",
+                        "La cuenta gratuita de Shodan no incluye /dns/domain (403); "
+                        "usa ShodanIPToServices o InternetDBIPToServices sobre las IPs resueltas.",
+                    )
+                ]
+            )
+        raise
     return _limit([_ent("maltego.DNSName", f"{s}.{domain}", "subdomain") for s in data.get("subdomains", []) if s], n)
 
 
@@ -1560,13 +2427,30 @@ async def _censys_ip(ctx: BuiltinContext, etype: str, value: str, props: dict[st
 
 
 async def _hunter(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
-    data = await _get_json(
-        ctx,
-        "https://api.hunter.io/v2/domain-search",
-        params={"domain": _host(value), "limit": min(n, 100), "api_key": ctx.key("HUNTER_API_KEY")},
-    )
+    domain = _host(value)
+    headers = {"X-API-KEY": ctx.key("HUNTER_API_KEY")}
+    try:
+        data = await _get_json(
+            ctx,
+            "https://api.hunter.io/v2/domain-search",
+            params={"domain": domain, "limit": min(n, 10)},
+            headers=headers,
+        )
+    except TransformError as exc:
+        if "HTTP 400" in str(exc):
+            data = await _get_json(
+                ctx,
+                "https://api.hunter.io/v2/domain-search",
+                params={"domain": domain},
+                headers=headers,
+            )
+        else:
+            raise
+    payload = (data or {}).get("data") or {}
+    org_name = str(payload.get("organization") or "").strip()
+    pattern = str(payload.get("pattern") or "").strip()
     items = []
-    for e in (data or {}).get("data", {}).get("emails", []):
+    for e in payload.get("emails", []):
         conf = int(e.get("confidence") or 50)
         items.append(
             _ent(
@@ -1575,11 +2459,21 @@ async def _hunter(ctx: BuiltinContext, etype: str, value: str, props: dict[str, 
                 "email_at",
                 weight=conf,
                 hunter__position=str(e.get("position") or ""),
+                hunter__organization=org_name,
+                hunter__pattern=pattern,
             )
         )
         full = " ".join(x for x in (e.get("first_name"), e.get("last_name")) if x)
         if full:
-            items.append(_ent("maltego.Person", full, "works_at", weight=conf))
+            items.append(
+                _ent(
+                    "maltego.Person",
+                    full,
+                    "works_at",
+                    weight=conf,
+                    hunter__organization=org_name,
+                )
+            )
     return _limit(items, n)
 
 
@@ -1951,6 +2845,9 @@ _CISA_KEV_CACHE: dict[str, Any] = {}
 
 
 async def _cisa_kev(ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int) -> TransformResponse:
+    from maltego_mcp.egress import get_following
+    from maltego_mcp.transforms.pdns import CLUSTER_EPSS
+
     cve_match = re.search(r"CVE-\d{4}-\d{4,7}", value.strip(), re.IGNORECASE)
     if not cve_match:
         return TransformResponse([])
@@ -1975,6 +2872,10 @@ async def _cisa_kev(ctx: BuiltinContext, etype: str, value: str, props: dict[str
                     cisa__vulnerabilityName=str(item.get("vulnerabilityName", "")),
                     cisa__requiredAction=str(item.get("requiredAction", "")),
                     cisa__dueDate=str(item.get("dueDate", "")),
+                    source_family="vulnerabilidades",
+                    source_reliability="A",
+                    info_credibility="1",
+                    collection_mode="passive",
                 )
             )
             vendor = str(item.get("vendorProject", "")).strip()
@@ -1986,45 +2887,192 @@ async def _cisa_kev(ctx: BuiltinContext, etype: str, value: str, props: dict[str
             if item.get("knownRansomwareCampaignUse") == "Known":
                 items.append(_ent("maltego.Phrase", "[Ransomware] Known Campaign Use", "threat_tag"))
             break
+
+    # Enriquecimiento pasivo EPSS (FIRST.org, sin clave): probabilidad real de explotación a 30 días
+    try:
+        epss_resp = await get_following(
+            ctx.http,
+            "https://api.first.org/data/v1/epss",
+            params={"cve": target_cve},
+            timeout=8.0,
+        )
+        if epss_resp.status_code == 200:
+            epss_json = epss_resp.json()
+            epss_rows = epss_json.get("data") if isinstance(epss_json, dict) else []
+            if epss_rows and isinstance(epss_rows[0], dict):
+                row = epss_rows[0]
+                score_s = str(row.get("epss") or "").strip()
+                pct_s = str(row.get("percentile") or "").strip()
+                if score_s:
+                    items.append(
+                        _ent(
+                            "maltego.Phrase",
+                            f"[EPSS] {target_cve}: score={score_s} (percentil={pct_s})",
+                            "epss_score",
+                            epss__score=score_s,
+                            epss__percentile=pct_s,
+                            independence_cluster=CLUSTER_EPSS,
+                            source_family="vulnerabilidades",
+                            source_reliability="A",
+                            info_credibility="1",
+                            collection_mode="passive",
+                        )
+                    )
+    except Exception:
+        pass
+
     return _limit(items, n)
 
 
 async def _urlhaus_host(
     ctx: BuiltinContext, etype: str, value: str, props: dict[str, str], n: int
 ) -> TransformResponse:
+    from maltego_mcp.transforms.pdns import CLUSTER_THREATFOX
+
     target_host = _host(value) if "Domain" in etype or "Website" in etype or "DNS" in etype else value.strip()
-    data = await _get_json(
-        ctx,
-        "https://urlhaus-api.abuse.ch/v1/host/",
-        params={"host": target_host},
-        not_found_ok=True,
-    )
-    if not isinstance(data, dict) or data.get("query_status") != "ok":
-        return TransformResponse([])
+    headers: dict[str, str] = {}
+    auth_key = ctx.env.get("URLHAUS_API_KEY") or ctx.env.get("ABUSE_CH_API_KEY")
+    if auth_key:
+        headers["Auth-Key"] = auth_key
 
     items: list[ResultEntity] = []
-    urls = data.get("urls", [])
-    for u in urls[:n]:
-        url_val = str(u.get("url", "")).strip()
-        status = str(u.get("url_status", "")).strip()
-        threat = str(u.get("threat", "")).strip()
-        if url_val:
-            items.append(
-                _ent(
-                    "maltego.URL",
-                    url_val,
-                    "malware_url",
-                    urlhaus__status=status,
-                    urlhaus__threat=threat,
-                )
-            )
-        if threat:
-            items.append(_ent("maltego.Phrase", f"[Threat] {threat}", "threat_type"))
+    # 1. Abuse.ch URLhaus
+    try:
+        resp = await ctx.http.post(
+            "https://urlhaus-api.abuse.ch/v1/host/",
+            data={"host": target_host},
+            headers=headers,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, dict) and data.get("query_status") == "ok":
+                for u in (data.get("urls") or [])[:n]:
+                    url_val = str(u.get("url", "")).strip()
+                    status = str(u.get("url_status", "")).strip()
+                    threat = str(u.get("threat", "")).strip()
+                    if url_val:
+                        items.append(
+                            _ent(
+                                "maltego.URL",
+                                url_val,
+                                "malware_url",
+                                urlhaus__status=status,
+                                urlhaus__threat=threat,
+                                collection_mode="passive",
+                            )
+                        )
+                    if threat:
+                        items.append(_ent("maltego.Phrase", f"[Threat] {threat}", "threat_type"))
+    except Exception:
+        pass
+
+    # 2. Abuse.ch ThreatFox (reutiliza la misma Auth-Key unificada de URLHAUS_API_KEY)
+    try:
+        tf_resp = await ctx.http.post(
+            "https://threatfox-api.abuse.ch/api/v1/",
+            json={"query": "search_ioc", "search_term": target_host},
+            headers=headers,
+        )
+        if tf_resp.status_code == 200:
+            tf_data = tf_resp.json()
+            if isinstance(tf_data, dict) and tf_data.get("query_status") == "ok":
+                for ioc in (tf_data.get("data") or [])[:n]:
+                    if not isinstance(ioc, dict):
+                        continue
+                    mal_name = str(ioc.get("malware_printable") or ioc.get("malware") or "Malware").strip()
+                    t_type = str(ioc.get("threat_type") or "ioc").strip()
+                    conf = str(ioc.get("confidence_level") or "").strip()
+                    items.append(
+                        _ent(
+                            "maltego.Phrase",
+                            f"[ThreatFox] {mal_name} ({t_type})",
+                            "threatfox_ioc",
+                            threatfox__confidence=conf,
+                            independence_cluster=CLUSTER_THREATFOX,
+                            source_family="cti_amenazas",
+                            source_reliability="B",
+                            info_credibility="2",
+                            collection_mode="passive",
+                        )
+                    )
+    except Exception:
+        pass
 
     return _limit(items, n)
 
 
 # ------------------------------------------------------------------------------------------ registro
+TRANSFORM_PASSIVITY: dict[str, PassivityLevel] = {
+    # Active Direct (1): conecta directamente al objetivo o su infraestructura oculta
+    "OnionPassivePivot": "active_direct",
+    # Active Proxy (4): consulta activa que provoca escaneo bajo demanda o análisis en terceros
+    "VTDomainToIP": "active_proxy",
+    "VTIPToDomain": "active_proxy",
+    "VTDomainToSubdomains": "active_proxy",
+    "VTHashToDetection": "active_proxy",
+    # Local (10): cómputo puro sobre el grafo o parsing en memoria sin E/S externa
+    "EmailToDomain": "local",
+    "EmailToAlias": "local",
+    "URLToDomain": "local",
+    "WebsiteToDomain": "local",
+    "DomainToWebsite": "local",
+    "SocialAliasDeepRecon": "local",
+    "AnalyzeSubjectBehavior": "local",
+    "CryptoClusteringCIOH": "local",
+    "OFACSanctionsCryptoLookup": "local",
+    "CryptoAddressToExchange": "local",
+    # Passive (48): solo datasets de terceros, pDNS histórico y telemetría de archivo
+    "DNSToIP": "passive",
+    "DNSToIPv6": "passive",
+    "DomainToMX": "passive",
+    "DomainToNS": "passive",
+    "DomainToTXT": "passive",
+    "DNSToCNAME": "passive",
+    "IPToReverseDNS": "passive",
+    "DomainToWhois": "passive",
+    "IPToWhois": "passive",
+    "IPToAS": "passive",
+    "IPToNetblock": "passive",
+    "DomainToSubdomains": "passive",
+    "CertSpotterSubdomains": "passive",
+    "AnubisSubdomains": "passive",
+    "HackerTargetSubdomains": "passive",
+    "URLScanDomainSearch": "passive",
+    "UrlhausHostToThreats": "passive",
+    "CisaKevToVulnerabilities": "passive",
+    "OTXHashToThreatPulses": "passive",
+    "InternetDBIPToServices": "passive",
+    "IPToPassiveContext": "passive",
+    "ShodanIPToServices": "passive",
+    "ShodanDomainToSubdomains": "passive",
+    "CensysIPToServices": "passive",
+    "GreyNoiseIPContext": "passive",
+    "SecurityTrailsSubdomains": "passive",
+    "DeepDarkCTISearch": "passive",
+    "RIPEStatASNToNetblocks": "passive",
+    "HIBPEmailToBreaches": "passive",
+    "HudsonRockStealerCheck": "passive",
+    "BreachSemanticPivot": "passive",
+    "HunterDomainToEmails": "passive",
+    "AliasToProfiles": "passive",
+    "GitHubAliasToCommitEmails": "passive",
+    "GitHubAliasToDetails": "passive",
+    "KeybaseAliasToProofs": "passive",
+    "GravatarEmailToProfile": "passive",
+    "MempoolAddressToTransactions": "passive",
+    "MempoolTxToInputsOutputs": "passive",
+    "TatumBTCAddressToTx": "passive",
+    "WaybackCDXSearch": "passive",
+    "ArquivoCDXSearch": "passive",
+    "CommonCrawlCDXSearch": "passive",
+    "CTOrgToCertificates": "passive",
+    "WaybackSnapshotExtract": "passive",
+    "GitHubDomainToLeaks": "passive",
+    "BOEEntityToRecords": "passive",
+    "GLEIFCompanyToStructure": "passive",
+}
+
+
 def _b(
     name: str,
     inputs: tuple[str, ...],
@@ -2033,8 +3081,10 @@ def _b(
     cat: str,
     handler: Handler,
     requires: tuple[str, ...] = (),
+    passivity: PassivityLevel | None = None,
 ) -> BuiltinTransform:
-    return BuiltinTransform(name, inputs, outputs, desc, cat, handler, requires)
+    p = passivity or TRANSFORM_PASSIVITY.get(name, "passive")
+    return BuiltinTransform(name, inputs, outputs, desc, cat, handler, requires, p)
 
 
 BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
@@ -2042,7 +3092,7 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DNSToIP",
         HOST_TYPES,
         ("maltego.IPv4Address",),
-        "Registros A (DNS sobre HTTPS).",
+        "Registros A históricos mediante DNS pasivo (pDNS Mnemonic/Robtex).",
         "dns",
         _dns_records("A", "maltego.IPv4Address", "resolves_to"),
     ),
@@ -2050,7 +3100,7 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DNSToIPv6",
         HOST_TYPES,
         ("maltego.IPv6Address",),
-        "Registros AAAA (DNS sobre HTTPS).",
+        "Registros AAAA históricos mediante DNS pasivo (pDNS Mnemonic/Robtex).",
         "dns",
         _dns_records("AAAA", "maltego.IPv6Address", "resolves_to"),
     ),
@@ -2058,7 +3108,7 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DomainToMX",
         ("maltego.Domain",),
         ("maltego.MXRecord",),
-        "Servidores de correo (MX).",
+        "Servidores de correo (MX) históricos mediante DNS pasivo.",
         "dns",
         _dns_records("MX", "maltego.MXRecord", "mail_server"),
     ),
@@ -2066,7 +3116,7 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DomainToNS",
         ("maltego.Domain",),
         ("maltego.NSRecord",),
-        "Servidores de nombres (NS).",
+        "Servidores de nombres (NS) históricos mediante DNS pasivo.",
         "dns",
         _dns_records("NS", "maltego.NSRecord", "nameserver"),
     ),
@@ -2074,7 +3124,7 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DomainToTXT",
         ("maltego.Domain",),
         ("maltego.Phrase",),
-        "Registros TXT (SPF, verificaciones...).",
+        "Registros TXT históricos mediante DNS pasivo (Mnemonic/Robtex).",
         "dns",
         _dns_records("TXT", "maltego.Phrase", "txt_record"),
     ),
@@ -2082,11 +3132,18 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         "DNSToCNAME",
         HOST_TYPES,
         ("maltego.DNSName",),
-        "Alias CNAME.",
+        "Alias CNAME históricos mediante DNS pasivo.",
         "dns",
         _dns_records("CNAME", "maltego.DNSName", "cname"),
     ),
-    _b("IPToReverseDNS", IP_TYPES, ("maltego.DNSName",), "DNS inverso (PTR).", "dns", _reverse_dns),
+    _b(
+        "IPToReverseDNS",
+        IP_TYPES,
+        ("maltego.DNSName",),
+        "DNS inverso pasivo (PTR histórico via InternetDB, THC, Robtex, HackerTarget).",
+        "dns",
+        _reverse_dns,
+    ),
     _b("IPToAS", IP_TYPES, ("maltego.AS",), "Sistema autónomo que anuncia la IP (Team Cymru).", "red", _ip_to_as),
     _b(
         "IPToNetblock",
@@ -2305,7 +3362,10 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
             "maltego.EmailAddress",
             "maltego.Affiliation",
         ),
-        "Pivote pasivo y acotado estilo TorCrawl para servicios .onion (título, enlaces, BTC, PGP, emails y Telegram).",
+        (
+            "Pivote activo para servicios .onion (deshabilitado por defecto; "
+            "requiere MALTEGO_MCP_ALLOW_ACTIVE=1 y TOR_SOCKS_PROXY)."
+        ),
         "darkweb",
         _onion_passive_pivot,
     ),
@@ -2489,6 +3549,99 @@ BUILTIN_TRANSFORMS: tuple[BuiltinTransform, ...] = (
         _tatum,
         ("TATUM_API_KEY",),
     ),
+    _b(
+        "WaybackCDXSearch",
+        ("maltego.Domain", "maltego.Website"),
+        ("maltego.URL",),
+        "URLs archivadas históricas en Wayback Machine (Internet Archive CDX API).",
+        "archivo",
+        _wayback_cdx_search,
+    ),
+    _b(
+        "ArquivoCDXSearch",
+        ("maltego.Domain", "maltego.Website"),
+        ("maltego.URL",),
+        "URLs archivadas históricas en Arquivo.pt (archivo web europeo).",
+        "archivo",
+        _arquivo_cdx_search,
+    ),
+    _b(
+        "CTOrgToCertificates",
+        ("maltego.Organization", "maltego.Company"),
+        ("maltego.DNSName",),
+        "Certificados SSL/TLS emitidos para una organización (crt.sh por campo O).",
+        "certificados",
+        _crtsh_org_search,
+    ),
+    _b(
+        "WaybackSnapshotExtract",
+        ("maltego.Domain", "maltego.Website", "maltego.URL"),
+        ("maltego.Phrase", "maltego.Company", "maltego.EmailAddress", "maltego.PhoneNumber"),
+        "Extrae pasivamente CIF/NIF, razón social, correos y teléfonos desde instantáneas de Wayback.",
+        "archivo",
+        _wayback_snapshot_extract,
+    ),
+    _b(
+        "GitHubDomainToLeaks",
+        ("maltego.Domain", "maltego.EmailAddress", "maltego.Company", "maltego.Organization"),
+        ("maltego.URL", "maltego.Phrase"),
+        "Busca menciones, repositorios y fugas de código públicas en GitHub Search API (usa GITHUB_TOKEN si existe).",
+        "filtraciones",
+        _github_domain_leaks,
+    ),
+    _b(
+        "BOEEntityToRecords",
+        (
+            "maltego.Company",
+            "maltego.Organization",
+            "maltego.Person",
+            "maltego.Phrase",
+            "maltego.UniqueIdentifier",
+        ),
+        (
+            "maltego.Phrase",
+            "maltego.URL",
+            "maltego.Company",
+            "maltego.Person",
+            "maltego.Location",
+            "maltego.Website",
+        ),
+        "Consulta pasiva de publicaciones en BOE/BORME (OpenMercantil), censo VIES IVA e índice de certificados.",
+        "registros",
+        _boe_entity_records,
+    ),
+    _b(
+        "AnubisSubdomains",
+        ("maltego.Domain",),
+        ("maltego.DNSName",),
+        "Subdominios pasivos en AnubisDB.",
+        "dns",
+        _anubis_subdomains,
+    ),
+    _b(
+        "CommonCrawlCDXSearch",
+        ("maltego.Domain", "maltego.Website"),
+        ("maltego.URL",),
+        "URLs históricas indexadas en Common Crawl CDX API.",
+        "archivo",
+        _commoncrawl_cdx_search,
+    ),
+    _b(
+        "GLEIFCompanyToStructure",
+        ("maltego.Company", "maltego.Organization", "maltego.UniqueIdentifier", "maltego.Phrase"),
+        ("maltego.Company", "maltego.Location", "maltego.Phrase"),
+        "Estructura societaria global, LEI, domicilio legal y matriz en GLEIF.",
+        "registros",
+        _gleif_company_structure,
+    ),
+    _b(
+        "IPToPassiveContext",
+        IP_TYPES,
+        ("maltego.Organization", "maltego.AS", "maltego.Location", "maltego.Phrase"),
+        "Contexto pasivo de IP: organización, ASN, ubicación y banderas de hosting/proxy/Tor (ipapi.is).",
+        "red",
+        _ip_passive_context,
+    ),
 )
 
 PROVIDER_KEYS: dict[str, tuple[str, ...]] = {
@@ -2500,4 +3653,7 @@ PROVIDER_KEYS: dict[str, tuple[str, ...]] = {
     "hibp": ("HIBP_API_KEY",),
     "greynoise": ("GREYNOISE_API_KEY",),
     "tatum": ("TATUM_API_KEY",),
+    "otx": ("OTX_API_KEY",),
+    "urlscan": ("URLSCAN_API_KEY",),
+    "urlhaus": ("URLHAUS_API_KEY",),
 }

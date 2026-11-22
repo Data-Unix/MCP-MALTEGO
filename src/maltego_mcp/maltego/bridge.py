@@ -305,6 +305,10 @@ def write_mtz(output: Path, repo_dir: Path, uv_command: str) -> Path:
 
 
 def main(argv: list[str] | None = None) -> None:
+    import logging
+
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     parser = argparse.ArgumentParser(prog="maltego-mcp-bridge", description="Puente MCP <-> Maltego Desktop")
     sub = parser.add_subparsers(dest="command", required=True)
     mtz = sub.add_parser("mtz", help="Genera el .mtz con los transforms locales para importar en Maltego")

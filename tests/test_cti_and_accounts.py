@@ -176,8 +176,21 @@ async def test_six_new_transforms_and_darkweb_footprint_machine(
     assert any("lockbit3" in v for v in vals)
     assert any(v.endswith(".onion") for v in vals)
 
-    # 3. OnionPassivePivot (extracción recursiva estilo TorCrawl)
-    op = await _t("OnionPassivePivot").handler(ctx, "maltego.Website", "breachforums222222222222.onion", {}, 20)
+    # 3. OnionPassivePivot: por defecto en modo pasivo está deshabilitado sin red
+    op_passive = await _t("OnionPassivePivot").handler(ctx, "maltego.Website", "breachforums222222222222.onion", {}, 20)
+    assert any("deshabilitado en modo pasivo" in msg[1] for msg in op_passive.messages)
+
+    # 3b. OnionPassivePivot: con flags activos explícitos ejecuta la inspección simulada con client_factory inyectada
+    ctx_active = BuiltinContext(
+        ctx.http,
+        {**ctx.env, "MALTEGO_MCP_ALLOW_ACTIVE": "1", "TOR_SOCKS_PROXY": "socks5h://127.0.0.1:9050"},
+        client_factory=lambda **kw: httpx.AsyncClient(
+            transport=httpx.MockTransport(router),
+            headers=kw.get("headers"),
+            timeout=kw.get("timeout", 15.0),
+        ),
+    )
+    op = await _t("OnionPassivePivot").handler(ctx_active, "maltego.Website", "breachforums222222222222.onion", {}, 20)
     op_types = {e.entity_type for e in op.entities}
     assert "maltego.CryptocurrencyAddress" in op_types
     assert "maltego.EmailAddress" in op_types
@@ -227,4 +240,61 @@ async def test_mcp_tool_generate_persona_and_cli_commands(tmp_path: Path, monkey
         assert Path(payload["saved_accounts_toml"]).exists()
 
     assert cli_main(["accounts", "list"]) == 0
+
+
+async def test_onion_passive_pivot_rechaza_urls_clearnet_con_subcadenas_onion(tmp_path: Path) -> None:
+    """Verifica que URLs clearnet con '.onion' en la ruta o querystring son rechazadas de inmediato."""
+    router = Router()
+    ctx = BuiltinContext(new_http_client(transport=httpx.MockTransport(router)), {"MALTEGO_MCP_HOME": str(tmp_path)})
+    t = _t("OnionPassivePivot")
+
+    for evil in (
+        "http://attacker.com/malicious.onion/path",
+        "https://evil.com/?target=secret.onion",
+        "attacker.com/something.onion",
+    ):
+        res = await t.handler(ctx, "maltego.Website", evil, {}, 10)
+        assert not res.entities
+        assert any("no es un servicio .onion válido" in m[1] for m in res.messages)
     assert cli_main(["accounts", "generate-persona", "--role", "journalist", "--save"]) == 0
+
+
+async def test_verify_account_connection_tor_pasivo_y_activo() -> None:
+    """Verifica que verify_account_connection para Tor opera en pasivo por defecto y valida dominios en activo."""
+    from maltego_mcp.accounts import SocialAccount, verify_account_connection
+
+    # 1. Modo pasivo por defecto (sin client): socket probe local.
+    acc = SocialAccount(
+        id="tor_test_1",
+        platform="onion",
+        handle="anon",
+        target_site="secretforum123456789.onion",
+        proxy="socks5h://127.0.0.1:59999",  # puerto cerrado
+    )
+    rep = await verify_account_connection(acc, env={})
+    assert rep.status == "tor_unreachable"
+    assert "127.0.0.1:59999" in rep.message
+
+    # 2. Modo activo con target no .onion: rechazado por seguridad
+    acc_clearnet = SocialAccount(
+        id="tor_test_2",
+        platform="onion",
+        handle="anon",
+        target_site="attacker.com",
+    )
+    rep_clearnet = await verify_account_connection(
+        acc_clearnet,
+        env={"MALTEGO_MCP_ALLOW_ACTIVE": "1"},
+        client=httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))),
+    )
+    assert rep_clearnet.status == "error"
+    assert "Destino no permitido" in rep_clearnet.message
+
+    # 3. Modo activo con mock client y target .onion: éxito
+    rep_ok = await verify_account_connection(
+        acc,
+        env={"MALTEGO_MCP_ALLOW_ACTIVE": "1"},
+        client=httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, text="OK"))),
+    )
+    assert rep_ok.status == "ok"
+    assert "Conexión Tor exitosa" in rep_ok.message

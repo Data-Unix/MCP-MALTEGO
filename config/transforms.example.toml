@@ -12,6 +12,7 @@ timeout_s = 30
 [[transforms]]
 name = "EmailToDomain"              # path por defecto: nombre en minúsculas, '_' -> '-' (emailtodomain)
 server = "local-trx"
+passivity = "local"
 input_types = ["maltego.EmailAddress"]
 output_types = ["maltego.Domain"]
 description = "Dominio de un correo electrónico."
@@ -19,6 +20,7 @@ description = "Dominio de un correo electrónico."
 [[transforms]]
 name = "EmailToHandle"
 server = "local-trx"
+passivity = "local"
 input_types = ["maltego.EmailAddress"]
 output_types = ["maltego.Alias"]
 description = "Parte local del correo como posible alias."
@@ -26,6 +28,7 @@ description = "Parte local del correo como posible alias."
 [[transforms]]
 name = "URLToDomain"
 server = "local-trx"
+passivity = "local"
 input_types = ["maltego.URL"]
 output_types = ["maltego.Domain"]
 description = "Dominio que aloja una URL."
@@ -33,6 +36,7 @@ description = "Dominio que aloja una URL."
 [[transforms]]
 name = "DomainToWebsite"
 server = "local-trx"
+passivity = "local"
 input_types = ["maltego.Domain"]
 output_types = ["maltego.Website", "maltego.URL"]
 description = "Web y URL raíz de un dominio."
@@ -40,6 +44,7 @@ description = "Web y URL raíz de un dominio."
 [[transforms]]
 name = "DomainToIP"
 server = "local-trx"
+passivity = "active_proxy"
 input_types = ["maltego.Domain", "maltego.DNSName", "maltego.Website"]
 output_types = ["maltego.IPv4Address"]
 description = "Resolución DNS real a IPv4."

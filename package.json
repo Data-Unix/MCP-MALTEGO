@@ -1,6 +1,6 @@
 {
   "name": "mcp-maltego",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server for Maltego OSINT: transforms, Machines, link-graph analysis and native .mtgx for any AI agent (Claude, Gemini, Codex...).",
   "keywords": [
     "mcp",
@@ -49,7 +49,9 @@
     "README.es.md",
     "SECURITY.md",
     "!**/__pycache__/**",
-    "!**/*.pyc"
+    "!**/*.pyc",
+    "!**/*.pyd",
+    "!**/*.so"
   ],
   "engines": {
     "node": ">=18"

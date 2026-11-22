@@ -21,7 +21,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from maltego_mcp.analysis import Action, EntityScore
+from maltego_mcp.analysis import Action, EntityScore, indirect_pivots_for_entity
 from maltego_mcp.domain.entity_types import all_entity_types
 from maltego_mcp.errors import InvalidInput, MaltegoMcpError
 from maltego_mcp.format import (
@@ -220,6 +220,8 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                         {
                             "name": s.name,
                             "category": s.category,
+                            "passivity": s.passivity,
+                            "is_passive": s.is_passive,
                             "origin": s.origin,
                             "input_types": list(s.input_types),
                             "output_types": list(s.output_types),
@@ -244,9 +246,10 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                     "accounts": inv.accounts,
                 }
             )
-        rows = ["| transform | categoría | acepta | produce | disponible |", "|---|---|---|---|---|"]
+        rows = ["| transform | categoría | pasividad | acepta | produce | disponible |", "|---|---|---|---|---|---|"]
         rows += [
-            f"| {s.name} | {s.category} | {', '.join(t.split('.')[-1] for t in s.input_types) or 'cualquiera'} | "
+            f"| {s.name} | {s.category} | {s.passivity} | "
+            f"{', '.join(t.split('.')[-1] for t in s.input_types) or 'cualquiera'} | "
             f"{', '.join(t.split('.')[-1] for t in s.output_types) or '?'} | "
             f"{'sí' if s.available(svc.env) else 'falta ' + ', '.join(s.requires)} |"
             for s in inv.transforms
@@ -264,6 +267,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             "\n**Proveedores:** "
             + ", ".join(f"{p} ({'configurado' if ok else 'sin clave'})" for p, ok in sorted(inv.providers.items()))
         )
+        rows.append(f"\n**Modo MCP:** {'PASIVO (transforms activos bloqueados)' if svc.is_passive_mode else 'ACTIVO'}")
         if inv.accounts:
             rows.append(
                 "**Cuentas / Sock Puppets:** "
@@ -281,9 +285,11 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         name="osint_manage_case",
         title="Gestionar caso",
         description=(
-            "Crea o actualiza un caso (action=create), divide un caso en sub-casos por rol para enjambres "
-            "multi-agente (action=fork o delegate, sub_roles), fusiona otro caso o todos los sub-casos con bloqueo "
-            "optimista (action=merge, source_case o 'all', expected_version) o lo borra (action=delete, confirm)."
+            "Crea o actualiza un caso (action=create, confidential), divide un caso en sub-casos "
+            "por rol para enjambres multi-agente (action=fork o delegate, sub_roles), fusiona otro "
+            "caso o todos los sub-casos con bloqueo optimista (action=merge, source_case o 'all', "
+            "expected_version), conmuta modo confidencial (action=set_confidential, confidential) "
+            "o lo borra (action=delete, confirm)."
         ),
         annotations=DESTRUCTIVE,
         structured_output=False,
@@ -300,10 +306,13 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             ),
         ],
         action: Annotated[
-            Literal["create", "merge", "delete", "fork", "delegate"],
-            Field(description="create, merge, delete, fork o delegate."),
+            Literal["create", "merge", "delete", "fork", "delegate", "set_confidential"],
+            Field(description="create, merge, delete, fork, delegate o set_confidential."),
         ] = "create",
         description: Annotated[str, Field(max_length=500, description="Objetivo del caso (create/fork).")] = "",
+        confidential: Annotated[
+            bool, Field(description="Activar modo confidencial (create o set_confidential).")
+        ] = False,
         source_case: Annotated[
             str, Field(description="Caso a fusionar en case_id, o 'all' para todos los sub-casos (merge).")
         ] = "",
@@ -313,11 +322,19 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         confirm: Annotated[str, Field(description="Repite el case_id para confirmar delete.")] = "",
         response_format: Fmt = "markdown",
     ) -> str:
+        if action == "set_confidential":
+            conf_case = await svc.set_case_confidential(case_id, confidential)
+            if response_format == "json":
+                return to_json({"confidential": conf_case.confidential, "case": conf_case.to_dict()})
+            st = "CONFIDENCIAL (backend local forzado, datos minimizados)" if conf_case.confidential else "ESTÁNDAR"
+            return f"Caso `{case_id.strip().lower()}` configurado en modo {st}."
         if action == "delete":
             ents, edges = await svc.delete_case(case_id, confirm)
+            svc.emit_event("case_deleted", case_id=case_id.strip().lower())
             return f"Caso `{case_id.strip().lower()}` borrado ({ents} entidades, {edges} relaciones)."
         if action in ("fork", "delegate"):
             delegated = await svc.fork_case(case_id, sub_roles, description)
+            svc.emit_event("graph_updated", case_id=case_id.strip().lower())
             if response_format == "json":
                 return to_json({"parent_case_id": case_id.strip().lower(), "sub_cases": delegated})
             rows = [
@@ -339,6 +356,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             if not source_case.strip():
                 raise InvalidInput("Indica source_case para fusionar (o source_case='all' para los sub-casos).")
             created, linked = await svc.merge_cases(case_id, source_case, expected_version)
+            await svc.sync_case_recon_from_graph(case_id.strip().lower())
             if response_format == "json":
                 updated_case = await svc.store.get_case(case_id.strip().lower())
                 return to_json(
@@ -355,10 +373,20 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                 f"nuevas, {linked} relaciones. El caso origen se conserva."
             )
         case, created = await svc.create_case(case_id, description)
+        if confidential:
+            case = await svc.set_case_confidential(case_id, True)
+        svc.emit_event(
+            "case_created",
+            case_id=case.case_id,
+            description=case.description,
+            confidential=case.confidential,
+        )
         if response_format == "json":
             return to_json({"created": created, "case": case.to_dict()})
         state = "creado" if created else "ya existía"
-        return f"Caso `{case.case_id}` {state} (v{case.version}). Descripción: {safe(case.description) or '—'}"
+        conf_tag = " [MODO CONFIDENCIAL]" if case.confidential else ""
+        desc = safe(case.description) or "—"
+        return f"Caso `{case.case_id}` {state} (v{case.version}){conf_tag}. Descripción: {desc}"
 
     @mcp.tool(
         name="osint_list_cases",
@@ -445,6 +473,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         response_format: Fmt = "markdown",
     ) -> str:
         ent, created = await svc.upsert_entity(case_id, entity_type, value, confidence, source, properties, notes)
+        await svc.sync_case_recon_from_graph(ent.case_id)
         if response_format == "json":
             return to_json({"created": created, "entity": ent.to_dict()})
         return f"Entidad {'creada' if created else 'actualizada'}: {entity_line(ent)}"
@@ -455,7 +484,8 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         description=(
             "action=update cambia confianza, notas o propiedades. action=visual_style fija peso/color/tamaño visual "
             "para .mtgx. action=analyze_behavior ejecuta perfilado conductual HUMINT. action=generate_persona genera "
-            "un kit operativo de Sock Puppet (humint.Alias + plantilla accounts.toml). action=delete borra la entidad."
+            "un kit operativo de Sock Puppet. action=profile ejecuta perfilado multidimensional (21 tipologías). "
+            "action=delete borra la entidad."
         ),
         annotations=DESTRUCTIVE,
         structured_output=False,
@@ -469,9 +499,36 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             list[str], Field(default_factory=list, max_length=50, description="Nombres de propiedades a quitar.")
         ],
         action: Annotated[
-            Literal["update", "delete", "visual_style", "analyze_behavior", "generate_persona"],
-            Field(description="update, delete, visual_style, analyze_behavior o generate_persona."),
+            Literal["update", "delete", "visual_style", "analyze_behavior", "generate_persona", "profile"],
+            Field(description="update, delete, visual_style, analyze_behavior, generate_persona o profile."),
         ] = "update",
+        profile_type: Annotated[
+            Literal[
+                "",
+                "investor",
+                "shareholder",
+                "negotiation",
+                "cultural_fit",
+                "competitor",
+                "cyber",
+                "device",
+                "network",
+                "data",
+                "inductive_crime",
+                "deductive_crime",
+                "geographic",
+                "victimology",
+                "stylometry",
+                "political_leader",
+                "border_risk",
+                "insider_threat",
+                "user_consumer",
+                "psychographic",
+                "audience",
+                "clinical_risk",
+            ],
+            Field(description="Tipo de perfilado cuando action='profile' (vacío para deducción automática)."),
+        ] = "",
         confidence: Annotated[float, Field(ge=-1, le=1, description="Nueva confianza 0-1; -1 = no cambiar.")] = -1,
         notes: Annotated[str, Field(max_length=4000, description="Notas (sustituyen a las actuales).")] = "",
         visual_weight: Annotated[
@@ -542,6 +599,57 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             if saved_path:
                 lines.append(f"Plantilla guardada en `{saved_path}`.")
             return "\n\n".join(lines)
+        if action == "profile":
+            ent, profile, emitted = await svc.profile_entity(case_id, entity_id, profile_type, reason)
+            svc.emit_event(
+                "entity_profiled",
+                case_id=ent.case_id,
+                entity_id=ent.id,
+                value=ent.value,
+                typology=profile.typology,
+                archetype=profile.archetype_label,
+                risk_level=profile.risk_level,
+            )
+            await svc.sync_case_recon_from_graph(ent.case_id)
+            if response_format == "json":
+                return to_json(
+                    {
+                        "entity": ent.to_dict(),
+                        "profile": profile.to_dict(),
+                        "emitted": [x.to_dict() for x in emitted],
+                    }
+                )
+            lines = [
+                f"## {profile.title}: {code(ent.value)}",
+                f"- **Arquetipo:** {profile.archetype_label} · **Riesgo:** `{profile.risk_level}`",
+                f"- **Dominio:** `{profile.domain}` · **Tipología:** `{profile.typology}`",
+                f"- **Dictamen:** {safe(profile.summary, 400)}",
+            ]
+            if profile.dimensions:
+                lines.append("\n### Dimensiones Evaluadas")
+                lines.append("| Dimensión | Puntuación | Certeza | Estatus Epistémico | Notas |")
+                lines.append("|---|---|---|---|---|")
+                for d in profile.dimensions:
+                    d_cert = f"{d.confidence * 100:.0f} %"
+                    d_row = (
+                        f"| {safe(d.name, 35)} | {d.score:.2f} | {d_cert} | "
+                        f"`{d.epistemic_status}` | {safe(d.notes, 50)} |"
+                    )
+                    lines.append(d_row)
+            if profile.anomalies:
+                lines.append("\n### Anomalías y Disparadores Detectados")
+                for a in profile.anomalies:
+                    lines.append(f"- **ALERTA:** {safe(a, 200)}")
+            if profile.strategic_recommendations:
+                lines.append("\n### Recomendaciones Estratégicas y Mitigación")
+                for r in profile.strategic_recommendations:
+                    lines.append(f"1. {safe(r, 200)}")
+            if emitted:
+                lines.append(f"\n### Nodos y Vínculos Emitidos en el Grafo ({len(emitted)})")
+                lines.append(entities_table(emitted))
+            lines.append(f"\n> {profile.epistemic_warning}")
+            lines.append(UNTRUSTED_NOTE)
+            return "\n\n".join(lines)
         extra_props = list(properties)
         if visual_weight >= 0:
             extra_props.append(f"visual.weight={visual_weight}")
@@ -576,6 +684,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                     "discovered_by": [s.to_dict() for s in x.discovered_by],
                     "used_as_input": [s.to_dict() for s in x.used_as_input],
                     "pending_transforms": x.pending_transforms,
+                    "validity": x.validity.to_dict() if x.validity else None,
                 }
             )
         lines = [
@@ -584,6 +693,17 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             f"- Fuentes: {safe(', '.join(e.sources), 300)}",
             f"- Visto: {e.first_seen} → {e.last_seen}",
         ]
+        if x.validity:
+            lines.append(f"- Vigencia objetiva (§4.4): **{x.validity.status}** ({x.validity.score}/100)")
+            lines.append(f"  - Fundamento: {x.validity.rationale}")
+            if x.validity.evidences:
+                lines.append("  - Evidencias de telemetría:")
+                for ev in x.validity.evidences[:10]:
+                    date_str = f" ({ev.observed_date}, hace {ev.days_ago}d)" if ev.observed_date else " (sin fecha)"
+                    score_str = f"peso: {round(ev.score, 1)}"
+                    lines.append(
+                        f"    * [{ev.family}] clúster `{ev.cluster}` vía `{ev.source}`{date_str} → {score_str}"
+                    )
         if x.score:
             lines.append(f"- Prioridad: {x.score.rationale()}")
         if e.notes:
@@ -807,6 +927,8 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         response_format: Fmt = "markdown",
     ) -> str:
         run = await svc.run_transform(case_id, transform, entity_type, value, properties, soft_limit, save, reason)
+        if save and case_id.strip():
+            await svc.sync_case_recon_from_graph(case_id.strip().lower())
         if response_format == "json":
             return to_json(
                 {
@@ -863,6 +985,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         response_format: Fmt = "markdown",
     ) -> str:
         r = await svc.expand_entity(case_id, entity_id, max_transforms, soft_limit, reason)
+        await svc.sync_case_recon_from_graph(r.entity.case_id)
         if response_format == "json":
             return to_json(
                 {
@@ -941,6 +1064,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
             soft_limit,
             reason,
         )
+        await svc.sync_case_recon_from_graph(r.root.case_id)
         if response_format == "json":
             return to_json(_machine_json(r))
         return _machine_md(r) + "\n\nSiguiente: osint_suggest_next_steps u osint_get_case_summary."
@@ -950,15 +1074,23 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         name="osint_investigate",
         title="Investigar en una llamada",
         description=(
-            "Punto de entrada: detecta el tipo del valor, crea el caso (o usa case_id), ejecuta la Machine adecuada "
-            "(o expand_entity), puntúa entidades, propone los siguientes pasos y devuelve un informe en línea."
+            "Punto de entrada (modo pasivo y activo): deduce la semilla incluso desde una petición en texto claro o "
+            "vaga, crea el caso, ejecuta la Machine adecuada (o expand_entity), perfila entidades nucleares, "
+            "sincroniza en tiempo real las fases P0-P9 (ACH/ICD-203) en el Dashboard, exporta HTML/mcpcase y "
+            "devuelve el Informe Pericial Ejecutivo completo junto con los siguientes pivotes recomendados."
         ),
         annotations=OPEN_WORLD,
         structured_output=False,
     )
     @tool_errors
     async def osint_investigate(
-        value: Annotated[str, Field(max_length=2048, description="Dato inicial: dominio, IP, correo, URL, alias...")],
+        value: Annotated[
+            str,
+            Field(
+                max_length=2048,
+                description="Dato inicial o petición en texto claro: dominio, IP, correo, URL, alias, empresa...",
+            ),
+        ],
         case_id: Annotated[str, Field(description="Caso; vacío = se crea inv-<valor>-<fecha>.")] = "",
         entity_type: EntityType = "auto",
         machine: Annotated[str, Field(description="Forzar Machine; vacío = automática por tipo.")] = "",
@@ -980,6 +1112,10 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                     "top": [s.to_dict() for s in r.top],
                     "next_actions": [a.to_dict() for a in r.actions],
                     "notes": r.notes,
+                    "recon_phase": r.recon_phase,
+                    "leading_hypothesis": r.leading_hypothesis,
+                    "exported_files": r.exported_files,
+                    "report_markdown": r.report_markdown,
                 }
             )
         parts = [f"# Investigación `{r.case_id}`", f"Tipo detectado: {r.maltego_type} · estrategia: {r.strategy}"]
@@ -998,6 +1134,24 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         parts += [
             "**Siguientes pasos recomendados**",
             _actions_md(r.actions),
+        ]
+        if r.exported_files:
+            exp_lines = [f"- `{k}`: `{v}`" for k, v in r.exported_files.items()]
+            parts.append(
+                "**Entregables auto-generados y sincronización Dashboard (`"
+                + r.recon_phase
+                + "`):**\n"
+                + "\n".join(exp_lines)
+            )
+        parts.append(
+            "**Guía de profundización híbrida para el agente:** Si hay acciones de alta puntuación en "
+            "*Siguientes pasos recomendados*, ejecútalas con `osint_run_transform` y cierra con "
+            f'`osint_export_case(case_id="{r.case_id}", format="report_html", inline=True)`. '
+            "Entrega siempre al usuario el Informe Pericial Ejecutivo completo que sigue a continuación."
+        )
+        if r.report_markdown:
+            parts.append("---\n\n" + r.report_markdown.strip())
+        parts += [
             UNTRUSTED_NOTE,
             "Más: osint_export_case (mtgx para Maltego, report_md/report_html para informe).",
         ]
@@ -1020,12 +1174,22 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         include_stats: Annotated[bool, Field(description="Incluir rendimiento histórico de transforms.")] = False,
         response_format: Fmt = "markdown",
     ) -> str:
-        actions, _ = await svc.suggest(case_id, limit)
+        actions, scores = await svc.suggest(case_id, limit)
         stats = await svc.learning() if include_stats else {}
+        indirect_pivots: list[str] = []
+        for ent_id in list(scores.keys())[:5]:
+            try:
+                ent = await svc.get_entity(case_id, ent_id)
+                indirect_pivots.extend(indirect_pivots_for_entity(ent))
+            except Exception:
+                pass
+            if len(indirect_pivots) >= 8:
+                break
         if response_format == "json":
             return to_json(
                 {
                     "actions": [a.to_dict() for a in actions],
+                    "indirect_pivots_m3": indirect_pivots[:8],
                     "transform_stats": {
                         k: {"runs": v.runs, "errors": v.errors, "avg_new": round(v.avg_yield, 2)}
                         for k, v in stats.items()
@@ -1033,6 +1197,11 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
                 }
             )
         out = [_actions_md(actions)]
+        if indirect_pivots:
+            out += [
+                "\n**Pivotes indirectos (M3 — '¿Quién más habla de esto?')**",
+                *[f"- {p}" for p in indirect_pivots[:6]],
+            ]
         if stats:
             out += [
                 "\n**Rendimiento histórico**",
@@ -1162,6 +1331,7 @@ def register_tools(mcp: MCPServer, svc: OsintService) -> None:
         file_name: Annotated[str, Field(max_length=300, description="Nombre del fichero, p. ej. caso.mtgx.")],
     ) -> str:
         r = await svc.import_graph(case_id, file_name)
+        await svc.sync_case_recon_from_graph(case_id.strip().lower())
         lines = [
             f"Importado `{r.path.name}`: {r.entities} entidades ({r.new_entities} nuevas), {r.links} relaciones"
             f" y {r.steps} pasos de memoria en el caso `{case_id.strip().lower()}`."

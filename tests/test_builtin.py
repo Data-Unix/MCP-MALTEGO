@@ -84,6 +84,42 @@ class Router:
             name, rtype = params["name"].rstrip("."), params["type"]
             answers = [{"name": name, "type": TYPES[rtype], "data": d} for d in DNS.get((name, rtype), [])]
             return httpx.Response(200, json={"Status": 0 if answers else 3, "Answer": answers})
+        if host == "api.mnemonic.no":
+            import urllib.parse
+
+            q = urllib.parse.unquote(path.split("/")[-1])
+            rtype = params.get("rrtype", "").upper()
+            data = []
+            for (domain, t), answers in DNS.items():
+                if domain == q and (not rtype or rtype == t):
+                    for ans in answers:
+                        data.append(
+                            {
+                                "query": q,
+                                "answer": ans,
+                                "rrtype": t,
+                                "firstSeenTimestamp": "2020-01-01T00:00:00Z",
+                                "lastSeenTimestamp": "2024-01-01T00:00:00Z",
+                            }
+                        )
+            return httpx.Response(200, json={"responseCode": 200, "data": data})
+        if host == "freeapi.robtex.com":
+            return httpx.Response(200, text="")
+        if host == "web.archive.org":
+            return httpx.Response(
+                200,
+                json=[
+                    ["timestamp", "original", "statuscode", "mimetype", "digest"],
+                    ["20230101120000", "https://example.com/about", "200", "text/html", "DIGEST1"],
+                ],
+            )
+        if host == "arquivo.pt":
+            import json as _json
+
+            payload = {"original": "https://example.com/pt", "timestamp": "20230202120000", "mimetype": "text/html"}
+            return httpx.Response(200, text=_json.dumps(payload))
+        if host == "ip.thc.org":
+            return httpx.Response(200, text="")
         if host in ("rdap.org", "rdap-bootstrap.arin.net"):
             if "/domain/example.com" in path:
                 return httpx.Response(200, json=RDAP_DOMAIN)
@@ -101,6 +137,8 @@ class Router:
                 ],
             )
         if host == "api.hackertarget.com":
+            if "reverseiplookup" in path:
+                return httpx.Response(200, text="host.example.net\n")
             if params.get("q") == "quota.example":
                 return httpx.Response(200, text="API count exceeded - Increase Quota with Membership")
             return httpx.Response(200, text="www.example.com,93.184.216.34\ndev.example.com,93.184.216.35\n")
@@ -364,6 +402,184 @@ class Router:
                     ],
                 },
             )
+        if host == "threatfox-api.abuse.ch":
+            return httpx.Response(
+                200,
+                json={
+                    "query_status": "ok",
+                    "data": [
+                        {
+                            "ioc": "example.com",
+                            "threat_type": "botnet_cc",
+                            "malware_printable": "AsyncRAT",
+                            "confidence_level": 95,
+                        }
+                    ],
+                },
+            )
+        if host == "api.first.org":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "cve": "CVE-2023-34362",
+                            "epss": "0.97420",
+                            "percentile": "0.99850",
+                        }
+                    ]
+                },
+            )
+        if host == "anubisdb.com":
+            return httpx.Response(
+                200,
+                json=["anubis.example.com", "www.example.com", "otro.org"],
+            )
+        if host == "index.commoncrawl.org":
+            return httpx.Response(
+                200,
+                text=(
+                    '{"url": "https://example.com/cc-page", "timestamp": "20261015120000", '
+                    '"status": "200", "mime": "text/html", "digest": "CCDIG1"}\n'
+                ),
+            )
+        if host == "api.ipapi.is":
+            return httpx.Response(
+                200,
+                json={
+                    "ip": "93.184.216.34",
+                    "is_datacenter": True,
+                    "is_vpn": False,
+                    "is_proxy": False,
+                    "is_tor": False,
+                    "is_abuser": False,
+                    "company": {"name": "Edgecast Inc.", "domain": "edgecast.com", "type": "hosting"},
+                    "asn": {"asn": 15133, "org": "MCI Communications Services", "route": "93.184.216.0/24"},
+                    "location": {"city": "Los Angeles", "state": "California", "country_code": "US"},
+                },
+            )
+        if host == "openmercantil.es":
+            if path == "/api/v1/search":
+                return httpx.Response(
+                    200,
+                    json={
+                        "items": [
+                            {
+                                "name": "ATICA MOTOR SPORT SL",
+                                "slug": "atica-motor-sport-sl",
+                                "cif": "B87517835",
+                                "province": "MADRID",
+                                "status": "ACTIVA",
+                                "last_borme_date": "2024-05-10",
+                            }
+                        ]
+                    },
+                )
+            if path.startswith("/api/v1/company/"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "company": {
+                            "name": "ATICA MOTOR SPORT SL",
+                            "slug": "atica-motor-sport-sl",
+                            "cif": "B87517835",
+                            "province": "MADRID",
+                            "status": "ACTIVA",
+                            "address": "CALLE MOTOR 12, MADRID",
+                            "website": "https://www.aticamotorsport.com",
+                        },
+                        "officers": {
+                            "current": [
+                                {
+                                    "name": "MARTIN GARCIA FRANCISCO",
+                                    "role": "Administrador Único",
+                                    "since": "2016-03-01",
+                                }
+                            ],
+                            "historical": [{"name": "PEREZ LOPEZ JUAN", "role": "Apoderado", "until": "2020-01-15"}],
+                        },
+                        "events": [
+                            {
+                                "type": "Constitución",
+                                "date": "2016-03-14",
+                                "details": "Constitución de la sociedad ATICA MOTOR SPORT SL",
+                            }
+                        ],
+                    },
+                )
+            if path == "/api/v1/person/search":
+                return httpx.Response(
+                    200,
+                    json={"items": [{"name": "MARTIN GARCIA FRANCISCO", "slug": "martin-garcia-francisco"}]},
+                )
+            if path.startswith("/api/v1/person/"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "name": "MARTIN GARCIA FRANCISCO",
+                        "active_positions": [
+                            {
+                                "company_name": "ATICA MOTOR SPORT SL",
+                                "cif": "B87517835",
+                                "role": "Administrador Único",
+                                "since": "2016-03-14",
+                            }
+                        ],
+                    },
+                )
+        if host == "ec.europa.eu":
+            return httpx.Response(
+                200,
+                json={
+                    "isValid": True,
+                    "name": "ATICA MOTOR SPORT SL",
+                    "address": "CALLE MOTOR 12, MADRID",
+                    "requestDate": "2026-11-09T10:00:00Z",
+                },
+            )
+        if host == "api.gleif.org":
+            if "parent" in path:
+                return httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "id": "549300PARENTLEI00001",
+                            "attributes": {"entity": {"legalName": {"name": "GLOBAL HOLDING CORP"}}},
+                        }
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "95980020140005436564",
+                            "attributes": {
+                                "lei": "95980020140005436564",
+                                "entity": {
+                                    "legalName": {"name": "INDITEX SA"},
+                                    "jurisdiction": "ES",
+                                    "status": "ACTIVE",
+                                    "legalAddress": {
+                                        "addressLines": ["AVDA DE LA DIPUTACION"],
+                                        "city": "ARTEIXO",
+                                        "country": "ES",
+                                    },
+                                },
+                                "registration": {
+                                    "status": "ISSUED",
+                                    "lastUpdateDate": "2026-05-01T00:00:00Z",
+                                },
+                            },
+                            "relationships": {
+                                "direct-parent": {
+                                    "links": {"related": "https://api.gleif.org/api/v1/lei-records/1/direct-parent"}
+                                }
+                            },
+                        }
+                    ]
+                },
+            )
         return provider_response(host, path, params, request)
 
 
@@ -499,6 +715,11 @@ KEYS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def allow_active_in_builtin_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MALTEGO_MCP_ALLOW_ACTIVE", "1")
+
+
 @pytest.fixture
 def router() -> Router:
     return Router()
@@ -535,7 +756,14 @@ async def run(ctx: BuiltinContext, name: str, value: str, n: int = 20) -> list[t
         ),
         ("DomainToTXT", "example.com", [("maltego.Phrase", "[TXT] v=spf1 -all", "txt_record")]),
         ("DNSToCNAME", "www.example.com", [("maltego.DNSName", "example.com", "cname")]),
-        ("IPToReverseDNS", "93.184.216.34", [("maltego.DNSName", "host.example.net", "reverse_dns")]),
+        (
+            "IPToReverseDNS",
+            "93.184.216.34",
+            [
+                ("maltego.DNSName", "edge.example.com", "reverse_dns"),
+                ("maltego.DNSName", "host.example.net", "reverse_dns"),
+            ],
+        ),
         ("IPToAS", "93.184.216.34", [("maltego.AS", "15133", "announced_by")]),
         ("IPToNetblock", "93.184.216.34", [("maltego.Netblock", "93.184.216.0/24", "in_netblock")]),
         (
@@ -730,8 +958,25 @@ async def test_proveedores_detalle_y_cabeceras(ctx: BuiltinContext, router: Rout
     assert headers["api.securitytrails.com"]["apikey"] == "st"
     assert headers["haveibeenpwned.com"]["hibp-api-key"] == "hi"
     assert headers["api.greynoise.io"]["key"] == "gn"
+    assert headers["api.hunter.io"]["x-api-key"] == "hu"
+    assert "api_key=" not in str(next(r.url for r in router.requests if r.url.host == "api.hunter.io"))
     assert headers["search.censys.io"]["authorization"].startswith("Basic ")
-    assert all("maltego-mcp/" in r.headers["user-agent"] for r in router.requests)
+    assert all("Mozilla/5.0" in r.headers["user-agent"] for r in router.requests)
+    assert not any("maltego" in r.headers["user-agent"].lower() for r in router.requests)
+
+
+def test_user_agent_neutro_y_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifica que el User-Agent por defecto es neutro y que MALTEGO_MCP_USER_AGENT lo sobreescribe."""
+    from maltego_mcp.transforms.builtin import DEFAULT_USER_AGENT, get_user_agent
+
+    assert "maltego" not in DEFAULT_USER_AGENT.lower()
+    assert "data-unix" not in DEFAULT_USER_AGENT.lower()
+    assert get_user_agent({}) == DEFAULT_USER_AGENT
+
+    custom = "Mozilla/5.0 (CustomOS; x86_64) CustomBrowser/1.0"
+    assert get_user_agent({"MALTEGO_MCP_USER_AGENT": custom}) == custom
+    monkeypatch.setenv("MALTEGO_MCP_USER_AGENT", custom)
+    assert get_user_agent() == custom
 
 
 async def test_hibp_sin_filtraciones(ctx: BuiltinContext) -> None:
@@ -759,8 +1004,10 @@ async def test_falta_api_key(router: Router) -> None:
 
 
 async def test_doh_usa_respaldo_si_falla_google(ctx: BuiltinContext, router: Router) -> None:
+    from maltego_mcp.transforms.builtin import doh
+
     router.fail["dns.google"] = 503
-    assert await run(ctx, "DNSToIP", "example.com") == [("maltego.IPv4Address", "93.184.216.34", "resolves_to")]
+    assert await doh(ctx, "example.com", "A") == ["93.184.216.34"]
     assert any(r.url.host == "cloudflare-dns.com" for r in router.requests)
 
 
@@ -828,13 +1075,51 @@ async def test_cisa_kev_transform(ctx: BuiltinContext) -> None:
     assert ("maltego.Company", "Progress", "vendor") in entities
     assert any("[Product] MOVEit Transfer" in val for _, val, _ in entities)
     assert any("[Ransomware]" in val for _, val, _ in entities)
+    assert any("[EPSS]" in val and "0.97420" in val for _, val, _ in entities)
 
 
 async def test_urlhaus_transform(ctx: BuiltinContext) -> None:
+    ctx.env["URLHAUS_API_KEY"] = "uh_test"
     res = await T("UrlhausHostToThreats").handler(ctx, "maltego.Domain", "example.com", {}, 10)
     entities = [(e.entity_type, e.value, e.link_label) for e in res.entities]
     assert ("maltego.URL", "http://example.com/malware.exe", "malware_url") in entities
     assert any("[Threat] exe" in val for _, val, _ in entities)
+    assert any("[ThreatFox]" in val and "AsyncRAT" in val for _, val, _ in entities)
+
+
+async def test_nuevos_transforms_zero_key_no_zoom(ctx: BuiltinContext) -> None:
+    # 1. AnubisSubdomains
+    anubis_res = await run(ctx, "AnubisSubdomains", "example.com")
+    assert ("maltego.DNSName", "anubis.example.com", "passive_subdomain") in anubis_res
+    assert ("maltego.DNSName", "www.example.com", "passive_subdomain") in anubis_res
+
+    # 2. CommonCrawlCDXSearch
+    cc_res = await run(ctx, "CommonCrawlCDXSearch", "example.com")
+    assert ("maltego.URL", "https://example.com/cc-page", "archived_url") in cc_res
+
+    # 3. GLEIFCompanyToStructure
+    gleif_res = await run(ctx, "GLEIFCompanyToStructure", "INDITEX")
+    assert ("maltego.Company", "INDITEX SA", "gleif_legal_entity") in gleif_res
+    assert ("maltego.Company", "GLOBAL HOLDING CORP", "direct_parent") in gleif_res
+    assert any(lbl == "lei_identifier" and "95980020140005436564" in val for _, val, lbl in gleif_res)
+
+    # 4. IPToPassiveContext
+    ip_res = await run(ctx, "IPToPassiveContext", "93.184.216.34")
+    assert ("maltego.Organization", "Edgecast Inc.", "ip_company") in ip_res
+    assert ("maltego.AS", "15133", "announced_by") in ip_res
+    assert any(lbl == "ip_risk_context" and "DATACENTER/HOSTING" in val for _, val, lbl in ip_res)
+
+    # 5. BOEEntityToRecords (OpenMercantil + VIES + personas)
+    boe_comp = await T("BOEEntityToRecords").handler(ctx, "maltego.Company", "B87517835", {}, 20)
+    comp_tuples = [(e.entity_type, e.value, e.link_label) for e in boe_comp.entities]
+    assert ("maltego.Company", "ATICA MOTOR SPORT SL", "borme_registered") in comp_tuples
+    assert ("maltego.Person", "MARTIN GARCIA FRANCISCO", "borme_current_officer") in comp_tuples
+    assert ("maltego.Person", "PEREZ LOPEZ JUAN", "borme_historical_officer") in comp_tuples
+    assert any(lbl == "official_record" and "VIES UE" in val for _, val, lbl in comp_tuples)
+
+    boe_pers = await T("BOEEntityToRecords").handler(ctx, "maltego.Person", "MARTIN GARCIA FRANCISCO", {}, 20)
+    pers_tuples = [(e.entity_type, e.value, e.link_label) for e in boe_pers.entities]
+    assert ("maltego.Company", "ATICA MOTOR SPORT SL", "borme_registered") in pers_tuples
 
 
 async def test_crypto_forensic_suite(ctx: BuiltinContext) -> None:

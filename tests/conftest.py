@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import socket
 import sys
 import threading
@@ -18,6 +19,63 @@ from werkzeug.serving import make_server
 from maltego_mcp.graph.memory import MemoryGraphStore
 from maltego_mcp.service import OsintService
 from maltego_mcp.transforms.catalog import TransformCatalog, load_catalog
+
+# El Anillo Mullvad obligatorio (MALTEGO_MCP_REQUIRE_MULLVAD, ON por defecto en Settings.from_env) consultaría el
+# daemon real de Mullvad: los tests nunca dependen de la red ni del estado de la VPN. Se prueba aparte, con dobles,
+# en tests/test_mullvad.py.
+os.environ["MALTEGO_MCP_REQUIRE_MULLVAD"] = "0"
+
+_ALLOWED_HOSTS: set[str | None] = {None, "", "localhost", "127.0.0.1", "::1"}
+
+
+@pytest.fixture(autouse=True, scope="session")
+def block_external_dns() -> Iterator[None]:
+    """Barrera de red: falla cualquier resolución DNS fuera de localhost para aislar los tests."""
+    real_getaddrinfo = socket.getaddrinfo
+    real_gethostbyname = socket.gethostbyname
+    real_gethostbyname_ex = socket.gethostbyname_ex
+    real_gethostbyaddr = socket.gethostbyaddr
+
+    def safe_getaddrinfo(host: object, port: object, *args: object, **kwargs: object) -> list[object]:
+        h = host.decode("utf-8", "ignore") if isinstance(host, bytes) else host
+        norm = h.lower() if isinstance(h, str) else h
+        if norm in _ALLOWED_HOSTS:
+            return real_getaddrinfo(host, port, *args, **kwargs)  # type: ignore[arg-type]
+        raise socket.gaierror(-3, f"Resolución DNS externa bloqueada en tests: {h}")
+
+    def safe_gethostbyname(hostname: str | bytes) -> str:
+        h = hostname.decode("utf-8", "ignore") if isinstance(hostname, bytes) else hostname
+        norm = h.lower() if isinstance(h, str) else h
+        if norm in _ALLOWED_HOSTS:
+            return real_gethostbyname(hostname)
+        raise socket.gaierror(-3, f"Resolución DNS externa bloqueada en tests: {h}")
+
+    def safe_gethostbyname_ex(hostname: str | bytes) -> tuple[str, list[str], list[str]]:
+        h = hostname.decode("utf-8", "ignore") if isinstance(hostname, bytes) else hostname
+        norm = h.lower() if isinstance(h, str) else h
+        if norm in _ALLOWED_HOSTS:
+            return real_gethostbyname_ex(hostname)
+        raise socket.gaierror(-3, f"Resolución DNS externa bloqueada en tests: {h}")
+
+    def safe_gethostbyaddr(ip_address: str | bytes) -> tuple[str, list[str], list[str]]:
+        ip = ip_address.decode("utf-8", "ignore") if isinstance(ip_address, bytes) else ip_address
+        norm = ip.lower() if isinstance(ip, str) else ip
+        if norm in _ALLOWED_HOSTS:
+            return real_gethostbyaddr(ip_address)
+        raise socket.herror(1, f"Resolución DNS inversa (PTR) externa bloqueada en tests: {ip}")
+
+    socket.getaddrinfo = safe_getaddrinfo  # type: ignore[assignment]
+    socket.gethostbyname = safe_gethostbyname  # type: ignore[assignment]
+    socket.gethostbyname_ex = safe_gethostbyname_ex  # type: ignore[assignment]
+    socket.gethostbyaddr = safe_gethostbyaddr  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = real_getaddrinfo
+        socket.gethostbyname = real_gethostbyname
+        socket.gethostbyname_ex = real_gethostbyname_ex
+        socket.gethostbyaddr = real_gethostbyaddr
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "examples" / "trx_server"))
@@ -89,26 +147,31 @@ timeout_s = 2
 [[transforms]]
 name = "AlwaysFails"
 server = "local-trx"
+passivity = "local"
 input_types = ["maltego.Domain"]
 
 [[transforms]]
 name = "GarbageOutput"
 server = "local-trx"
+passivity = "local"
 input_types = []
 
 [[transforms]]
 name = "EchoInput"
 server = "local-trx"
+passivity = "local"
 settings = {{ api_mode = "fast" }}
 
 [[transforms]]
 name = "DeadServer"
 server = "dead"
+passivity = "local"
 path = "whatever"
 
 [[transforms]]
 name = "Missing"
 server = "local-trx"
+passivity = "local"
 path = "does-not-exist"
 """
     path = tmp_path / "transforms.toml"

@@ -151,3 +151,47 @@ def test_dashboard_cli_port_collision(monkeypatch: pytest.MonkeyPatch, capsys: p
     err = capsys.readouterr().err
     assert "no se pudo iniciar el panel" in err
     assert "8001" in err
+
+
+def test_html_to_pdf_script_seguridad_rechaza_recursos_remotos(tmp_path: Path) -> None:
+    """Verifica que scripts/html_to_pdf.py aborta si detecta URLs vivas src/href http(s)."""
+    import sys
+
+    root_dir = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root_dir / "scripts"))
+    import html_to_pdf  # type: ignore[import-not-found]
+
+    # 1. HTML con src="http..." debe ser rechazado
+    evil_src = tmp_path / "evil_src.html"
+    evil_src.write_text('<html><body><img src="http://attacker.com/leak.png"></body></html>', encoding="utf-8")
+    assert html_to_pdf.convert_html_to_pdf(evil_src, tmp_path / "out1.pdf") == 2
+
+    # 2. HTML con href="http..." debe ser rechazado
+    evil_href = tmp_path / "evil_href.html"
+    evil_href.write_text('<html><body><a href="https://target.com/leak">Enlace</a></body></html>', encoding="utf-8")
+    assert html_to_pdf.convert_html_to_pdf(evil_href, tmp_path / "out2.pdf") == 2
+
+    # 3. Fichero inexistente
+    assert html_to_pdf.convert_html_to_pdf(tmp_path / "inexistente.html", tmp_path / "out3.pdf") == 1
+
+
+def test_cli_sync_cti_usa_user_agent_neutro(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifica que el comando sync-cti de la CLI usa el User-Agent neutro configurado."""
+    from unittest.mock import patch
+
+    import httpx
+
+    from maltego_mcp.transforms.builtin import get_user_agent
+
+    captured_ua = None
+
+    async def fake_sync(home: Path, client: httpx.AsyncClient, force: bool = False) -> dict[str, object]:
+        nonlocal captured_ua
+        captured_ua = client.headers.get("user-agent")
+        return {"db_path": str(home / "cti.db"), "active_rows": 10, "purged_rows": 0, "files_updated": 1}
+
+    monkeypatch.setenv("MALTEGO_MCP_HOME", str(tmp_path))
+    with patch("maltego_mcp.cti_feeds.sync_deepdark_cti", side_effect=fake_sync):
+        ret = main(["sync-cti"])
+        assert ret == 0
+        assert captured_ua == get_user_agent()

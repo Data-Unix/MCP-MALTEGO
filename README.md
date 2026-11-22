@@ -26,7 +26,7 @@
 
 ---
 
-**mcp-maltego** is a high-performance [Model Context Protocol](https://modelcontextprotocol.io) server that turns any AI agent into an expert Maltego operator. It runs real OSINT transforms, chains them into autonomous reconnaissance Machines, maintains an in-memory or graph database investigation state with full provenance, recommends next-best pivots, and synchronizes seamlessly with Maltego Desktop via native `.mtgx` files.
+**mcp-maltego** is a high-performance [Model Context Protocol](https://modelcontextprotocol.io) server that turns any AI agent into an expert Maltego operator. It runs real OSINT transforms, chains them into autonomous reconnaissance Machines, maintains an in-memory or graph database investigation state with full provenance, recommends next-best pivots, synchronizes in real time with the local Web Control Center (`maltegoctl dashboard`), and exchanges graphs seamlessly with Maltego Desktop via native `.mtgx` and tamper-evident `.mcpcase` bundles.
 
 > [!TIP]
 > **Zero-Cost & No Commercial Maltego License Required**: You do **not** need a paid Maltego Pro/XL plan or commercial API keys to start. `mcp-maltego` runs completely free out of the box, generating native `.mtgx` graphs compatible with the free **Maltego Community Edition (CE)** or Basic tier.
@@ -39,9 +39,9 @@
 
 | Layer | Component | Description & Cost |
 | :--- | :--- | :--- |
-| **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)**. Includes **33 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan, Mempool.space Bitcoin UTXO, CIOH wallet clustering, OFAC SDN crypto sanctions, VASP touchpoints) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
-| **Layer 1: Investigation Memory** | Graph Memory & Copilot | Local deterministic case storage (`~/.maltego-mcp/graph.json`), entity fusion, step auditing, autonomous multi-round Machines, and `osint_investigate` copilot. |
-| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Universal Table Suite (compact/normal/expanded density toggles, pagination, expandable accordion detail cards), interactive multi-hop path tracing & blast radius inspection, Blockchain AML Ledger with mixer detection, strict multi-case isolation and modular scoping (global Topbar sync and focused module selector), secure case deletion and atomic graph purging, Categorized Accounts Vault (Social Networks, Underground Forums, Darknet Markets) with session cookies & Tor SOCKS5 routing, burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, and optional Azure Cosmos DB Gremlin clustering. |
+| **Layer 0: Zero-Cost Core** | `mcp-maltego` CLI & Server | Instant execution (`npx mcp-maltego`). Generates and parses native `.mtgx` files for **Maltego Community Edition (CE)** and tamper-evident SHA-256 `.mcpcase` packages. Includes **51 zero-key built-in transforms** (DoH, RDAP/WHOIS, crt.sh, CertSpotter, Anubis-DB, Wayback Machine CDX & snapshots, Arquivo.pt, Common Crawl, BOE/BORME, GLEIF LEI, ASN Cymru, RIPEstat, CISA KEV, URLhaus, AlienVault OTX, URLscan, Hudson Rock, GitHub leaks/commits, Keybase, DeepDarkCTI, Mempool.space Bitcoin UTXO, CIOH wallet clustering, OFAC SDN crypto sanctions, VASP touchpoints) and dynamic community plugins (`@custom_transform`). **100% Free & Local.** |
+| **Layer 1: Investigation Memory** | Graph Memory & Copilot | Local deterministic case storage (`~/.maltego-mcp/graph.json`), entity fusion, step auditing, **16 autonomous multi-round Machines**, plaintext/vague prompt parsing in `osint_investigate`, 21-typology Multidimensional Pericial Profiling, and P0–P9 ACH / ICD 203 analytical synthesis. |
+| **Layer 2: Advanced Platform** | Web Console & CTI Vault | Interactive Web Dashboard (`maltegoctl dashboard`) with **real-time cross-process (`stdio` ↔ SSE) synchronization** from VS Code / CLI agents, Web Worker acceleration and 4 spatial layouts (Organic, Hierarchical, Radial, Categorized), multi-dimensional filtering (edges, entities, continuous confidence, hops & live search), Impeccable vector rendering (canvas icons, confidence rings, Bézier curves), Universal Table Suite (compact/normal/expanded density toggles, pagination, expandable accordion detail cards), P0–P9 No-Zoom Reconnaissance & ACH/ICD-203 Console, 21-typology Pericial Profiling Radar, Mandatory Mullvad Double-Attestation Egress Ring & PEP 578 Audit Guard, PBKDF2-HMAC-SHA256 dashboard auth, Blockchain AML Ledger with mixer detection, strict multi-case isolation, Categorized Accounts Vault, burner inboxes (Mail.tm + OTP extractor), Tor/Dark Web CTI feeds, optional Rust native core (`maltego_core_rs`), and optional Azure Cosmos DB Gremlin clustering. |
 
 ---
 
@@ -49,27 +49,23 @@
 
 - **20 tools, portable to every model.** Flat JSON schemas validated against Gemini's strict function-calling
   subset; variants grouped with an `action` parameter so agents are not flooded with tools.
-- **45 real transforms out of the box.** 33 without API keys (DNS over HTTPS, RDAP/WHOIS, CISA KEV active exploitation, Abuse.ch URLhaus malware, certificate transparency via crt.sh and CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPE Stat ASN/netblocks, Gravatar, GitHub profile details, AlienVault OTX threat pulses, multi-network profile lookup, Mempool.space Bitcoin UTXO transactions & inputs/outputs, Common-Input Ownership Heuristic (CIOH) clustering, OFAC SDN crypto sanctions check, VASP/Exchange touchpoints, parsing) and 12 provider transforms that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
+- **Plaintext & vague prompt orchestration + Real-Time Web Dashboard sync.** Send natural-language or vague requests from VS Code (Claude Code, GitHub Copilot, Cursor) or CLI agents (`"investigate example.com and give me a full report"`). `osint_investigate` automatically extracts the seed, runs non-intrusive active & passive transforms with anti-burst concurrency (`CHAIN_CONCURRENCY = 3`), streams every discovery live via `~/.maltego-mcp/events.jsonl` and Server-Sent Events (`/api/events`) to `maltegoctl dashboard`, populates all **10 phases of the P0–P9 No-Zoom Dossier** and **21-typology Pericial Profiles**, auto-exports `report_html` and `.mcpcase`, and returns a complete **Executive Pericial Report** inline.
+- **63 real transforms out of the box.** **51 without API keys** (DNS over HTTPS, RDAP/WHOIS, CISA KEV active exploitation, Abuse.ch URLhaus malware, Certificate Transparency via crt.sh and CertSpotter, Anubis-DB pDNS, HackerTarget, urlscan.io, Shodan InternetDB, Team Cymru & RIPEstat BGP ASN/netblocks, Wayback Machine CDX & snapshot extraction, Arquivo.pt, Common Crawl CDX, BOE/BORME & GLEIF LEI corporate registries, GitHub domain leaks & commit emails, Keybase cryptographic identity proofs, Hudson Rock infostealer telemetry, Gravatar, AlienVault OTX threat pulses, multi-network social profile lookup, Dark Web CTI & passive `.onion` pivot, Mempool.space Bitcoin UTXO transactions & inputs/outputs, Common-Input Ownership Heuristic (CIOH) clustering, OFAC SDN crypto sanctions check, VASP/Exchange touchpoints, parsing) and **12 provider transforms** that switch on when you set a key: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise and Tatum.
+- **Non-intrusive Active & Passive Execution + Mandatory Mullvad Egress Ring.** Active transforms (live DoH DNS, VirusTotal GET lookups, passive `.onion` header inspection) and passive transforms are enabled out of the box while blocking intrusive operations (no port scanning, no active crawling of target servers, no VirusTotal file upload or `/analyse` POST). All outbound HTTP passes through a single gateway (`egress.py`) guarded by a PEP 578 runtime audit hook and an optional mandatory Mullvad SOCKS5 (`socks5h://10.64.0.1:1080`) double-attestation ring.
+- **21-Typology Multidimensional Pericial Profiling & P0–P9 ACH / ICD 203 Synthesis.** `osint_manage_entity(action="profile")` evaluates 21 forensic typologies across a 6-pillar radar (`investor`, `company_due_diligence`, `device`, `geographic`, `criminal`, `victimology`, `cyberbullying`, `political`, `psychographic`, `clinical`, etc.) with objective asset validity (`OBSERVADO_RECIENTE`, `HISTORICO`, `MENCIONADO_SIN_FECHA`), paired with structured Analysis of Competing Hypotheses (ACH) and ICD 203 probability scales.
 - **Community Extensibility Engine (`@custom_transform`).** Drop custom Python transform files in `~/.maltego-mcp/plugins/` or `./plugins/` to immediately expose custom OSINT logic to LLMs without touching core code.
 - **Your Maltego transforms too.** Speaks the Maltego TRX/iTDS XML protocol, so an agent can run the same transforms
   you use in Maltego.
-- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, PersonaFootprint,
-  CryptoFlowRecon, URLRecon, ThreatSweep, ASNToNetblocks and your own in TOML, with recursive rounds and cost budgets.
+- **16 Predefined Machines.** `DomainRecon`, `InfrastructureRecon`, `EmailRecon`, `CompanyFootprint`, `PersonalFootprint`, `PersonaFootprint`, `CryptoFlowRecon`, `URLRecon`, `ThreatSweep`, `ASNToNetblocks`, `DarkWebFootprint`, plus strict-passive counterparts (`PassiveDomainRecon`, `PassiveInfrastructureRecon`, `PassiveEmailRecon`, `PassiveURLRecon`, `PassiveCompanyFootprint`) and your own in TOML, with recursive rounds and cost budgets.
 - **Cryptoforensics & Blockchain AML Traceability.** Native ontology for cryptocurrency entities (`maltego.CryptoCluster`, `maltego.VASPExchange`, `maltego.MixerContract`, `maltego.DeFiBridge`), multi-hop transaction flow tracing, peeling chain and tumbler heuristics, OFAC SDN sanctions screening, and VASP deposit touchpoint detection.
-- **Multi-Case Isolation & Modular Project Scoping.** Synchronized global project selector in the Topbar and live graph, paired with decoupled per-module focus selectors (defaulting to `[Follow Active Case]`), strictly preventing cross-contamination between independent forensic cases.
-- **Case Lifecycle & Atomic Purging.** Safe, permanent removal of ad-hoc or temporary investigations with interactive confirmation, atomic deletion of entities and links from the graph store, local cache and evidence purging, and automated fallback to the next available case.
+- **Multi-Case Isolation, Atomic Purging & `.mcpcase` Forensic Bundles.** Synchronized global project selector, per-module focus selectors, atomic case deletion (`DELETE /api/cases/{case_id}`), and tamper-evident SHA-256 `.mcpcase` archival.
 - **HUMINT, Breach Router & Multi-Agent Swarms.** Native `humint.*` entity ontology (`humint.Alias`,
   `humint.Organization`, `humint.LocationHistory`, `humint.PsychologicalTrait`), cross-platform pseudonym correlation,
   subject behavioral profiling (`[Hipótesis]`), chronological anomaly detection, weighted relationships, a local SQLite
   + k-Anonymity/XposedOrNot breach router (`BreachSemanticPivot`), and multi-agent case `fork`/`delegate`/`merge` with
   optimistic locking.
-- **An investigation copilot.** `osint_investigate` does detection, case creation, the right Machine, scoring and
-  recommendations in one call. Every step is remembered (what, on what, why, result), every entity has explainable
-  provenance and a priority score, and next-best-action learns from how each transform performed.
-- **Native Maltego round-trip.** `.mtgx` export with hierarchical, radial or force-directed layout and the
-  investigation memory embedded; `.mtgx` import; local transforms inside Maltego Desktop to open a case, expand
-  neighbours and send entities back to the agents; import of your exact Maltego entity ontology.
-- **Reports and CLI.** Executive reports in Markdown or self-contained HTML, and `maltegoctl` for terminals and CI.
+- **Optional Rust Native Core (`maltego_core_rs`).** Zero-dependency Python fallback with bit-exact parity alongside an optional PyO3/Maturin Rust extension (`uv run python scripts/build_native.py`) that releases the GIL for Fruchterman-Reingold layout and string similarity.
+- **Reports and CLI.** Zero-emoji Executive Pericial Reports in Markdown or self-contained HTML (with defanged IOCs and strict CSP), and `maltegoctl` for terminals and CI.
 - **Safe by default.** OSINT content is treated as untrusted data, XML is parsed with defusedxml, archives are read
   with bounds, agents cannot supply arbitrary URLs, and API keys are never logged.
 
@@ -297,55 +293,56 @@ worktree gets the server without manual registration. All agents share one graph
 npx -y mcp-maltego --transport http --port 8000   # http://127.0.0.1:8000/mcp
 ```
 
-The server binds to localhost only. It has no authentication yet, so do not expose it to a network.
+The MCP HTTP endpoint binds to `127.0.0.1` by default and refuses non-loopback hosts unless `--allow-remote-unauthenticated` is explicitly passed. The Web Control Center (`maltegoctl dashboard`) includes built-in **PBKDF2-HMAC-SHA256 (600,000 iterations) session authentication**, CSRF protection, DNS-rebinding defense, and a strict Content Security Policy (`script-src 'self'`).
 </details>
 
-## Tools
+## Tools (20)
 
 | Group | Tool | What it does |
 |---|---|---|
-| Catalog | `osint_list_entity_types` | Entity ontology by category (standard + native `humint.*` + imported from your Maltego) |
-| | `osint_list_transforms` | Transforms, Machines, provider keys and server status |
+| Catalog | `osint_list_entity_types` | 41 standard entity types by category (plus `humint.*`, crypto/AML, and any types imported from your Maltego `.mtz`) |
+| | `osint_list_transforms` | 63 built-in transforms, 16 Machines, provider keys and TRX server status |
 | Cases | `osint_manage_case` | Create, fork/delegate sub-cases for multi-agent swarms, merge (with optimistic locking) or delete |
-| | `osint_list_cases` | Paginated list |
+| | `osint_list_cases` | Paginated list of cases |
 | | `osint_get_case_summary` | Counts, priority entities and quality indicators |
 | Entities | `osint_upsert_entity` | Create or merge an entity (normalised value, deterministic id, notes) |
-| | `osint_manage_entity` | Edit confidence/notes/properties, set `.mtgx` `visual_style`, run HUMINT `analyze_behavior`, or delete |
+| | `osint_manage_entity` | Edit confidence/notes/properties, set `.mtgx` `visual_style`, run HUMINT `analyze_behavior`, run 21-typology Multidimensional Pericial Profiling (`profile`), generate compartmentalized HUMINT personas (`generate_persona`), or delete |
 | | `osint_get_entity` | Details, explained score, provenance, pending transforms |
 | | `osint_search_entities` | Search a case or across cases; sort by priority |
 | Links | `osint_link_entities` | Link/unlink entities, `analyze` HUMINT role/sentiment/weight, or `correlate` cross-platform identities |
 | | `osint_get_neighbors` | Related entities with direction and link type |
-| | `osint_find_paths` | Paths between two entities |
-| Transforms | `osint_run_transform` | One transform on one entity |
-| | `osint_expand_entity` | Every applicable transform ("Run All") |
-| | `osint_run_machine` | A Machine or an ad-hoc chain, with rounds and budgets |
-| Copilot | `osint_investigate` | Everything in one call: detect, case, Machine, score, recommend, report |
+| | `osint_find_paths` | Shortest paths between two entities |
+| Transforms | `osint_run_transform` | One transform on one entity (streams live to `maltegoctl dashboard`) |
+| | `osint_expand_entity` | Every applicable transform ("Run All") with anti-burst concurrency |
+| | `osint_run_machine` | One of the 16 predefined Machines or an ad-hoc chain, with rounds and budgets |
+| Copilot | `osint_investigate` | Everything in one call (accepts targets or natural-language/vague requests): extract seed, create case, run Machine & non-intrusive active/passive pivots, sync P0–P9 & 21-typology profiles to live dashboard, auto-export `report_html` + `.mcpcase`, and return the full Executive Pericial Report |
 | | `osint_suggest_next_steps` | Deterministic next-best-action with transform performance history |
 | | `osint_get_timeline` | Investigation procedural memory (`steps`) or subject chronological timeline & anomalies (`subject`) |
-| Exchange | `osint_export_case` | `mtgx` (with layout and memory), `json`, `graphml`, `csv`, `report_md`, `report_html` |
-| | `osint_import_graph` | Import a `.mtgx` saved in Maltego (with its memory) or a CSV |
+| Exchange | `osint_export_case` | `mtgx` (with layout and memory), `mcpcase` (SHA-256 tamper-evident bundle), `json`, `graphml`, `csv`, `report_md`, `report_html` |
+| | `osint_import_graph` | Import a `.mtgx`, `.mcpcase`, or CSV saved in Maltego (with its memory) |
 
 `entity_type` accepts any Maltego type, your own `prefix.Name`, or `"auto"` to detect it from the value.
 
-## Transforms
+## Transforms (63 built-in: 51 keyless + 12 provider)
 
 | Category | Transforms | API key |
 |---|---|---|
-| DNS (over HTTPS + passive) | DNSToIP, DNSToIPv6, DomainToMX, DomainToNS, DomainToTXT, DNSToCNAME, IPToReverseDNS, HackerTargetSubdomains | — |
-| WHOIS (RDAP with ARIN fallback) | DomainToWhois, IPToWhois | — |
-| Network & Exposure | IPToAS, IPToNetblock (Team Cymru), RIPEStatASNToNetblocks, InternetDBIPToServices (ports, CPEs, CVEs) | — |
-| Certificates & Web | DomainToSubdomains (crt.sh + CertSpotter fallback), CertSpotterSubdomains, URLScanDomainSearch | — |
-| Identity, Social & HUMINT | AliasToProfiles (GitHub, GitLab, Hacker News, Keybase, DEV), GitHubAliasToDetails, GravatarEmailToProfile, EmailToAlias, AnalyzeSubjectBehavior | — |
-| Breach & Threat Intel (keyless) | BreachSemanticPivot (local SQLite + HIBP Pwned Passwords k-Anonymity + XposedOrNot), OTXHashToThreatPulses | — |
-| Parsing | EmailToDomain, URLToDomain, WebsiteToDomain, DomainToWebsite | — |
-| VirusTotal | VTDomainToIP, VTIPToDomain, VTDomainToSubdomains, VTHashToDetection | `VIRUSTOTAL_API_KEY` |
-| Shodan | ShodanIPToServices, ShodanDomainToSubdomains | `SHODAN_API_KEY` |
-| SecurityTrails | SecurityTrailsSubdomains | `SECURITYTRAILS_API_KEY` |
-| Censys | CensysIPToServices | `CENSYS_API_ID`, `CENSYS_API_SECRET` |
-| Hunter.io | HunterDomainToEmails | `HUNTER_API_KEY` |
-| Have I Been Pwned | HIBPEmailToBreaches | `HIBP_API_KEY` |
-| GreyNoise | GreyNoiseIPContext | `GREYNOISE_API_KEY` |
-| Tatum | TatumBTCAddressToTx | `TATUM_API_KEY` |
+| DNS (over HTTPS + passive pDNS) | `DNSToIP`, `DNSToIPv6`, `DomainToMX`, `DomainToNS`, `DomainToTXT`, `DNSToCNAME`, `IPToReverseDNS`, `HackerTargetSubdomains`, `AnubisSubdomains` | — |
+| WHOIS & Official Registries | `DomainToWhois`, `IPToWhois` (RDAP + ARIN fallback), `BOEEntityToRecords` (BOE/BORME), `GLEIFCompanyToStructure` (GLEIF LEI) | — |
+| Network, BGP & Exposure | `IPToAS`, `IPToNetblock` (Team Cymru), `IPToPassiveContext`, `RIPEStatASNToNetblocks`, `InternetDBIPToServices` (Shodan InternetDB), `CisaKevToVulnerabilities` | — |
+| Certificates, Web & Archives | `DomainToSubdomains` (crt.sh + CertSpotter), `CertSpotterSubdomains`, `CTOrgToCertificates`, `URLScanDomainSearch`, `WaybackCDXSearch`, `WaybackSnapshotExtract`, `ArquivoCDXSearch`, `CommonCrawlCDXSearch` | — |
+| Identity, Social & HUMINT | `AliasToProfiles`, `SocialAliasDeepRecon`, `GitHubAliasToDetails`, `GitHubAliasToCommitEmails`, `KeybaseAliasToProofs`, `GravatarEmailToProfile`, `EmailToAlias`, `AnalyzeSubjectBehavior` | — |
+| Breach, Leaks & Threat Intel (keyless) | `BreachSemanticPivot` (local SQLite + HIBP k-Anonymity + XposedOrNot), `HudsonRockStealerCheck`, `GitHubDomainToLeaks`, `UrlhausHostToThreats`, `OTXHashToThreatPulses`, `DeepDarkCTISearch`, `OnionPassivePivot` | — |
+| Cryptoforensics & AML (keyless) | `MempoolAddressToTransactions`, `MempoolTxToInputsOutputs`, `CryptoClusteringCIOH`, `OFACSanctionsCryptoLookup`, `CryptoAddressToExchange` | — |
+| Structural Parsing | `EmailToDomain`, `URLToDomain`, `WebsiteToDomain`, `DomainToWebsite` | — |
+| VirusTotal | `VTDomainToIP`, `VTIPToDomain`, `VTDomainToSubdomains`, `VTHashToDetection` | `VIRUSTOTAL_API_KEY` |
+| Shodan | `ShodanIPToServices`, `ShodanDomainToSubdomains` | `SHODAN_API_KEY` |
+| SecurityTrails | `SecurityTrailsSubdomains` | `SECURITYTRAILS_API_KEY` |
+| Censys | `CensysIPToServices` | `CENSYS_API_ID`, `CENSYS_API_SECRET` |
+| Hunter.io | `HunterDomainToEmails` | `HUNTER_API_KEY` |
+| Have I Been Pwned | `HIBPEmailToBreaches` | `HIBP_API_KEY` |
+| GreyNoise | `GreyNoiseIPContext` | `GREYNOISE_API_KEY` |
+| Tatum | `TatumBTCAddressToTx` | `TATUM_API_KEY` |
 
 Pass keys through your client's configuration:
 
@@ -375,6 +372,10 @@ the package globally (`npm i -g mcp-maltego`) so the command path stays stable. 
 | Variable | Default | Purpose |
 |---|---|---|
 | `MALTEGO_MCP_HOME` | `~/.maltego-mcp` | Shared state: graph, catalog, imports, exports, runtime |
+| `MALTEGO_MCP_ALLOW_ACTIVE` | `1` | Enable all non-intrusive active & passive transforms with anti-burst concurrency (`CHAIN_CONCURRENCY = 3`) |
+| `MALTEGO_MCP_MODE` | `active` | Operational transform mode (`active` or strict `passive`) |
+| `MALTEGO_MCP_REQUIRE_MULLVAD` | `1` | Mandatory Mullvad double-attestation egress ring (`0` disables explicitly) |
+| `MALTEGO_MCP_DASHBOARD_AUTH` | `1` | Enable PBKDF2-HMAC-SHA256 session authentication on the Web Control Center |
 | `MALTEGO_MCP_TRANSFORMS_FILE` | `<home>/transforms.toml` | Catalog of your transform servers and Machines |
 | `MALTEGO_MCP_BACKEND` | `memory` | `memory` (local JSON, multi-process safe) or `gremlin` (Azure Cosmos DB, experimental) |
 | `MCP_MALTEGO_UV` | auto-detected | Full path to `uv` if it is not on `PATH` |
@@ -410,7 +411,7 @@ by Cursor):
   `cti-analyst` (defensive exposure and IOC triage), `ioc-composer` (multi-MCP IOC graphs with MISP, ATT&CK, TheHive,
   Cortex), `recon-toolchain-integrator` (theHarvester, amass, recon-ng, SpiderFoot output into the graph).
 - **Investigation skills**: company footprint, identity footprint, infrastructure mapping, IOC graph composition,
-  external OSINT tools, investigation methodology.
+  external OSINT tools, investigation methodology (`osint-investigation` & `investigacion-pasiva-no-zoom`).
 - **Development agents and skills**: MCP tool design, transforms and custom providers, Machines, graph model,
   Maltego formats, non-standard entities, security review, tests, release and deployment.
 

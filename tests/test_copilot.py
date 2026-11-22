@@ -50,7 +50,7 @@ def svc(tmp_path: Path, catalog: TransformCatalog) -> OsintService:
     s = OsintService(
         MemoryGraphStore(tmp_path / "g.json"), catalog.with_builtins(), tmp_path / "exports", tmp_path / "imports"
     )
-    s.env = {}  # sin claves: los proveedores deben omitirse e informarse
+    s.env = {"MALTEGO_MCP_ALLOW_ACTIVE": "1"}  # permite transforms activos para probar memoria y máquinas
     s._http = new_http_client(transport=httpx.MockTransport(Router()))
     return s
 
@@ -223,6 +223,11 @@ async def test_investigate_en_una_llamada(svc: OsintService) -> None:
     assert "InfrastructureRecon" in md and "Siguientes pasos recomendados" in md
     phrase = await js(svc, "osint_investigate", {"value": "texto libre", "case_id": "fr"})
     assert phrase["strategy"] == "expand_entity" and phrase["notes"]
+    # Caso explícito: texto libre sin machine previa -> strategy expand_entity y notes poblado con pivotes
+    phrase2 = await js(svc, "osint_investigate", {"value": "cadena libre sin patron estructurado", "case_id": "txt"})
+    assert phrase2["strategy"] == "expand_entity"
+    assert len(phrase2["notes"]) > 0
+    assert any("Buscar" in n or "referencias" in n for n in phrase2["notes"])
 
 
 async def test_gestion_de_casos_y_entidades(svc: OsintService) -> None:

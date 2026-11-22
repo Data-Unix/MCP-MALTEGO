@@ -3,7 +3,11 @@
     "maltego": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--quiet", "--directory", "${workspaceFolder}", "maltego-mcp"]
+      "args": ["run", "--quiet", "--directory", "${workspaceFolder}", "maltego-mcp"],
+      "env": {
+        "MALTEGO_MCP_ALLOW_ACTIVE": "1",
+        "MALTEGO_MCP_MODE": "active"
+      }
     }
   }
 }

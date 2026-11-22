@@ -19,6 +19,7 @@ license: MIT
   stages = [["DNSToIP", "DomainToNS"], ["IPToAS"]]
   rounds = 1
   ```
+  *(Nota de pasividad: El ejemplo anterior es ilustrativo para desarrollo de extensiones. Transforms como `DNSToIP` y `DomainToNS` ejecutan consultas DNS directas activas; una Machine diseñada para modo 100 % pasivo jamás debe incluir transforms DNS en vivo, debiendo emplear fuentes pasivas como pDNS, certificados CT o WHOIS).*
 - Incluye transforms de proveedores sin miedo: si falta la clave se omiten y se informa en `unavailable`.
 - **Tests**: en `tests/test_copilot.py` con el `Router` simulado; comprueba etapas, que no se repite un transform
   sobre la misma entidad y el presupuesto `max_total_entities`.

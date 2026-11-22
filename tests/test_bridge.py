@@ -58,7 +58,7 @@ def test_errores_controlados(settings: Settings) -> None:
 
 
 def test_mtz_generado_con_sdk_oficial(tmp_path: Path) -> None:
-    out = write_mtz(tmp_path / "x.mtz", tmp_path, "C:\\Users\\Alvaro\\.local\\bin\\uv.exe")
+    out = write_mtz(tmp_path / "x.mtz", tmp_path, "C:\\Users\\analyst\\.local\\bin\\uv.exe")
     with zipfile.ZipFile(out) as zf:
         names = set(zf.namelist())
         assert "Servers/Local.tas" in names and "TransformSets/MCP Maltego.set" in names

@@ -133,6 +133,7 @@ class CaseRecord:
     updated: str = ""
     version: int = 1
     parent_case_id: str = ""
+    confidential: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -142,6 +143,7 @@ class CaseRecord:
             "updated": self.updated,
             "version": self.version,
             "parent_case_id": self.parent_case_id,
+            "confidential": self.confidential,
         }
 
 

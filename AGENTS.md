@@ -91,3 +91,14 @@ persistencia en Azure Cosmos DB for Apache Gremlin y pipelines serverless en Azu
 - Tests: `uv run pytest -q`
 - Lint/formato/tipos: `uv run ruff check . && uv run ruff format --check . && uv run mypy src`
 - Inspector: `npx @modelcontextprotocol/inspector uv run maltego-mcp`
+- Aceleración nativa opcional (`rust/`, PoC `maltego_core_rs`): `uv run python scripts/build_native.py` (requiere
+  rustup). Sin binario, o si está obsoleto respecto a `rust/`, se usa el fallback Python con resultados idénticos bit
+  a bit; `MALTEGO_MCP_DISABLE_NATIVE=1` lo desactiva. Nunca se versiona el binario (`*.pyd`, `*.so`).
+- Guardián de egreso PEP 578: solo se instala en `server.main()` y `maltegoctl dashboard`;
+  `MALTEGO_MCP_DISABLE_PEP578=1` lo desactiva. Los destinos propios declarados en configuración (servidores TRX,
+  endpoint Gremlin, proxy) se registran con `egress.register_egress_hosts`.
+- Anillo Mullvad obligatorio (`src/maltego_mcp/mullvad.py`, `docs/USO.md`): con `MALTEGO_MCP_REQUIRE_MULLVAD=1` (por
+  defecto en `Settings.from_env`) todo el egreso sale por `socks5h://10.64.0.1:1080` tras la atestación doble y solo
+  con relays propios. Ninguna petición HTTP puede crearse fuera de `egress.py`. Los tests lo desactivan en
+  `tests/conftest.py` y lo prueban con dobles en `tests/test_mullvad.py`; nunca dependas del daemon real de Mullvad
+  en tests. No añadas tools MCP que controlen la VPN.

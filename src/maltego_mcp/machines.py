@@ -94,9 +94,10 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
     ),
     Machine(
         "CompanyFootprint",
-        "Huella corporativa desde su dominio: DomainRecon ampliado con HackerTarget, urlscan.io, correos corporativos "
-        "(Hunter si hay clave), perfiles de los alias y ubicación y servicios de toda la infraestructura.",
-        ("maltego.Domain",),
+        "Huella corporativa desde su dominio u organización: DomainRecon ampliado con certificados CT por razón "
+        "social, archivos web (Wayback/Arquivo/CommonCrawl), BOE/BORME, GLEIF, HackerTarget, urlscan.io, GitHub, "
+        "filtraciones, correos corporativos (Hunter si hay clave), perfiles de alias y servicios de infraestructura.",
+        ("maltego.Domain", "maltego.Organization", "maltego.Company"),
         (
             (
                 "DNSToIP",
@@ -105,18 +106,44 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
                 "DomainToTXT",
                 "DomainToWhois",
                 "DomainToSubdomains",
+                "CertSpotterSubdomains",
                 "HackerTargetSubdomains",
+                "AnubisSubdomains",
                 "URLScanDomainSearch",
+                "WaybackCDXSearch",
+                "WaybackSnapshotExtract",
+                "ArquivoCDXSearch",
+                "CommonCrawlCDXSearch",
+                "CTOrgToCertificates",
+                "BOEEntityToRecords",
+                "GLEIFCompanyToStructure",
                 "HunterDomainToEmails",
+                "GitHubDomainToLeaks",
+                "HudsonRockStealerCheck",
+                "UrlhausHostToThreats",
+                "DeepDarkCTISearch",
                 "VTDomainToSubdomains",
+                "VTDomainToIP",
                 "SecurityTrailsSubdomains",
+                "ShodanDomainToSubdomains",
             ),
-            ("DNSToIP", "EmailToAlias"),
+            (
+                "DNSToIP",
+                "EmailToAlias",
+                "BOEEntityToRecords",
+                "GLEIFCompanyToStructure",
+                "HudsonRockStealerCheck",
+            ),
             (
                 "IPToAS",
                 "IPToNetblock",
                 "IPToWhois",
+                "IPToPassiveContext",
                 "InternetDBIPToServices",
+                "ShodanIPToServices",
+                "CensysIPToServices",
+                "GreyNoiseIPContext",
+                "VTIPToDomain",
                 "AliasToProfiles",
                 "GitHubAliasToDetails",
             ),
@@ -240,9 +267,133 @@ BUILTIN_MACHINES: tuple[Machine, ...] = (
         ),
         default_rounds=1,
     ),
+    Machine(
+        "PassiveDomainRecon",
+        "Reconocimiento 100% pasivo de un dominio: pDNS histórico, WHOIS, CT (crt.sh/CertSpotter/AnubisDB), "
+        "archivos web (Wayback/Arquivo.pt/Common Crawl) y urlscan.io, sin contacto activo ni consultas DNS directas.",
+        ("maltego.Domain", "maltego.DNSName", "maltego.Website"),
+        (
+            (
+                "DNSToIP",
+                "DNSToIPv6",
+                "DomainToMX",
+                "DomainToNS",
+                "DomainToTXT",
+                "DomainToWhois",
+                "DomainToSubdomains",
+                "DomainToWebsite",
+                "HackerTargetSubdomains",
+                "AnubisSubdomains",
+                "URLScanDomainSearch",
+                "WaybackCDXSearch",
+                "ArquivoCDXSearch",
+                "CommonCrawlCDXSearch",
+                "CertSpotterSubdomains",
+            ),
+            ("DNSToIP", "DNSToCNAME"),
+            ("IPToAS", "IPToNetblock", "IPToPassiveContext"),
+        ),
+    ),
+    Machine(
+        "PassiveInfrastructureRecon",
+        "Mapeo de infraestructura 100% pasivo desde una IP: DNS inverso pasivo (InternetDB/Robtex/THC), "
+        "AS, bloque, WHOIS de red, contexto ipapi.is y telemetría de exposición en reposo.",
+        ("maltego.IPv4Address", "maltego.IPv6Address"),
+        (
+            (
+                "IPToReverseDNS",
+                "IPToAS",
+                "IPToNetblock",
+                "IPToWhois",
+                "IPToPassiveContext",
+                "InternetDBIPToServices",
+                "GreyNoiseIPContext",
+            ),
+            ("DNSToIP", "DNSToIPv6"),
+        ),
+    ),
+    Machine(
+        "PassiveEmailRecon",
+        "Rastreo de correo 100% pasivo: dominio, alias inferido, perfil Gravatar y filtraciones conocidas "
+        "(HIBP/XposedOrNot/HudsonRock) sin enviar sondas SMTP ni contactar a servidores de correo.",
+        ("maltego.EmailAddress",),
+        (
+            ("EmailToDomain", "EmailToAlias", "GravatarEmailToProfile", "HIBPEmailToBreaches"),
+            ("DomainToMX", "DomainToNS", "DomainToWhois", "AliasToProfiles", "GitHubAliasToDetails"),
+        ),
+    ),
+    Machine(
+        "PassiveURLRecon",
+        "Análisis de URL 100% pasivo: extracción de dominio/host, archivo histórico (Wayback/Arquivo.pt/Common Crawl) "
+        "y correlación de infraestructura sin realizar peticiones HTTP al objetivo.",
+        ("maltego.URL",),
+        (
+            ("URLToDomain",),
+            (
+                "DNSToIP",
+                "DomainToWhois",
+                "DomainToNS",
+                "WaybackCDXSearch",
+                "ArquivoCDXSearch",
+                "CommonCrawlCDXSearch",
+            ),
+            ("IPToAS", "IPToPassiveContext"),
+        ),
+    ),
+    Machine(
+        "PassiveCompanyFootprint",
+        "Huella corporativa 100% pasiva de una organización o dominio: certificados CT por razón social, "
+        "pDNS histórico, WHOIS, archivos web (con extracción de CIF/razón social), BOE/BORME (OpenMercantil), "
+        "VIES IVA, estructura societaria GLEIF, GitHub, filtraciones de credenciales e infraestructura.",
+        ("maltego.Domain", "maltego.Organization", "maltego.Company"),
+        (
+            (
+                "DNSToIP",
+                "DomainToMX",
+                "DomainToNS",
+                "DomainToTXT",
+                "DomainToWhois",
+                "DomainToSubdomains",
+                "CertSpotterSubdomains",
+                "HackerTargetSubdomains",
+                "AnubisSubdomains",
+                "URLScanDomainSearch",
+                "WaybackCDXSearch",
+                "WaybackSnapshotExtract",
+                "ArquivoCDXSearch",
+                "CommonCrawlCDXSearch",
+                "CTOrgToCertificates",
+                "BOEEntityToRecords",
+                "GLEIFCompanyToStructure",
+                "HunterDomainToEmails",
+                "GitHubDomainToLeaks",
+                "HudsonRockStealerCheck",
+                "UrlhausHostToThreats",
+                "DeepDarkCTISearch",
+            ),
+            (
+                "DNSToIP",
+                "EmailToAlias",
+                "BOEEntityToRecords",
+                "GLEIFCompanyToStructure",
+                "HudsonRockStealerCheck",
+            ),
+            (
+                "IPToAS",
+                "IPToNetblock",
+                "IPToWhois",
+                "IPToPassiveContext",
+                "InternetDBIPToServices",
+                "ShodanIPToServices",
+                "AliasToProfiles",
+                "GitHubAliasToDetails",
+            ),
+        ),
+        default_rounds=1,
+    ),
 )
 
-DEFAULT_MACHINE_BY_TYPE = {
+DEFAULT_MACHINE_BY_TYPE_ACTIVE = {
     "maltego.domain": "DomainRecon",
     "maltego.dnsname": "DomainRecon",
     "maltego.website": "DomainRecon",
@@ -258,7 +409,31 @@ DEFAULT_MACHINE_BY_TYPE = {
     "maltego.cryptocurrencyaddress": "CryptoFlowRecon",
     "maltego.cryptocurrencytransaction": "CryptoFlowRecon",
     "maltego.cryptocluster": "CryptoFlowRecon",
+    "maltego.organization": "CompanyFootprint",
+    "maltego.company": "CompanyFootprint",
 }
+
+DEFAULT_MACHINE_BY_TYPE_PASSIVE = {
+    "maltego.domain": "PassiveDomainRecon",
+    "maltego.dnsname": "PassiveDomainRecon",
+    "maltego.website": "PassiveDomainRecon",
+    "maltego.ipv4address": "PassiveInfrastructureRecon",
+    "maltego.ipv6address": "PassiveInfrastructureRecon",
+    "maltego.emailaddress": "PassiveEmailRecon",
+    "maltego.alias": "PersonalFootprint",
+    "humint.alias": "PersonaFootprint",
+    "maltego.person": "PersonaFootprint",
+    "maltego.url": "PassiveURLRecon",
+    "maltego.hash": "ThreatSweep",
+    "maltego.as": "ASNToNetblocks",
+    "maltego.cryptocurrencyaddress": "CryptoFlowRecon",
+    "maltego.cryptocurrencytransaction": "CryptoFlowRecon",
+    "maltego.cryptocluster": "CryptoFlowRecon",
+    "maltego.organization": "PassiveCompanyFootprint",
+    "maltego.company": "PassiveCompanyFootprint",
+}
+
+DEFAULT_MACHINE_BY_TYPE = DEFAULT_MACHINE_BY_TYPE_PASSIVE
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,8 +447,9 @@ class MachineCatalog:
             raise InvalidInput(f"La machine '{name[:60]}' no existe. Disponibles: {names}.")
         return m
 
-    def for_type(self, maltego_type: str) -> Machine | None:
-        name = DEFAULT_MACHINE_BY_TYPE.get(maltego_type.lower())
+    def for_type(self, maltego_type: str, is_passive: bool = True) -> Machine | None:
+        table = DEFAULT_MACHINE_BY_TYPE_PASSIVE if is_passive else DEFAULT_MACHINE_BY_TYPE_ACTIVE
+        name = table.get(maltego_type.lower())
         return self.machines.get(name.lower()) if name else None
 
 

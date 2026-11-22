@@ -8,7 +8,7 @@ link-graph analysis and native `.mtgx` — to any MCP client.
 ## Requirements
 
 - Node.js 18 or newer (for `npx`).
-- No API keys are required for the core (33 keyless transforms). `uv` and the Python 3.12
+- No API keys are required for the core (51 keyless transforms out of 63 built-in transforms, plus 16 reconnaissance Machines). `uv` and the Python 3.12
   runtime are installed automatically on first run into `~/.maltego-mcp`.
 
 ## Quick install (recommended)

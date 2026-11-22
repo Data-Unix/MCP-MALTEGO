@@ -32,6 +32,38 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
+      - run: uv run pytest -q   # sin binario nativo: valida el fallback Python (los tests nativos se omiten)
+
+  native:
+    # Compila el nucleo Rust y valida la paridad exacta con el fallback. Solo compila y prueba: no sube artefactos
+    # ni publica binarios compilados en el repositorio.
+    name: Nucleo Rust · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: rustfmt y clippy
+        if: runner.os == 'Linux'
+        working-directory: rust
+        env:
+          PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: |
+          rustup component add rustfmt clippy
+          cargo fmt --check
+          cargo clippy --release --locked -- -D warnings
+      - name: Compilar maltego_core_rs
+        run: uv run python scripts/build_native.py
+      - name: El binario carga y esta al dia
+        run: uv run python -c "from maltego_mcp import _accel; assert _accel.HAS_NATIVE, 'maltego_core_rs no cargado'"
       - run: uv run pytest -q
 
   npm:
@@ -85,8 +117,8 @@ jobs:
           npm pack --dry-run --json > pack.json
           node -e "
             const files = require('./pack.json')[0].files.map(f => f.path);
-            const names = /(^|\/)(\.env|\.npmrc|\.pypirc|local\.settings\.json|transforms\.toml|graph\.json|__pycache__)/;
-            const exts = /\.(pem|key|p12|pfx|crt|mtgx|mtz|graphml|csv|log)$/;
+            const names = /(^|\/)(\.env|\.npmrc|\.pypirc|local\.settings\.json|transforms\.toml|accounts\.toml|dashboard_auth\.json|audit\.log|graph\.json|__pycache__)/;
+            const exts = /\.(pem|key|p12|pfx|crt|mtgx|mtz|mcpcase|graphml|csv|log|sqlite|sqlite3|db)$/;
             const bad = files.filter(f => names.test(f) || exts.test(f));
             if (bad.length) { console.error('Ficheros prohibidos en el paquete:', bad); process.exit(1); }
             console.log(files.length + ' ficheros en el paquete, ninguno sensible');"

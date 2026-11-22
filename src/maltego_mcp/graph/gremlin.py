@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
@@ -230,6 +231,7 @@ def case_from_vm(vm: dict[Any, Any]) -> CaseRecord:
         updated=str(d.get("updated", "")),
         version=int(d.get("version", 1)),
         parent_case_id=str(d.get("parent_case_id", "")),
+        confidential=bool(d.get("confidential", False)),
     )
 
 
@@ -242,6 +244,17 @@ class GremlinGraphStore:
     async def get_case(self, case_id: str) -> CaseRecord | None:
         rows = await self._run(Q_GET_VERTEX, {"vid": case_vertex_id(case_id), "pk": case_id})
         return case_from_vm(rows[0]) if rows else None
+
+    async def set_case_confidential(self, case_id: str, confidential: bool = True) -> CaseRecord:
+        existing = await self.get_case(case_id)
+        if existing is None:
+            raise NotFound(f"El caso '{case_id}' no existe.")
+        now = utc_now()
+        await self._run(
+            "g.V(vid).property('confidential', conf).property('updated', now)",
+            {"vid": case_vertex_id(case_id), "conf": confidential, "now": now},
+        )
+        return replace(existing, confidential=confidential, updated=now, version=existing.version + 1)
 
     async def ensure_case(
         self, case_id: str, description: str = "", parent_case_id: str = ""
@@ -476,11 +489,12 @@ class GremlinGraphStore:
         await self._run(Q_DROP_CASE, {"pk": case_id})
         return summary.entity_count, summary.edge_count
 
-    async def append_step(self, step: StepRecord) -> StepRecord:
+    async def append_step(self, step: StepRecord, retry_on_conflict: bool = True) -> StepRecord:
         seq = time.time_ns() // 1000  # microsegundos: creciente sin contar (evita carreras entre procesos)
+        vid = f"step-{seq}-{secrets.token_hex(3)}"
         stored = replace(step, seq=seq)
         bindings = {
-            "vid": f"step-{seq}",
+            "vid": vid,
             "pk": step.case_id,
             "seq": seq,
             "ts": step.timestamp,
@@ -494,7 +508,12 @@ class GremlinGraphStore:
             "err": step.error,
             "duration_ms": step.duration_ms,
         }
-        await self._run(Q_ADD_STEP, bindings)
+        try:
+            await self._run(Q_ADD_STEP, bindings)
+        except ConflictError:
+            if not retry_on_conflict:
+                raise
+            return await self.append_step(step, retry_on_conflict=False)
         return stored
 
     async def append_steps(self, steps: list[StepRecord]) -> int:

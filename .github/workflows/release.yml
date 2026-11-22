@@ -18,8 +18,8 @@ permissions:
 
 jobs:
   verify:
-    # Solo se publica desde main o desde un tag de versión, nunca desde otras ramas (workflow_dispatch).
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    # Solo se publica desde main o desde un tag de versión en el repositorio público canónico.
+    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.repository == 'Data-Unix/MCP-MALTEGO'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -45,6 +45,7 @@ jobs:
 
   github-packages:
     needs: verify
+    if: github.repository == 'Data-Unix/MCP-MALTEGO'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,6 +74,7 @@ jobs:
 
   npmjs:
     needs: verify
+    if: github.repository == 'Data-Unix/MCP-MALTEGO'
     runs-on: ubuntu-latest
     # Guarda NPM_TOKEN como secreto de este Environment (Settings → Environments → npm-publish) con regla de
     # despliegue solo para tags v*: así otra rama no puede leerlo.
@@ -110,7 +112,7 @@ jobs:
 
   mcp-registry:
     needs: [verify, npmjs]
-    if: vars.MCP_REGISTRY_PUBLISH == 'true'
+    if: vars.MCP_REGISTRY_PUBLISH == 'true' && github.repository == 'Data-Unix/MCP-MALTEGO'
     runs-on: ubuntu-latest
     permissions:
       contents: read

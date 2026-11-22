@@ -4,7 +4,11 @@
       "command": "uv",
       "args": ["run", "--quiet", "maltego-mcp"],
       "cwd": ".",
-      "timeout": 120000
+      "timeout": 120000,
+      "env": {
+        "MALTEGO_MCP_ALLOW_ACTIVE": "1",
+        "MALTEGO_MCP_MODE": "active"
+      }
     }
   }
 }

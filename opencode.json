@@ -5,7 +5,11 @@
       "type": "local",
       "command": ["uv", "run", "--quiet", "maltego-mcp"],
       "cwd": ".",
-      "enabled": true
+      "enabled": true,
+      "environment": {
+        "MALTEGO_MCP_ALLOW_ACTIVE": "1",
+        "MALTEGO_MCP_MODE": "active"
+      }
     }
   }
 }

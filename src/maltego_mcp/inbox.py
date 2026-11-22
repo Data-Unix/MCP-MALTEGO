@@ -16,6 +16,9 @@ from typing import Any
 
 import httpx
 
+from maltego_mcp.egress import create_egress_client, redact_secrets
+from maltego_mcp.errors import EgressBlockedError, EgressKillSwitchError
+
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
 
 
@@ -247,7 +250,7 @@ class MailTmClient:
     BASE_URL = "https://api.mail.tm"
 
     def __init__(self, http_client: httpx.AsyncClient | None = None) -> None:
-        self.http = http_client or httpx.AsyncClient(timeout=15.0, headers={"User-Agent": USER_AGENT})
+        self.http = http_client or create_egress_client(timeout=15.0)
 
     async def get_domains(self) -> list[str]:
         """Obtiene la lista de dominios disponibles en Mail.tm."""
@@ -257,6 +260,8 @@ class MailTmClient:
                 data = resp.json()
                 items = data.get("hydra:member", [])
                 return [d["domain"] for d in items if isinstance(d, dict) and d.get("isActive", True)]
+        except (EgressBlockedError, EgressKillSwitchError):
+            raise
         except Exception:
             pass
         return ["mailtm.me"]
@@ -279,9 +284,10 @@ class MailTmClient:
             json={"address": address, "password": password},
         )
         if create_resp.status_code not in (200, 201):
+            safe_detail = redact_secrets(create_resp.text[:160])
             return {
                 "ok": False,
-                "error": f"Error creando cuenta en Mail.tm ({create_resp.status_code}): {create_resp.text}",
+                "error": f"Error creando cuenta en Mail.tm ({create_resp.status_code}): {safe_detail}",
             }
 
         acc_data = create_resp.json()
@@ -334,6 +340,8 @@ class MailTmClient:
                         }
                     )
                 return formatted
+        except (EgressBlockedError, EgressKillSwitchError):
+            raise
         except Exception:
             pass
         return []
@@ -364,7 +372,9 @@ class MailTmClient:
                     "detected_otps": analysis["otps"],
                     "detected_links": analysis["activation_links"],
                 }
+        except (EgressBlockedError, EgressKillSwitchError):
+            raise
         except Exception as exc:
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": f"Error de conexión con Mail.tm ({exc.__class__.__name__})"}
 
         return {"ok": False, "error": "No se pudo obtener el mensaje"}

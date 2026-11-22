@@ -22,4 +22,4 @@ argumento independiente (sin interpolar en una cadena de shell), y escribe la sa
 **Importación**: genera un CSV `source_type,source_value,relation,target_type,target_value,confidence`
 (p. ej. `maltego.Domain,example.com,subdomain,maltego.DNSName,www.example.com,0.6`) y llama a
 `osint_import_graph`; o usa `osint_upsert_entity(entity_type="auto", source="amass")` para pocos datos.
-Después: `osint_run_machine(machine="DomainRecon")` sobre lo importado y `osint_suggest_next_steps`.
+En modo pasivo: NO ejecutar `machine="DomainRecon"` sobre lo importado (lanza resoluciones DNS en vivo que contactan al objetivo). En su lugar, enriquecer con transforms pasivos permitidos uno a uno (`osint_run_transform` con `DomainToSubdomains`, `DomainToWhois`, `IPToAS`, `IPToNetblock`, `IPToWhois`, `InternetDBIPToServices`) y usar `osint_suggest_next_steps` filtrando cualquier transform activo.

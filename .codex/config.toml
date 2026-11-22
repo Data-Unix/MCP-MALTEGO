@@ -3,3 +3,7 @@
 command = "uv"
 args = ["run", "--quiet", "maltego-mcp"]
 startup_timeout_sec = 120
+
+[mcp_servers.maltego.env]
+MALTEGO_MCP_ALLOW_ACTIVE = "1"
+MALTEGO_MCP_MODE = "active"

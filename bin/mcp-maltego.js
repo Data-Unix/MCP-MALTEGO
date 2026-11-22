@@ -142,8 +142,10 @@ function ensureEnvTemplate(homeDir) {
   if (isFile(envFile)) return { path: envFile, created: false };
   fs.mkdirSync(homeDir, { recursive: true });
   const content = [
-    "# MCP Maltego — claves opcionales de proveedores (con plan gratuito).",
+    "# MCP Maltego — claves opcionales de proveedores (con plan gratuito) y modo operativo.",
     "# Este fichero está fuera de cualquier repositorio y lo cargan automáticamente todos los agentes.",
+    "MALTEGO_MCP_ALLOW_ACTIVE=1",
+    "MALTEGO_MCP_MODE=active",
     "VIRUSTOTAL_API_KEY=",
     "SHODAN_API_KEY=",
     "HUNTER_API_KEY=",

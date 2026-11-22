@@ -1,0 +1,895 @@
+{
+ "source": "https://api.mullvad.net/www/relays/all/",
+ "filter": "owned && active && type == wireguard",
+ "snapshot_date": "2026-11-12",
+ "relays": [
+  {
+   "hostname": "ch-zrh-wg-001",
+   "country_code": "ch",
+   "country_name": "Switzerland",
+   "city_code": "zrh",
+   "city_name": "Zurich",
+   "socks_name": "ch-zrh-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "ch-zrh-wg-002",
+   "country_code": "ch",
+   "country_name": "Switzerland",
+   "city_code": "zrh",
+   "city_name": "Zurich",
+   "socks_name": "ch-zrh-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "ch-zrh-wg-003",
+   "country_code": "ch",
+   "country_name": "Switzerland",
+   "city_code": "zrh",
+   "city_name": "Zurich",
+   "socks_name": "ch-zrh-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "ch-zrh-wg-004",
+   "country_code": "ch",
+   "country_name": "Switzerland",
+   "city_code": "zrh",
+   "city_name": "Zurich",
+   "socks_name": "ch-zrh-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-ber-wg-001",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "ber",
+   "city_name": "Berlin",
+   "socks_name": "de-ber-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-ber-wg-002",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "ber",
+   "city_name": "Berlin",
+   "socks_name": "de-ber-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-ber-wg-003",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "ber",
+   "city_name": "Berlin",
+   "socks_name": "de-ber-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-ber-wg-004",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "ber",
+   "city_name": "Berlin",
+   "socks_name": "de-ber-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-dus-wg-101",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "dus",
+   "city_name": "Dusseldorf",
+   "socks_name": "de-dus-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-dus-wg-102",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "dus",
+   "city_name": "Dusseldorf",
+   "socks_name": "de-dus-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-dus-wg-103",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "dus",
+   "city_name": "Dusseldorf",
+   "socks_name": "de-dus-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-001",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-002",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-003",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-004",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-005",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-005.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-201",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-201.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-202",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-202.relays.mullvad.net"
+  },
+  {
+   "hostname": "de-fra-wg-203",
+   "country_code": "de",
+   "country_name": "Germany",
+   "city_code": "fra",
+   "city_name": "Frankfurt",
+   "socks_name": "de-fra-wg-socks5-203.relays.mullvad.net"
+  },
+  {
+   "hostname": "dk-cph-wg-001",
+   "country_code": "dk",
+   "country_name": "Denmark",
+   "city_code": "cph",
+   "city_name": "Copenhagen",
+   "socks_name": "dk-cph-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "dk-cph-wg-002",
+   "country_code": "dk",
+   "country_name": "Denmark",
+   "city_code": "cph",
+   "city_name": "Copenhagen",
+   "socks_name": "dk-cph-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "dk-cph-wg-102",
+   "country_code": "dk",
+   "country_name": "Denmark",
+   "city_code": "cph",
+   "city_name": "Copenhagen",
+   "socks_name": "dk-cph-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "ee-tll-wg-101",
+   "country_code": "ee",
+   "country_name": "Estonia",
+   "city_code": "tll",
+   "city_name": "Tallinn",
+   "socks_name": "ee-tll-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "ee-tll-wg-102",
+   "country_code": "ee",
+   "country_name": "Estonia",
+   "city_code": "tll",
+   "city_name": "Tallinn",
+   "socks_name": "ee-tll-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "ee-tll-wg-103",
+   "country_code": "ee",
+   "country_name": "Estonia",
+   "city_code": "tll",
+   "city_name": "Tallinn",
+   "socks_name": "ee-tll-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-001",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-002",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-003",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-101",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-102",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-103",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-104",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-104.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-201",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-201.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-202",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-202.relays.mullvad.net"
+  },
+  {
+   "hostname": "fi-hel-wg-203",
+   "country_code": "fi",
+   "country_name": "Finland",
+   "city_code": "hel",
+   "city_name": "Helsinki",
+   "socks_name": "fi-hel-wg-socks5-203.relays.mullvad.net"
+  },
+  {
+   "hostname": "fr-par-wg-001",
+   "country_code": "fr",
+   "country_name": "France",
+   "city_code": "par",
+   "city_name": "Paris",
+   "socks_name": "fr-par-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "fr-par-wg-002",
+   "country_code": "fr",
+   "country_name": "France",
+   "city_code": "par",
+   "city_name": "Paris",
+   "socks_name": "fr-par-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "fr-par-wg-003",
+   "country_code": "fr",
+   "country_name": "France",
+   "city_code": "par",
+   "city_name": "Paris",
+   "socks_name": "fr-par-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "fr-par-wg-004",
+   "country_code": "fr",
+   "country_name": "France",
+   "city_code": "par",
+   "city_name": "Paris",
+   "socks_name": "fr-par-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-001",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-002",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-003",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-004",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-005",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-005.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-006",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-006.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-007",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-007.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-008",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-008.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-101",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-102",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "gb-lon-wg-103",
+   "country_code": "gb",
+   "country_name": "UK",
+   "city_code": "lon",
+   "city_name": "London",
+   "socks_name": "gb-lon-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "jp-osa-wg-101",
+   "country_code": "jp",
+   "country_name": "Japan",
+   "city_code": "osa",
+   "city_name": "Osaka",
+   "socks_name": "jp-osa-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "jp-osa-wg-102",
+   "country_code": "jp",
+   "country_name": "Japan",
+   "city_code": "osa",
+   "city_name": "Osaka",
+   "socks_name": "jp-osa-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "jp-osa-wg-103",
+   "country_code": "jp",
+   "country_name": "Japan",
+   "city_code": "osa",
+   "city_name": "Osaka",
+   "socks_name": "jp-osa-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-004",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-005",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-005.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-006",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-006.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-007",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-007.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-008",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-008.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-301",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-301.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-302",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-302.relays.mullvad.net"
+  },
+  {
+   "hostname": "nl-ams-wg-303",
+   "country_code": "nl",
+   "country_name": "Netherlands",
+   "city_code": "ams",
+   "city_name": "Amsterdam",
+   "socks_name": "nl-ams-wg-socks5-303.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-osl-wg-001",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "osl",
+   "city_name": "Oslo",
+   "socks_name": "no-osl-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-osl-wg-002",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "osl",
+   "city_name": "Oslo",
+   "socks_name": "no-osl-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-osl-wg-003",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "osl",
+   "city_name": "Oslo",
+   "socks_name": "no-osl-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-osl-wg-101",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "osl",
+   "city_name": "Oslo",
+   "socks_name": "no-osl-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-osl-wg-102",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "osl",
+   "city_name": "Oslo",
+   "socks_name": "no-osl-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-osl-wg-103",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "osl",
+   "city_name": "Oslo",
+   "socks_name": "no-osl-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-svg-wg-001",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "svg",
+   "city_name": "Stavanger",
+   "socks_name": "no-svg-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-svg-wg-002",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "svg",
+   "city_name": "Stavanger",
+   "socks_name": "no-svg-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-svg-wg-003",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "svg",
+   "city_name": "Stavanger",
+   "socks_name": "no-svg-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "no-svg-wg-004",
+   "country_code": "no",
+   "country_name": "Norway",
+   "city_code": "svg",
+   "city_name": "Stavanger",
+   "socks_name": "no-svg-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-001",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-002",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-003",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-004",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-005",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-005.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-006",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-006.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-007",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-007.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-got-wg-101",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "got",
+   "city_name": "Gothenburg",
+   "socks_name": "se-got-wg-socks5-101.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-001",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-002",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-004",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-004.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-005",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-005.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-011",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-011.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-012",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-012.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-102",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-102.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-103",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-103.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-111",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-111.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-mma-wg-112",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "mma",
+   "city_name": "Malmö",
+   "socks_name": "se-mma-wg-socks5-112.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-001",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-002",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-003",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-008",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-008.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-009",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-009.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-010",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-010.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-011",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-011.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-201",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-201.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-202",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-202.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-203",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-203.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-204",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-204.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-205",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-205.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-206",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-206.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-207",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-207.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-208",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-208.relays.mullvad.net"
+  },
+  {
+   "hostname": "se-sto-wg-209",
+   "country_code": "se",
+   "country_name": "Sweden",
+   "city_code": "sto",
+   "city_name": "Stockholm",
+   "socks_name": "se-sto-wg-socks5-209.relays.mullvad.net"
+  },
+  {
+   "hostname": "us-nyc-wg-001",
+   "country_code": "us",
+   "country_name": "USA",
+   "city_code": "nyc",
+   "city_name": "New York, NY",
+   "socks_name": "us-nyc-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "us-nyc-wg-002",
+   "country_code": "us",
+   "country_name": "USA",
+   "city_code": "nyc",
+   "city_name": "New York, NY",
+   "socks_name": "us-nyc-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "us-nyc-wg-003",
+   "country_code": "us",
+   "country_name": "USA",
+   "city_code": "nyc",
+   "city_name": "New York, NY",
+   "socks_name": "us-nyc-wg-socks5-003.relays.mullvad.net"
+  },
+  {
+   "hostname": "us-sjc-wg-001",
+   "country_code": "us",
+   "country_name": "USA",
+   "city_code": "sjc",
+   "city_name": "San Jose, CA",
+   "socks_name": "us-sjc-wg-socks5-001.relays.mullvad.net"
+  },
+  {
+   "hostname": "us-sjc-wg-002",
+   "country_code": "us",
+   "country_name": "USA",
+   "city_code": "sjc",
+   "city_name": "San Jose, CA",
+   "socks_name": "us-sjc-wg-socks5-002.relays.mullvad.net"
+  },
+  {
+   "hostname": "us-sjc-wg-003",
+   "country_code": "us",
+   "country_name": "USA",
+   "city_code": "sjc",
+   "city_name": "San Jose, CA",
+   "socks_name": "us-sjc-wg-socks5-003.relays.mullvad.net"
+  }
+ ]
+}

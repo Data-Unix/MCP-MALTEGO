@@ -26,7 +26,7 @@
 
 ---
 
-**mcp-maltego** es un servidor [Model Context Protocol](https://modelcontextprotocol.io) de alto rendimiento que convierte a cualquier agente de IA en un analista experto de Maltego. Ejecuta transforms reales, los encadena en Machines de reconocimiento autónomo, mantiene un grafo de investigación persistente con memoria de cada paso y procedencia explicable, recomienda el siguiente pivote y se sincroniza limpiamente con Maltego Desktop mediante archivos `.mtgx`.
+**mcp-maltego** es un servidor [Model Context Protocol](https://modelcontextprotocol.io) de alto rendimiento que convierte a cualquier agente de IA en un analista experto de Maltego. Ejecuta transforms reales, los encadena en Machines de reconocimiento autónomo, mantiene un grafo de investigación persistente con memoria de cada paso y procedencia explicable, recomienda el siguiente pivote, se sincroniza en tiempo real con el Centro de Control Web (`maltegoctl dashboard`) y se integra limpiamente con Maltego Desktop mediante archivos `.mtgx` y paquetes forenses sellados `.mcpcase`.
 
 > [!TIP]
 > **Cero Coste y Sin Licencias Comerciales de Maltego**: No necesitas un plan de pago de Maltego (Pro/XL) ni claves comerciales para empezar. `mcp-maltego` funciona de forma completamente gratuita en local, generando archivos `.mtgx` nativos 100% compatibles con la versión gratuita **Maltego Community Edition (CE)** o Basic.
@@ -39,9 +39,9 @@
 
 | Capa | Componente | Descripción y Coste |
 | :--- | :--- | :--- |
-| **Capa 0: Núcleo Gratuito** | CLI y Servidor MCP | Ejecución directa (`npx mcp-maltego`). Genera y lee archivos `.mtgx` para **Maltego Community Edition (CE)**. Incluye **33 transforms integrados sin API key** (DoH, RDAP/WHOIS, crt.sh, ASN Cymru, CISA KEV, URLhaus, AlienVault OTX, URLscan, Mempool.space Bitcoin UTXO, clustering CIOH, sanciones OFAC SDN y puntos VASP) y motor de plugins comunitarios (`@custom_transform`). **100% Local y Gratuito.** |
-| **Capa 1: Memoria de Casos** | Memoria de Grafo y Copiloto | Almacenamiento local determinista de casos (`~/.maltego-mcp/graph.json`), fusión de identidades, auditoría forense de pasos, Machines autónomas y copiloto `osint_investigate`. |
-| **Capa 2: Plataforma Avanzada** | Consola Web y Bóveda CTI | Web Dashboard interactivo (`maltegoctl dashboard`) con aceleración por Web Worker y 4 layouts (Orgánico, Jerárquico, Radial, Por Categoría), filtrado multidimensional (aristas, entidades, certeza continua, saltos y buscador en vivo), renderizado vectorial Impeccable (iconos en canvas, anillos de confianza y aristas Bézier), Suite Universal de Tablas (densidad compacta/normal/expandida, paginación, tarjetas acordeón detalladas), trazado de rutas multi-salto e inspección de radio de impacto, Ledger Blockchain AML con detección de mixers, aislamiento y scoping estricto de investigaciones independientes (Topbar global y selector modular en foco), purgado y eliminación definitiva de casos puntuales, Bóveda de Cuentas categorizadas (Redes, Foros Underground y Mercados Dark Web) con cookies y enrutamiento Tor SOCKS5, buzones efímeros (Mail.tm + extractor OTP), feeds CTI Tor/Dark Web y persistencia opcional en clúster Azure Cosmos DB Gremlin. |
+| **Capa 0: Núcleo Gratuito** | CLI y Servidor MCP | Ejecución directa (`npx mcp-maltego`). Genera y lee archivos `.mtgx` para **Maltego Community Edition (CE)** y paquetes forenses sellados `.mcpcase` (SHA-256). Incluye **51 transforms integrados sin API key** (DoH, RDAP/WHOIS, crt.sh, CertSpotter, Anubis-DB, Wayback Machine CDX y snapshots, Arquivo.pt, Common Crawl, BOE/BORME, GLEIF LEI, ASN Cymru, RIPEstat, CISA KEV, URLhaus, AlienVault OTX, URLscan, Hudson Rock, GitHub leaks/commits, Keybase, DeepDarkCTI, Mempool.space Bitcoin UTXO, clustering CIOH, sanciones OFAC SDN y puntos VASP) y motor de plugins comunitarios (`@custom_transform`). **100% Local y Gratuito.** |
+| **Capa 1: Memoria de Casos** | Memoria de Grafo y Copiloto | Almacenamiento local determinista de casos (`~/.maltego-mcp/graph.json`), fusión de identidades, auditoría forense de pasos, **16 Machines autónomas**, soporte para peticiones en texto claro o vagas en `osint_investigate`, Perfilado Pericial Multidimensional (21 tipologías) y síntesis analítica P0–P9 (ACH / ICD 203). |
+| **Capa 2: Plataforma Avanzada** | Consola Web y Bóveda CTI | Web Dashboard interactivo (`maltegoctl dashboard`) con **sincronización en tiempo real entre procesos (`stdio` ↔ SSE)** desde agentes en VS Code, aceleración por Web Worker y 4 layouts (Orgánico, Jerárquico, Radial, Por Categoría), filtrado multidimensional (aristas, entidades, certeza continua, saltos y buscador en vivo), renderizado vectorial Impeccable (iconos en canvas, anillos de confianza y aristas Bézier), Suite Universal de Tablas (densidad compacta/normal/expandida, paginación, tarjetas acordeón detalladas), Consola de Reconocimiento P0–P9 y ACH/ICD 203, Radar de Perfilado Pericial de 21 tipologías, Anillo de Egreso Mullvad obligatorio con atestación doble y Guardián PEP 578, autenticación de sesión PBKDF2-HMAC-SHA256, Ledger Blockchain AML con detección de mixers, aislamiento y scoping estricto de casos, purgado atómico, Bóveda de Cuentas categorizadas, buzones efímeros (Mail.tm + extractor OTP), feeds CTI Tor/Dark Web, núcleo nativo Rust opcional (`maltego_core_rs`) y persistencia opcional en Azure Cosmos DB Gremlin. |
 
 ---
 
@@ -49,21 +49,17 @@
 
 - **20 tools compatibles con todos los modelos.** Esquemas planos validados contra el subconjunto estricto de Gemini;
   las variantes van en un parámetro `action` para no saturar a los agentes.
-- **45 transforms reales incluidos.** 33 sin API key (DNS sobre HTTPS, RDAP/WHOIS con respaldo ARIN, vulnerabilidades activas en CISA KEV, malware en Abuse.ch URLhaus, transparencia de certificados en crt.sh y CertSpotter, HackerTarget, urlscan.io, Shodan InternetDB, ASN y prefijos en Team Cymru y RIPE Stat, Gravatar, detalle en GitHub, pulsos de amenazas en AlienVault OTX, perfiles por alias, transacciones Bitcoin e inputs/outputs en Mempool.space, clustering por co-gasto CIOH, cotejo de sanciones cripto OFAC SDN, touchpoints en exchanges/VASPs y análisis) y 12 de proveedores que se activan al definir su clave: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise y Tatum.
+- **Peticiones en texto claro o vagas desde VS Code + Sincronización en tiempo real con el Dashboard.** Pide a cualquier agente en VS Code (Claude Code, GitHub Copilot, Cursor) o terminal (`"investiga example.com y dame un informe completo"`). `osint_investigate` extrae automáticamente la semilla, ejecuta todos los transforms activos y pasivos no intrusivos con concurrencia controlada (`CHAIN_CONCURRENCY = 3`), transmite cada hallazgo en vivo mediante `~/.maltego-mcp/events.jsonl` y Server-Sent Events (`/api/events`) a `maltegoctl dashboard`, autocompleta las **10 fases del expediente P0–P9** y los **perfiles periciales de 21 tipologías**, auto-exporta `report_html` y `.mcpcase`, y devuelve en línea el **Informe Pericial Ejecutivo Completo**.
+- **63 transforms reales incluidos.** **51 sin API key** (DNS sobre HTTPS, RDAP/WHOIS con respaldo ARIN, vulnerabilidades activas en CISA KEV, malware en Abuse.ch URLhaus, transparencia de certificados en crt.sh y CertSpotter, Anubis-DB pDNS, HackerTarget, urlscan.io, Shodan InternetDB, ASN y prefijos BGP en Team Cymru y RIPEstat, archivos web históricos en Wayback Machine CDX y extracción de snapshots, Arquivo.pt y Common Crawl CDX, registros oficiales BOE/BORME y estructura societaria GLEIF LEI, fugas de código y correos de commits en GitHub, pruebas criptográficas en Keybase, exposición a infostealers en Hudson Rock, Gravatar, pulsos de amenazas en AlienVault OTX, perfiles por alias, inteligencia Dark Web CTI y pivote `.onion` pasivo, transacciones Bitcoin e inputs/outputs en Mempool.space, clustering por co-gasto CIOH, cotejo de sanciones cripto OFAC SDN, touchpoints en exchanges/VASPs y análisis) y **12 de proveedores** que se activan al definir su clave: VirusTotal, Shodan, SecurityTrails, Censys, Hunter.io, Have I Been Pwned, GreyNoise y Tatum.
+- **Ejecución Activa y Pasiva No Intrusiva + Anillo de Egreso Mullvad.** Los transforms activos no intrusivos (DNS sobre HTTPS, consultas GET a VirusTotal, inspección pasiva `.onion`) y los pasivos están habilitados por defecto, bloqueando cualquier operación intrusiva (sin escaneo de puertos ni subidas o POST `/analyse` en VirusTotal). Todo el tráfico sale por un único guardián (`egress.py`) con auditoría PEP 578 y soporte para el Anillo Mullvad obligatorio (`socks5h://10.64.0.1:1080`) con atestación doble.
+- **Perfilado Pericial Multidimensional (21 Tipologías) y Síntesis P0–P9 ACH / ICD 203.** `osint_manage_entity(action="profile")` evalúa 21 tipologías forenses sobre un radar de 6 pilares (`investor`, `company_due_diligence`, `device`, `geographic`, `criminal`, `victimology`, `cyberbullying`, `political`, `psychographic`, `clinical`, etc.) con cálculo de vigencia objetiva (`OBSERVADO_RECIENTE`, `HISTORICO`, `MENCIONADO_SIN_FECHA`) y síntesis de Hipótesis en Competencia (ACH) bajo la directiva ICD 203.
 - **Motor de Extensibilidad Comunitaria (`@custom_transform`).** Permite soltar ficheros Python en `~/.maltego-mcp/plugins/` o `./plugins/` para exponer nueva lógica OSINT a los LLMs sin tocar el núcleo.
 - **También tus transforms de Maltego.** Habla el protocolo XML TRX/iTDS de Maltego.
-- **Machines.** DomainRecon, InfrastructureRecon, EmailRecon, CompanyFootprint, PersonalFootprint, PersonaFootprint, CryptoFlowRecon, URLRecon,
-  ThreatSweep, ASNToNetblocks y las tuyas en TOML, con rondas recursivas y presupuestos.
+- **16 Machines predefinidas.** `DomainRecon`, `InfrastructureRecon`, `EmailRecon`, `CompanyFootprint`, `PersonalFootprint`, `PersonaFootprint`, `CryptoFlowRecon`, `URLRecon`, `ThreatSweep`, `ASNToNetblocks`, `DarkWebFootprint`, más sus equivalentes en modo pasivo estricto (`PassiveDomainRecon`, `PassiveInfrastructureRecon`, `PassiveEmailRecon`, `PassiveURLRecon`, `PassiveCompanyFootprint`) y las tuyas en TOML, con rondas recursivas y presupuestos.
 - **Trazabilidad Criptoforense & AML Blockchain.** Ontología nativa (`maltego.CryptoCluster`, `maltego.VASPExchange`, `maltego.MixerContract`, `maltego.DeFiBridge`), reconstrucción de flujos transaccionales UTXO/EVM, heurísticas de co-gasto (CIOH) y peeling chains, detección de mezcladores (Tornado Cash, CoinJoin), verificación de sanciones OFAC SDN y puntos de salida a fiat (VASPs regulados con KYC).
-- **Aislamiento Multi-Investigación y Scoping Modular de Proyectos.** Selector global de proyecto sincronizado en la cabecera (Topbar) y selector desacoplable independiente en cada módulo analítico ("Investigación en Foco" con modo predeterminado `[Seguir Activo]`), garantizando cero contaminación cruzada entre investigaciones forenses independientes.
-- **Ciclo de Vida Forense y Purgado Definitivo de Casos.** Sistema de eliminación segura e irreversible de investigaciones puntuales con confirmación interactiva, purgado atómico de entidades y aristas en la base de datos de grafos, destrucción de caché local y de memoria de custodia/alertas, y conmutación automática de proyecto.
-- **Copiloto de investigación.** `osint_investigate` lo hace todo en una llamada. Cada paso queda registrado (qué, sobre
-  qué, por qué, resultado), cada entidad tiene procedencia y prioridad explicables, y la siguiente mejor acción aprende
-  del rendimiento de cada transform.
-- **Ida y vuelta con Maltego.** `.mtgx` con layout jerárquico, radial o por fuerzas y la memoria incluida; importación
-  de `.mtgx`; transforms locales dentro de Maltego para abrir un caso, ver vecinos y enviar entidades a los agentes;
-  importación de tu ontología exacta de Maltego.
-- **Informes y CLI.** Informes en Markdown o HTML autocontenido y `maltegoctl` para terminal y CI.
+- **Aislamiento Multi-Investigación, Purgado Atómico y Paquetes `.mcpcase`.** Selector global de proyecto sincronizado, selector modular independiente, eliminación segura e irreversible de casos (`DELETE /api/cases/{case_id}`) y empaquetado forense `.mcpcase` con verificación criptográfica SHA-256.
+- **Núcleo Nativo Rust Opcional (`maltego_core_rs`).** Fallback puro en Python con paridad exacta bit a bit junto con una extensión opcional en Rust/PyO3 (`uv run python scripts/build_native.py`) que libera el GIL en layouts Fruchterman-Reingold y similitud de cadenas.
+- **Informes Periciales y CLI.** Informes ejecutivos sin emojis en Markdown o HTML autocontenido (con IOCs neutralizados y CSP estricta) y `maltegoctl` para terminal y CI.
 - **Seguro por defecto.** Los datos OSINT se tratan como no confiables, XML con defusedxml, lecturas acotadas de
   ficheros comprimidos, sin URLs arbitrarias y sin API keys en los logs.
 
@@ -288,30 +284,30 @@ En `.vscode/mcp.json` o `.copilot/mcp-config.json`:
 
 Ejemplos exactos para cada cliente en el [README en inglés](README.md#getting-started).
 
-## Tools
+## Tools (20)
 
 | Grupo | Tool | Para qué |
 |---|---|---|
-| Catálogo | `osint_list_entity_types` | Ontología por categoría (estándar + importada de tu Maltego) |
-| | `osint_list_transforms` | Transforms, Machines, claves de proveedores y estado de servidores |
-| Casos | `osint_manage_case` | Crear, fusionar o borrar (con confirmación) |
-| | `osint_list_cases` | Listado paginado |
+| Catálogo | `osint_list_entity_types` | 41 tipos de entidad estándar por categoría (más `humint.*`, cripto/AML y los importados de tu Maltego `.mtz`) |
+| | `osint_list_transforms` | 63 transforms integrados, 16 Machines, claves de proveedores y estado de servidores TRX |
+| Casos | `osint_manage_case` | Crear, bifurcar/delegar subcasos (`fork`/`delegate`), fusionar (`merge`) o borrar (`delete` con confirmación) |
+| | `osint_list_cases` | Listado paginado de casos |
 | | `osint_get_case_summary` | Recuentos, entidades prioritarias e índices de calidad |
 | Entidades | `osint_upsert_entity` | Crear o fusionar (valor normalizado, id determinista, notas) |
-| | `osint_manage_entity` | Editar confianza, notas o propiedades; borrar |
+| | `osint_manage_entity` | Editar confianza/notas/propiedades, `visual_style` en `.mtgx`, `analyze_behavior` HUMINT, **Perfilado Pericial Multidimensional de 21 tipologías** (`profile`), generación de identidades operativas (`generate_persona`) o borrar |
 | | `osint_get_entity` | Detalle, puntuación explicada, procedencia, transforms pendientes |
 | | `osint_search_entities` | Búsqueda en un caso o entre casos; orden por prioridad |
-| Relaciones | `osint_link_entities` | Relacionar o desrelacionar |
+| Relaciones | `osint_link_entities` | Relacionar/desrelacionar, `analyze` rol/sentimiento/peso HUMINT o `correlate` identidades entre plataformas |
 | | `osint_get_neighbors` | Vecinos con dirección y tipo de relación |
-| | `osint_find_paths` | Caminos entre dos entidades |
-| Transforms | `osint_run_transform` | Un transform sobre una entidad |
-| | `osint_expand_entity` | Todos los transforms aplicables ("Run All") |
-| | `osint_run_machine` | Una Machine o una cadena propia, con rondas y presupuestos |
-| Copiloto | `osint_investigate` | Todo en una llamada |
+| | `osint_find_paths` | Caminos más cortos entre dos entidades |
+| Transforms | `osint_run_transform` | Un transform sobre una entidad (emite eventos en vivo a `maltegoctl dashboard`) |
+| | `osint_expand_entity` | Todos los transforms aplicables ("Run All") con concurrencia anti-ráfaga |
+| | `osint_run_machine` | Una de las 16 Machines predefinidas o una cadena propia, con rondas y presupuestos |
+| Copiloto | `osint_investigate` | Todo en una llamada (admite objetivos o peticiones en texto claro / vagas): extrae la semilla, crea el caso, ejecuta la Machine y los pivotes activos/pasivos no intrusivos, sincroniza en vivo P0–P9 y los perfiles de 21 tipologías en el dashboard, auto-exporta `report_html` + `.mcpcase` y devuelve el **Informe Pericial Ejecutivo Completo** |
 | | `osint_suggest_next_steps` | Siguiente mejor acción con historial de rendimiento |
-| | `osint_get_timeline` | Memoria de la investigación; novedades con `since_seq` |
-| Intercambio | `osint_export_case` | `mtgx`, `json`, `graphml`, `csv`, `report_md`, `report_html` |
-| | `osint_import_graph` | Importar `.mtgx` de Maltego (con memoria) o CSV |
+| | `osint_get_timeline` | Memoria procedimental de la investigación (`steps`) o línea de vida cronológica y anomalías del sujeto (`subject`) |
+| Intercambio | `osint_export_case` | `mtgx`, `mcpcase` (paquete nativo sellado con SHA-256), `json`, `graphml`, `csv`, `report_md`, `report_html` |
+| | `osint_import_graph` | Importar `.mtgx`, `.mcpcase` o CSV de Maltego (con memoria) |
 
 ## API keys de proveedores
 
